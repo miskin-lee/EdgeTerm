@@ -5,41 +5,58 @@ import { WebLinksAddon } from "@xterm/addon-web-links";
 import { WebglAddon } from "@xterm/addon-webgl";
 import { Terminal } from "@xterm/xterm";
 
-import type { OutlineItem } from "./types";
-
 export type GutterMode = "off" | "line" | "time" | "both";
 
 const SCROLLBACK = 5000;
 
-const THEME = {
+/**
+ * xterm's canonical 16-color base palette. xterm.js supplies the remaining
+ * 240 entries of the xterm-256color cube and grayscale ramp automatically.
+ */
+const XTERM_256_THEME = {
   background: "#16181d",
-  foreground: "#c8ccd4",
-  cursor: "#f5c04a",
+  foreground: "#e5e5e5",
+  cursor: "#7fc4ff",
   cursorAccent: "#16181d",
-  selectionBackground: "#38414f",
-  black: "#2b2f38",
-  red: "#e06c75",
-  green: "#98c379",
-  yellow: "#e5c07b",
-  blue: "#61afef",
-  magenta: "#c678dd",
-  cyan: "#56b6c2",
-  white: "#abb2bf",
-  brightBlack: "#5c6370",
-  brightRed: "#ff7b72",
-  brightGreen: "#b5e08d",
-  brightYellow: "#f0d399",
-  brightBlue: "#7fc4ff",
-  brightMagenta: "#dc9ff2",
-  brightCyan: "#78d5df",
-  brightWhite: "#e6e9ef",
+  selectionBackground: "#3b4f70",
+  black: "#000000",
+  red: "#cd0000",
+  green: "#00cd00",
+  yellow: "#cdcd00",
+  blue: "#0000ee",
+  magenta: "#cd00cd",
+  cyan: "#00cdcd",
+  white: "#e5e5e5",
+  brightBlack: "#7f7f7f",
+  brightRed: "#ff0000",
+  brightGreen: "#00ff00",
+  brightYellow: "#ffff00",
+  brightBlue: "#5c5cff",
+  brightMagenta: "#ff00ff",
+  brightCyan: "#00ffff",
+  brightWhite: "#ffffff",
 };
+
+interface SemanticRange {
+  start: number;
+  end: number;
+  color: string;
+}
+
+// Colors are exact entries from the xterm 6x6x6 color cube.
+const SEMANTIC_COLORS = {
+  red: "#ff5f5f", // 203
+  green: "#87d787", // 114
+  yellow: "#ffd75f", // 221
+  blue: "#5fafff", // 75
+  magenta: "#ff87ff", // 213
+  cyan: "#5fd7ff", // 81
+} as const;
 
 interface Callbacks {
   onData: (data: string) => void;
   onResize: (cols: number, rows: number) => void;
   onCursorMove: (line: number, column: number) => void;
-  onOutline: (items: OutlineItem[]) => void;
 }
 
 /**
@@ -64,8 +81,9 @@ export class TerminalController {
   /** Absolute line number of buffer line 0; grows as scrollback is trimmed. */
   private firstLineNumber = 1;
 
-  private outline: OutlineItem[] = [];
   private gutterMode: GutterMode = "both";
+  private pendingShellClear = false;
+  private pendingSemanticLines = new Set<number>();
   private disposed = false;
   /**
    * Cached so the per-frame gutter sync never reads layout. Recomputed only on
@@ -87,7 +105,7 @@ export class TerminalController {
       lineHeight: 1.25,
       letterSpacing: 0,
       scrollback: SCROLLBACK,
-      theme: THEME,
+      theme: XTERM_256_THEME,
       macOptionIsMeta: true,
       rightClickSelectsWord: true,
     });
@@ -99,9 +117,25 @@ export class TerminalController {
     this.term.loadAddon(unicode);
     this.term.unicode.activeVersion = "11";
 
-    this.term.onData((data) => {
-      if (data.includes("\r")) this.captureCommand();
-      this.callbacks.onData(data);
+    this.term.onData((data) => this.callbacks.onData(data));
+    this.term.parser.registerCsiHandler({ final: "J" }, (params) => {
+      const mode = params[0];
+      if (
+        (mode === 2 || mode === 3) &&
+        this.term.buffer.active.type === "normal"
+      ) {
+        this.pendingShellClear = true;
+      }
+      return false;
+    });
+    this.term.onWriteParsed(() => {
+      if (this.pendingShellClear) {
+        this.pendingShellClear = false;
+        this.term.clear();
+        this.resetLineMetadata();
+        return;
+      }
+      this.applySemanticColors();
     });
 
     this.term.onResize(({ cols, rows }) => {
@@ -206,10 +240,13 @@ export class TerminalController {
 
   clear() {
     this.term.clear();
+    this.resetLineMetadata();
+  }
+
+  private resetLineMetadata() {
     this.lineTimes = [Date.now()];
     this.firstLineNumber = 1;
-    this.outline = [];
-    this.callbacks.onOutline(this.outline);
+    this.pendingSemanticLines.clear();
     this.syncGutter();
   }
 
@@ -257,6 +294,9 @@ export class TerminalController {
     const buf = this.term.buffer.active;
     const index = buf.baseY + buf.cursorY;
     const now = Date.now();
+    if (buf.type === "normal" && index > 0) {
+      this.pendingSemanticLines.add(index - 1);
+    }
     while (this.lineTimes.length <= index) this.lineTimes.push(now);
     this.lineTimes[index] = now;
 
@@ -270,16 +310,48 @@ export class TerminalController {
     }
   }
 
-  private captureCommand() {
+  /**
+   * WindTerm-style semantic coloring for output that did not set its own ANSI
+   * foreground color. Decorations keep the byte stream untouched, so cursor
+   * movement, copying and full-screen applications continue to behave normally.
+   */
+  private applySemanticColors() {
     const buf = this.term.buffer.active;
-    const index = buf.baseY + buf.cursorY;
-    const text = buf.getLine(index)?.translateToString(true).trim();
-    if (!text) return;
-    this.outline = [
-      ...this.outline.slice(-199),
-      { line: this.firstLineNumber + index, text },
-    ];
-    this.callbacks.onOutline(this.outline);
+    if (buf.type !== "normal" || this.pendingSemanticLines.size === 0) return;
+
+    const cursorIndex = buf.baseY + buf.cursorY;
+    for (const lineIndex of this.pendingSemanticLines) {
+      const line = buf.getLine(lineIndex);
+      const text = line?.translateToString(true) ?? "";
+      // The rules below use JavaScript string offsets as terminal columns.
+      // Restrict them to single-width ASCII so decorations always align.
+      if (!line || !text || !/^[\x20-\x7e]*$/.test(text)) continue;
+
+      const ranges = semanticRanges(text);
+      if (ranges.length === 0) continue;
+      const marker = this.term.registerMarker(lineIndex - cursorIndex);
+      if (!marker) continue;
+
+      for (const range of ranges) {
+        let isUnstyled = true;
+        for (let x = range.start; x < range.end; x += 1) {
+          const cell = line.getCell(x);
+          if (!cell?.isFgDefault() || !cell.isBgDefault()) {
+            isUnstyled = false;
+            break;
+          }
+        }
+        if (!isUnstyled) continue;
+        this.term.registerDecoration({
+          marker,
+          x: range.start,
+          width: range.end - range.start,
+          foregroundColor: range.color,
+          layer: "top",
+        });
+      }
+    }
+    this.pendingSemanticLines.clear();
   }
 
   /**
@@ -348,8 +420,58 @@ export class TerminalController {
 }
 
 function formatTime(epochMs: number | undefined): string {
-  if (!epochMs) return "[--:--:--]";
+  if (!epochMs) return "[--:--:--.---]";
   const d = new Date(epochMs);
   const pad = (n: number) => String(n).padStart(2, "0");
-  return `[${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}]`;
+  const milliseconds = String(d.getMilliseconds()).padStart(3, "0");
+  return `[${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}.${milliseconds}]`;
+}
+
+function semanticRanges(text: string): SemanticRange[] {
+  const ranges: SemanticRange[] = [];
+  const add = (start: number, end: number, color: string) => {
+    if (ranges.some((range) => start < range.end && end > range.start)) return;
+    ranges.push({ start, end, color });
+  };
+  const addMatches = (pattern: RegExp, color: string) => {
+    for (const match of text.matchAll(pattern)) {
+      if (match.index !== undefined) {
+        add(match.index, match.index + match[0].length, color);
+      }
+    }
+  };
+
+  // A traditional `date` result gets the same kind of token-by-token semantic
+  // treatment as WindTerm's Linux scheme.
+  const unixDate =
+    /\b(Mon|Tue|Wed|Thu|Fri|Sat|Sun)\s+(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+(\d{1,2})\s+(\d{2}:\d{2}:\d{2}(?:\.\d+)?)\s+([A-Z]{2,5}|[+-]\d{4})\s+(\d{4})\b/g;
+  for (const match of text.matchAll(unixDate)) {
+    if (match.index === undefined) continue;
+    const parts = [
+      [match[1], SEMANTIC_COLORS.cyan],
+      [match[2], SEMANTIC_COLORS.magenta],
+      [match[3], SEMANTIC_COLORS.yellow],
+      [match[4], SEMANTIC_COLORS.green],
+      [match[5], SEMANTIC_COLORS.blue],
+      [match[6], SEMANTIC_COLORS.yellow],
+    ] as const;
+    let from = match.index;
+    for (const [value, color] of parts) {
+      const start = text.indexOf(value, from);
+      if (start < 0) break;
+      add(start, start + value.length, color);
+      from = start + value.length;
+    }
+  }
+
+  addMatches(/\b(?:fatal|error|failed|failure|denied|invalid|exception)\b/gi, SEMANTIC_COLORS.red);
+  addMatches(/\b(?:warn|warning)\b/gi, SEMANTIC_COLORS.yellow);
+  addMatches(/\b(?:ok|done|success|succeeded|connected|active|running)\b/gi, SEMANTIC_COLORS.green);
+  addMatches(/\b\d{4}-\d{2}-\d{2}\b/g, SEMANTIC_COLORS.magenta);
+  addMatches(/\b\d{2}:\d{2}:\d{2}(?:\.\d+)?\b/g, SEMANTIC_COLORS.green);
+  addMatches(/\b(?:\d{1,3}\.){3}\d{1,3}\b/g, SEMANTIC_COLORS.cyan);
+  addMatches(/\b0x[\da-f]+\b/gi, SEMANTIC_COLORS.magenta);
+  addMatches(/\b\d+(?:\.\d+)?\b/g, SEMANTIC_COLORS.yellow);
+
+  return ranges.sort((a, b) => a.start - b.start);
 }

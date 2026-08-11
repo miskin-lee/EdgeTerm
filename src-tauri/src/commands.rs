@@ -50,8 +50,8 @@ pub async fn open_session(
 ) -> Result<SessionInfo> {
     // A profile may arrive by id (from the tree) or inline (quick connect).
     let profile = if !profile.id.is_empty() {
-        match state.store.get(&profile.id) {
-            // Secrets are not persisted, so prefer whatever the caller supplied.
+        match state.store.get(&profile.id)? {
+            // Prefer a secret supplied by the dialog over the saved credential.
             Some(saved) => merge_secrets(saved, profile),
             None => profile,
         }

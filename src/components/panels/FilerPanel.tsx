@@ -127,8 +127,6 @@ export function FilerPanel() {
     }
   };
 
-  const totalSize = entries.reduce((sum, e) => sum + (e.isDir ? 0 : e.size), 0);
-
   return (
     <div className="panel" style={{ flex: 1 }}>
       <div className="panel-header">
@@ -192,7 +190,6 @@ export function FilerPanel() {
 
       <div className="filer-columns">
         <span className="filer-col-name">Name</span>
-        <span className="filer-col-size">Size</span>
         <span className="filer-col-date">Date Modified</span>
       </div>
 
@@ -226,9 +223,6 @@ export function FilerPanel() {
               {entry.isDir ? "📁" : entry.isSymlink ? "🔗" : "📄"}
             </span>
             <span className="row-label">{entry.name}</span>
-            <span className="filer-col-size row-meta">
-              {entry.isDir ? "" : formatSize(entry.size)}
-            </span>
             <span className="filer-col-date row-meta">
               {formatDate(entry.modified)}
             </span>
@@ -238,7 +232,6 @@ export function FilerPanel() {
 
       <div className="filer-footer">
         <span>{entries.length} items</span>
-        <span>{formatSize(totalSize)}</span>
         {busy && <span>working…</span>}
       </div>
     </div>
@@ -255,18 +248,6 @@ function remoteParent(path: string): string {
 function joinRemote(base: string, name: string): string {
   if (base.endsWith("/")) return `${base}${name}`;
   return `${base}/${name}`;
-}
-
-function formatSize(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`;
-  const units = ["KB", "MB", "GB", "TB"];
-  let value = bytes / 1024;
-  let unit = 0;
-  while (value >= 1024 && unit < units.length - 1) {
-    value /= 1024;
-    unit++;
-  }
-  return `${value.toFixed(1)} ${units[unit]}`;
 }
 
 function formatDate(seconds: number | null): string {

@@ -10,10 +10,8 @@ type Target = "current" | "all";
 export function SenderPanel() {
   const tabs = useStore((s) => s.tabs);
   const activeId = useStore((s) => s.activeId);
-  const log = useStore((s) => s.log);
   const setStatus = useStore((s) => s.setStatus);
 
-  const [view, setView] = useState<"sender" | "log">("sender");
   const [text, setText] = useState("");
   const [encoding, setEncoding] = useState<Encoding>("text");
   const [granularity, setGranularity] = useState<Granularity>("line");
@@ -76,40 +74,13 @@ export function SenderPanel() {
   return (
     <>
       <div className="sender-tabs">
-        <button
-          className={`sender-tab${view === "sender" ? " is-active" : ""}`}
-          onClick={() => setView("sender")}
-        >
+        <div className="sender-tab is-active">
           <span className="panel-dot" style={{ background: "#f85149" }} />
           Sender
-        </button>
-        <button
-          className={`sender-tab${view === "log" ? " is-active" : ""}`}
-          onClick={() => setView("log")}
-        >
-          <span className="panel-dot" style={{ background: "#3fb950" }} />
-          Log
-          {log.length > 0 && <span className="row-meta">{log.length}</span>}
-        </button>
+        </div>
       </div>
 
-      {view === "log" ? (
-        <div
-          className="panel-body"
-          style={{ height: 96, fontFamily: "var(--font-mono)", fontSize: 11 }}
-        >
-          {log.length === 0 && (
-            <div className="panel-empty">Session events appear here.</div>
-          )}
-          {log.map((line, index) => (
-            <div key={index} className="row" style={{ height: 18 }}>
-              <span className="row-label">{line}</span>
-            </div>
-          ))}
-        </div>
-      ) : (
-        <>
-          <div className="sender-toolbar">
+      <div className="sender-toolbar">
             <button
               className="sender-btn is-play"
               onClick={send}
@@ -210,9 +181,9 @@ export function SenderPanel() {
                 <option value="all">All Sessions ({tabs.length})</option>
               </select>
             </div>
-          </div>
+      </div>
 
-          <div className="sender-input">
+      <div className="sender-input">
             <textarea
               value={text}
               placeholder={
@@ -228,9 +199,7 @@ export function SenderPanel() {
                 }
               }}
             />
-          </div>
-        </>
-      )}
+      </div>
     </>
   );
 }

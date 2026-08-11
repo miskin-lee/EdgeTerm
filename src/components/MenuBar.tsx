@@ -136,11 +136,6 @@ export function MenuBar(props: Props) {
       title: "View",
       entries: [
         {
-          label: "Explorer",
-          checked: panels.explorer,
-          action: () => togglePanel("explorer"),
-        },
-        {
           label: "Filer",
           checked: panels.filer,
           action: () => togglePanel("filer"),
@@ -149,11 +144,6 @@ export function MenuBar(props: Props) {
           label: "Session",
           checked: panels.sessions,
           action: () => togglePanel("sessions"),
-        },
-        {
-          label: "Outline",
-          checked: panels.outline,
-          action: () => togglePanel("outline"),
         },
         {
           label: "Sender",
@@ -219,14 +209,6 @@ export function MenuBar(props: Props) {
           )}
         </div>
       ))}
-
-      <div className="menubar-spacer" />
-      <button className="menubar-action" onClick={props.onFind}>
-        Search
-      </button>
-      <button className="menubar-action" onClick={props.onNewSession}>
-        + Session
-      </button>
     </div>
   );
 }

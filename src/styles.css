@@ -109,10 +109,6 @@ textarea:focus {
   color: var(--fg-dim);
 }
 
-.titlebar-title {
-  pointer-events: none;
-}
-
 .menubar {
   height: 28px;
   flex: 0 0 28px;
@@ -178,21 +174,6 @@ textarea:focus {
   height: 1px;
   margin: 4px 6px;
   background: var(--border);
-}
-
-.menubar-spacer {
-  flex: 1;
-}
-
-.menubar-action {
-  padding: 3px 8px;
-  border-radius: 3px;
-  color: var(--fg-dim);
-}
-
-.menubar-action:hover {
-  background: var(--bg-hover);
-  color: var(--fg);
 }
 
 .main {
@@ -919,11 +900,6 @@ textarea:focus {
 
 .filer-col-name {
   flex: 1;
-}
-
-.filer-col-size {
-  width: 64px;
-  text-align: right;
 }
 
 .filer-col-date {

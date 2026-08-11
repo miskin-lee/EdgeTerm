@@ -30,7 +30,6 @@ export function ensureController(id: string): TerminalController {
     },
     onCursorMove: (line, column) =>
       useStore.getState().setCursor(id, line, column),
-    onOutline: (items) => useStore.getState().setOutline(id, items),
   });
   setController(id, controller);
   return controller;

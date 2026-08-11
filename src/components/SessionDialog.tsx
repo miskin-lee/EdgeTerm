@@ -23,6 +23,12 @@ const BLANK: SessionProfile = {
   flowControl: "none",
 };
 
+const RAW_TEXT_INPUT = {
+  autoCapitalize: "none",
+  autoCorrect: "off",
+  spellCheck: false,
+} as const;
+
 export function SessionDialog({ initial, onClose }: Props) {
   const [profile, setProfile] = useState<SessionProfile>(initial ?? BLANK);
   const [ports, setPorts] = useState<SerialPortDesc[]>([]);
@@ -68,7 +74,8 @@ export function SessionDialog({ initial, onClose }: Props) {
     setError(null);
     try {
       const candidate = normalized();
-      // Saving first keeps the profile in the tree; secrets stay in memory.
+      // Saving first keeps the profile in the tree and stores its credentials
+      // in the operating system's secure credential vault.
       const saved = candidate.name ? await upsertProfile(candidate) : candidate;
       const id = await openSession({
         ...saved,
@@ -115,6 +122,7 @@ export function SessionDialog({ initial, onClose }: Props) {
           <div className="field">
             <label>Name</label>
             <input
+              {...RAW_TEXT_INPUT}
               value={profile.name}
               placeholder={defaultName()}
               onChange={(event) => patch({ name: event.target.value })}
@@ -124,6 +132,7 @@ export function SessionDialog({ initial, onClose }: Props) {
           <div className="field">
             <label>Group</label>
             <input
+              {...RAW_TEXT_INPUT}
               value={profile.group ?? ""}
               placeholder="Sessions"
               onChange={(event) => patch({ group: event.target.value })}
@@ -136,6 +145,7 @@ export function SessionDialog({ initial, onClose }: Props) {
                 <label>Host</label>
                 <div className="field-row">
                   <input
+                    {...RAW_TEXT_INPUT}
                     style={{ flex: 1 }}
                     value={profile.host ?? ""}
                     placeholder="example.com"
@@ -155,6 +165,7 @@ export function SessionDialog({ initial, onClose }: Props) {
               <div className="field">
                 <label>Username</label>
                 <input
+                  {...RAW_TEXT_INPUT}
                   value={profile.username ?? ""}
                   onChange={(event) => patch({ username: event.target.value })}
                 />
@@ -178,6 +189,7 @@ export function SessionDialog({ initial, onClose }: Props) {
                 <div className="field">
                   <label>Password</label>
                   <input
+                    {...RAW_TEXT_INPUT}
                     type="password"
                     value={profile.password ?? ""}
                     onChange={(event) => patch({ password: event.target.value })}
@@ -190,6 +202,7 @@ export function SessionDialog({ initial, onClose }: Props) {
                   <div className="field">
                     <label>Private key</label>
                     <input
+                      {...RAW_TEXT_INPUT}
                       value={profile.privateKeyPath ?? ""}
                       placeholder="~/.ssh/id_ed25519"
                       onChange={(event) =>
@@ -200,6 +213,7 @@ export function SessionDialog({ initial, onClose }: Props) {
                   <div className="field">
                     <label>Passphrase</label>
                     <input
+                      {...RAW_TEXT_INPUT}
                       type="password"
                       value={profile.passphrase ?? ""}
                       onChange={(event) =>
@@ -217,6 +231,7 @@ export function SessionDialog({ initial, onClose }: Props) {
               <div className="field">
                 <label>Shell</label>
                 <input
+                  {...RAW_TEXT_INPUT}
                   value={profile.shell ?? ""}
                   placeholder="$SHELL"
                   onChange={(event) => patch({ shell: event.target.value })}
@@ -225,6 +240,7 @@ export function SessionDialog({ initial, onClose }: Props) {
               <div className="field">
                 <label>Directory</label>
                 <input
+                  {...RAW_TEXT_INPUT}
                   value={profile.cwd ?? ""}
                   placeholder="home directory"
                   onChange={(event) => patch({ cwd: event.target.value })}

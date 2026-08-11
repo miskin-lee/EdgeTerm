@@ -66,12 +66,6 @@ export interface SerialPortDesc {
 
 export type SessionState = "connecting" | "connected" | "closed" | "error";
 
-export interface OutlineItem {
-  /** Absolute line number, as shown in the gutter. */
-  line: number;
-  text: string;
-}
-
 /** Colours used for session dots, mirroring WindTerm's per-session markers. */
 export const SESSION_COLORS = [
   "#4ea1f3",

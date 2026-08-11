@@ -32,7 +32,6 @@ pub fn spawn(
     let shell = profile.shell.clone().unwrap_or_else(default_shell);
     let mut cmd = CommandBuilder::new(&shell);
     cmd.env("TERM", "xterm-256color");
-    cmd.env("COLORTERM", "truecolor");
     if let Some(cwd) = profile.cwd.as_deref().filter(|c| !c.is_empty()) {
         cmd.cwd(cwd);
     } else if let Some(home) = dirs::home_dir() {

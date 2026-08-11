@@ -9,9 +9,7 @@ import { Splitter } from "./components/Splitter";
 import { StatusBar } from "./components/StatusBar";
 import { TabStrip } from "./components/TabStrip";
 import { TerminalPane } from "./components/TerminalPane";
-import { ExplorerPanel } from "./components/panels/ExplorerPanel";
 import { FilerPanel } from "./components/panels/FilerPanel";
-import { OutlinePanel } from "./components/panels/OutlinePanel";
 import { SenderPanel } from "./components/panels/SenderPanel";
 import {
   LOCAL_SHELL_PROFILE,
@@ -25,14 +23,12 @@ const clamp = (value: number, min: number, max: number) =>
   Math.min(max, Math.max(min, value));
 
 export default function App() {
-  const tabs = useStore((s) => s.tabs);
   const activeId = useStore((s) => s.activeId);
   const panels = useStore((s) => s.panels);
   const loadProfiles = useStore((s) => s.loadProfiles);
   const setActive = useStore((s) => s.setActive);
   const closeTab = useStore((s) => s.closeTab);
   const applyState = useStore((s) => s.applyState);
-  const appendLog = useStore((s) => s.appendLog);
 
   const [dialog, setDialog] = useState<{ profile: SessionProfile | null } | null>(
     null,
@@ -45,8 +41,6 @@ export default function App() {
   const [leftWidth, setLeftWidth] = useState(220);
   const [rightWidth, setRightWidth] = useState(220);
   const [senderHeight, setSenderHeight] = useState(132);
-  const [explorerRatio, setExplorerRatio] = useState(0.45);
-  const [sessionRatio, setSessionRatio] = useState(0.6);
 
   // --- backend events -------------------------------------------------------
 
@@ -66,10 +60,6 @@ export default function App() {
   useEffect(() => {
     const unlisten = api.onSessionState(({ id, state, message }) => {
       applyState(id, state as SessionState, message ?? undefined);
-      const name =
-        useStore.getState().tabs.find((tab) => tab.info.id === id)?.info.name ??
-        id.slice(0, 8);
-      appendLog(`${name}: ${state}${message ? ` — ${message}` : ""}`);
       if (state === "closed") {
         getController(id)?.writeText("\r\n\x1b[33m[session closed]\x1b[0m\r\n");
       }
@@ -77,7 +67,7 @@ export default function App() {
     return () => {
       void unlisten.then((off) => off());
     };
-  }, [applyState, appendLog]);
+  }, [applyState]);
 
   // --- actions --------------------------------------------------------------
 
@@ -141,17 +131,12 @@ export default function App() {
 
   // --- layout ---------------------------------------------------------------
 
-  const showLeft = panels.explorer || panels.filer;
-  const showRight = panels.sessions || panels.outline;
+  const showLeft = panels.filer;
+  const showRight = panels.sessions;
 
   return (
     <div className="app">
-      <div className="titlebar" data-tauri-drag-region>
-        <span className="titlebar-title">
-          {tabs.find((tab) => tab.info.id === activeId)?.info.name ?? "EdgeTerm"}
-          {" — EdgeTerm"}
-        </span>
-      </div>
+      <div className="titlebar" data-tauri-drag-region />
 
       <MenuBar
         onNewSession={newSession}
@@ -182,38 +167,7 @@ export default function App() {
               className="sidebar sidebar-left"
               style={{ width: leftWidth, flex: `0 0 ${leftWidth}px` }}
             >
-              {panels.explorer && (
-                <div
-                  style={{
-                    flex: panels.filer ? `${explorerRatio} 1 0` : "1 1 0",
-                    display: "flex",
-                    minHeight: 0,
-                  }}
-                >
-                  <ExplorerPanel />
-                </div>
-              )}
-              {panels.explorer && panels.filer && (
-                <Splitter
-                  orientation="horizontal"
-                  onResize={(delta) =>
-                    setExplorerRatio((ratio) =>
-                      clamp(ratio + delta / 400, 0.15, 0.85),
-                    )
-                  }
-                />
-              )}
-              {panels.filer && (
-                <div
-                  style={{
-                    flex: panels.explorer ? `${1 - explorerRatio} 1 0` : "1 1 0",
-                    display: "flex",
-                    minHeight: 0,
-                  }}
-                >
-                  <FilerPanel />
-                </div>
-              )}
+              <FilerPanel />
             </div>
             <Splitter
               orientation="vertical"
@@ -245,41 +199,10 @@ export default function App() {
               className="sidebar sidebar-right"
               style={{ width: rightWidth, flex: `0 0 ${rightWidth}px` }}
             >
-              {panels.sessions && (
-                <div
-                  style={{
-                    flex: panels.outline ? `${sessionRatio} 1 0` : "1 1 0",
-                    display: "flex",
-                    minHeight: 0,
-                  }}
-                >
-                  <SessionPanel
-                    onNewSession={newSession}
-                    onEditProfile={(profile) => setDialog({ profile })}
-                  />
-                </div>
-              )}
-              {panels.sessions && panels.outline && (
-                <Splitter
-                  orientation="horizontal"
-                  onResize={(delta) =>
-                    setSessionRatio((ratio) =>
-                      clamp(ratio + delta / 400, 0.15, 0.85),
-                    )
-                  }
-                />
-              )}
-              {panels.outline && (
-                <div
-                  style={{
-                    flex: panels.sessions ? `${1 - sessionRatio} 1 0` : "1 1 0",
-                    display: "flex",
-                    minHeight: 0,
-                  }}
-                >
-                  <OutlinePanel />
-                </div>
-              )}
+              <SessionPanel
+                onNewSession={newSession}
+                onEditProfile={(profile) => setDialog({ profile })}
+              />
             </div>
           </>
         )}

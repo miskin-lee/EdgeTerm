@@ -3,12 +3,7 @@ import { create } from "zustand";
 import * as api from "./api";
 import type { GutterMode } from "./terminal";
 import { disposeController } from "./terminalRegistry";
-import type {
-  OutlineItem,
-  SessionInfo,
-  SessionProfile,
-  SessionState,
-} from "./types";
+import type { SessionInfo, SessionProfile, SessionState } from "./types";
 
 export interface Tab {
   info: SessionInfo;
@@ -18,10 +13,9 @@ export interface Tab {
   rows: number;
   cursorLine: number;
   cursorColumn: number;
-  outline: OutlineItem[];
 }
 
-export type PanelName = "explorer" | "filer" | "sessions" | "outline" | "sender";
+export type PanelName = "filer" | "sessions" | "sender";
 
 interface AppStore {
   profiles: SessionProfile[];
@@ -31,7 +25,6 @@ interface AppStore {
   panels: Record<PanelName, boolean>;
   status: string;
   error: string | null;
-  log: string[];
 
   loadProfiles: () => Promise<void>;
   upsertProfile: (profile: SessionProfile) => Promise<SessionProfile>;
@@ -44,13 +37,11 @@ interface AppStore {
   applyState: (id: string, state: SessionState, message?: string) => void;
   setSize: (id: string, cols: number, rows: number) => void;
   setCursor: (id: string, line: number, column: number) => void;
-  setOutline: (id: string, outline: OutlineItem[]) => void;
 
   togglePanel: (panel: PanelName) => void;
   setGutterMode: (mode: GutterMode) => void;
   setStatus: (status: string) => void;
   setError: (error: string | null) => void;
-  appendLog: (line: string) => void;
 }
 
 const patchTab = (tabs: Tab[], id: string, patch: Partial<Tab>): Tab[] =>
@@ -62,15 +53,12 @@ export const useStore = create<AppStore>((set, get) => ({
   activeId: null,
   gutterMode: "both",
   panels: {
-    explorer: true,
     filer: true,
     sessions: true,
-    outline: true,
     sender: true,
   },
   status: "Ready",
   error: null,
-  log: [],
 
   async loadProfiles() {
     set({ profiles: await api.listProfiles() });
@@ -102,7 +90,6 @@ export const useStore = create<AppStore>((set, get) => ({
       rows: 24,
       cursorLine: 1,
       cursorColumn: 1,
-      outline: [],
     };
     set({ tabs: [...get().tabs, tab], activeId: info.id });
   },
@@ -136,10 +123,6 @@ export const useStore = create<AppStore>((set, get) => ({
     set({ tabs: patchTab(get().tabs, id, { cursorLine, cursorColumn }) });
   },
 
-  setOutline(id, outline) {
-    set({ tabs: patchTab(get().tabs, id, { outline }) });
-  },
-
   togglePanel(panel) {
     const panels = get().panels;
     set({ panels: { ...panels, [panel]: !panels[panel] } });
@@ -155,13 +138,6 @@ export const useStore = create<AppStore>((set, get) => ({
 
   setError(error) {
     set({ error });
-  },
-
-  appendLog(line) {
-    const now = new Date();
-    const pad = (n: number) => String(n).padStart(2, "0");
-    const stamp = `${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}`;
-    set({ log: [...get().log.slice(-299), `[${stamp}] ${line}`] });
   },
 }));
 

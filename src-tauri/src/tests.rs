@@ -115,14 +115,20 @@ fn store_assigns_ids_and_round_trips_profiles() {
 
     assert!(!saved.id.is_empty(), "an id should be minted on first save");
     assert_eq!(store.list().len(), 1);
-    assert_eq!(store.get(&saved.id).map(|p| p.name), Some("serverx".into()));
+    assert_eq!(
+        store.get(&saved.id).expect("get").map(|p| p.name),
+        Some("serverx".into())
+    );
 
     // Saving the same id updates in place rather than appending.
     let mut updated = saved.clone();
     updated.name = "serverx-prod".into();
     store.save(updated).expect("update");
     assert_eq!(store.list().len(), 1);
-    assert_eq!(store.get(&saved.id).map(|p| p.name), Some("serverx-prod".into()));
+    assert_eq!(
+        store.get(&saved.id).expect("get").map(|p| p.name),
+        Some("serverx-prod".into())
+    );
 
     // A fresh store reads back what was persisted.
     let reloaded = Store::load_from(path);
@@ -135,7 +141,7 @@ fn store_assigns_ids_and_round_trips_profiles() {
 }
 
 #[test]
-fn store_never_writes_secrets_to_disk() {
+fn store_persists_secrets_separately_for_restart_reconnects() {
     let dir = temp_dir("secrets");
     let path = dir.join("sessions.json");
     let store = Store::load_from(path.clone());
@@ -144,34 +150,70 @@ fn store_never_writes_secrets_to_disk() {
     p.host = Some("10.0.0.1".into());
     p.auth = Some(AuthKind::Password);
     p.password = Some("hunter2".into());
-    p.passphrase = Some("open-sesame".into());
-    let saved = store.save(p).expect("save");
+    let saved_password = store.save(p).expect("save password");
 
-    let raw = std::fs::read_to_string(&path).expect("read back");
-    assert!(!raw.contains("hunter2"), "password must not reach disk");
-    assert!(!raw.contains("open-sesame"), "passphrase must not reach disk");
+    let mut key_profile = profile(SessionKind::Ssh);
+    key_profile.name = "key-server".into();
+    key_profile.host = Some("10.0.0.2".into());
+    key_profile.auth = Some(AuthKind::PublicKey);
+    key_profile.passphrase = Some("open-sesame".into());
+    let saved_key = store.save(key_profile).expect("save passphrase");
 
-    // The in-memory copy keeps them for the lifetime of the process.
+    let raw = std::fs::read_to_string(&path).expect("read profiles");
+    assert!(!raw.contains("hunter2"), "password must not reach sessions.json");
+    assert!(
+        !raw.contains("open-sesame"),
+        "passphrase must not reach sessions.json"
+    );
+    assert!(saved_password.password.is_none(), "returned profile is redacted");
+    assert!(saved_key.passphrase.is_none(), "returned profile is redacted");
+
+    // Saving an edit made from the redacted profile list must keep the existing
+    // credential instead of accidentally clearing it.
+    let mut renamed = saved_password.clone();
+    renamed.name = "renamed-server".into();
+    store.save(renamed).expect("save redacted edit");
+
+    // A fresh Store instance hydrates the app-local credentials without using
+    // the OS credential vault, which models reopening after a restart.
+    let reloaded = Store::load_from(path);
     assert_eq!(
-        store.get(&saved.id).and_then(|p| p.password),
+        reloaded
+            .get(&saved_password.id)
+            .expect("read password")
+            .and_then(|p| p.password),
         Some("hunter2".into())
     );
+    assert_eq!(
+        reloaded
+            .get(&saved_key.id)
+            .expect("read passphrase")
+            .and_then(|p| p.passphrase),
+        Some("open-sesame".into())
+    );
+
+    reloaded.delete(&saved_password.id).expect("delete password");
+    reloaded.delete(&saved_key.id).expect("delete passphrase");
 
     std::fs::remove_dir_all(&dir).ok();
 }
 
 #[cfg(unix)]
 #[test]
-fn store_file_is_owner_readable_only() {
+fn store_files_are_owner_readable_only() {
     use std::os::unix::fs::PermissionsExt;
 
     let dir = temp_dir("perms");
     let path = dir.join("sessions.json");
     let store = Store::load_from(path.clone());
-    store.save(profile(SessionKind::Local)).expect("save");
+    let mut saved = profile(SessionKind::Ssh);
+    saved.password = Some("private".into());
+    store.save(saved).expect("save");
 
-    let mode = std::fs::metadata(&path).unwrap().permissions().mode();
-    assert_eq!(mode & 0o777, 0o600, "config must not be world-readable");
+    for file in [path, dir.join("credentials.json")] {
+        let mode = std::fs::metadata(&file).unwrap().permissions().mode();
+        assert_eq!(mode & 0o777, 0o600, "{} must be private", file.display());
+    }
 
     std::fs::remove_dir_all(&dir).ok();
 }
