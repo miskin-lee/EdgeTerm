@@ -1,0 +1,368 @@
+import { useCallback, useEffect, useState } from "react";
+
+import { openSession } from "./actions";
+import * as api from "./api";
+import { AddressBar } from "./components/AddressBar";
+import { MenuBar } from "./components/MenuBar";
+import { SessionDialog } from "./components/SessionDialog";
+import { Splitter } from "./components/Splitter";
+import { StatusBar } from "./components/StatusBar";
+import { TabStrip } from "./components/TabStrip";
+import { TerminalPane } from "./components/TerminalPane";
+import { ExplorerPanel } from "./components/panels/ExplorerPanel";
+import { FilerPanel } from "./components/panels/FilerPanel";
+import { OutlinePanel } from "./components/panels/OutlinePanel";
+import { SenderPanel } from "./components/panels/SenderPanel";
+import {
+  LOCAL_SHELL_PROFILE,
+  SessionPanel,
+} from "./components/panels/SessionPanel";
+import { useStore } from "./store";
+import { getController } from "./terminalRegistry";
+import type { SessionProfile, SessionState } from "./types";
+
+const clamp = (value: number, min: number, max: number) =>
+  Math.min(max, Math.max(min, value));
+
+export default function App() {
+  const tabs = useStore((s) => s.tabs);
+  const activeId = useStore((s) => s.activeId);
+  const panels = useStore((s) => s.panels);
+  const loadProfiles = useStore((s) => s.loadProfiles);
+  const setActive = useStore((s) => s.setActive);
+  const closeTab = useStore((s) => s.closeTab);
+  const applyState = useStore((s) => s.applyState);
+  const appendLog = useStore((s) => s.appendLog);
+
+  const [dialog, setDialog] = useState<{ profile: SessionProfile | null } | null>(
+    null,
+  );
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [gotoOpen, setGotoOpen] = useState(false);
+  const [aboutOpen, setAboutOpen] = useState(false);
+  const [gotoValue, setGotoValue] = useState("");
+
+  const [leftWidth, setLeftWidth] = useState(220);
+  const [rightWidth, setRightWidth] = useState(220);
+  const [senderHeight, setSenderHeight] = useState(132);
+  const [explorerRatio, setExplorerRatio] = useState(0.45);
+  const [sessionRatio, setSessionRatio] = useState(0.6);
+
+  // --- backend events -------------------------------------------------------
+
+  useEffect(() => {
+    void loadProfiles();
+  }, [loadProfiles]);
+
+  useEffect(() => {
+    const unlisten = api.onSessionOutput(({ id, data }) => {
+      getController(id)?.write(api.base64ToBytes(data));
+    });
+    return () => {
+      void unlisten.then((off) => off());
+    };
+  }, []);
+
+  useEffect(() => {
+    const unlisten = api.onSessionState(({ id, state, message }) => {
+      applyState(id, state as SessionState, message ?? undefined);
+      const name =
+        useStore.getState().tabs.find((tab) => tab.info.id === id)?.info.name ??
+        id.slice(0, 8);
+      appendLog(`${name}: ${state}${message ? ` — ${message}` : ""}`);
+      if (state === "closed") {
+        getController(id)?.writeText("\r\n\x1b[33m[session closed]\x1b[0m\r\n");
+      }
+    });
+    return () => {
+      void unlisten.then((off) => off());
+    };
+  }, [applyState, appendLog]);
+
+  // --- actions --------------------------------------------------------------
+
+  const newSession = useCallback(() => setDialog({ profile: null }), []);
+
+  const quickShell = useCallback(() => {
+    void openSession(LOCAL_SHELL_PROFILE);
+  }, []);
+
+  const gotoLine = useCallback(() => {
+    setGotoValue("");
+    setGotoOpen(true);
+  }, []);
+
+  // --- keyboard -------------------------------------------------------------
+
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      const mod = event.metaKey || event.ctrlKey;
+      if (!mod) return;
+
+      // xterm keeps a hidden textarea for input, so "focus is in a text field"
+      // has to exclude the terminal itself or every shortcut would be dead
+      // exactly where it matters most.
+      const target = event.target as HTMLElement | null;
+      const inTerminal = Boolean(target?.closest(".xterm"));
+      if (!inTerminal && target?.closest("input, textarea, select")) return;
+
+      const key = event.key.toLowerCase();
+
+      if (key === "n") {
+        event.preventDefault();
+        newSession();
+      } else if (key === "t") {
+        event.preventDefault();
+        quickShell();
+      } else if (key === "w" && activeId) {
+        event.preventDefault();
+        void closeTab(activeId);
+      } else if (key === "f") {
+        event.preventDefault();
+        setSearchOpen(true);
+      } else if (key === "k" && activeId) {
+        event.preventDefault();
+        getController(activeId)?.clear();
+      } else if (key === "g" && event.ctrlKey && !event.metaKey) {
+        event.preventDefault();
+        gotoLine();
+      } else if (/^[1-9]$/.test(event.key)) {
+        const index = Number(event.key) - 1;
+        const tab = useStore.getState().tabs[index];
+        if (tab) {
+          event.preventDefault();
+          setActive(tab.info.id);
+        }
+      }
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [activeId, closeTab, gotoLine, newSession, quickShell, setActive]);
+
+  // --- layout ---------------------------------------------------------------
+
+  const showLeft = panels.explorer || panels.filer;
+  const showRight = panels.sessions || panels.outline;
+
+  return (
+    <div className="app">
+      <div className="titlebar" data-tauri-drag-region>
+        <span className="titlebar-title">
+          {tabs.find((tab) => tab.info.id === activeId)?.info.name ?? "EdgeTerm"}
+          {" — EdgeTerm"}
+        </span>
+      </div>
+
+      <MenuBar
+        onNewSession={newSession}
+        onQuickConnect={quickShell}
+        onFind={() => setSearchOpen(true)}
+        onGotoLine={gotoLine}
+        onSerialPorts={() =>
+          setDialog({
+            profile: {
+              id: "",
+              name: "",
+              kind: "serial",
+              baudRate: 115200,
+              dataBits: 8,
+              stopBits: 1,
+              parity: "none",
+              flowControl: "none",
+            },
+          })
+        }
+        onAbout={() => setAboutOpen(true)}
+      />
+
+      <div className="main">
+        {showLeft && (
+          <>
+            <div
+              className="sidebar sidebar-left"
+              style={{ width: leftWidth, flex: `0 0 ${leftWidth}px` }}
+            >
+              {panels.explorer && (
+                <div
+                  style={{
+                    flex: panels.filer ? `${explorerRatio} 1 0` : "1 1 0",
+                    display: "flex",
+                    minHeight: 0,
+                  }}
+                >
+                  <ExplorerPanel />
+                </div>
+              )}
+              {panels.explorer && panels.filer && (
+                <Splitter
+                  orientation="horizontal"
+                  onResize={(delta) =>
+                    setExplorerRatio((ratio) =>
+                      clamp(ratio + delta / 400, 0.15, 0.85),
+                    )
+                  }
+                />
+              )}
+              {panels.filer && (
+                <div
+                  style={{
+                    flex: panels.explorer ? `${1 - explorerRatio} 1 0` : "1 1 0",
+                    display: "flex",
+                    minHeight: 0,
+                  }}
+                >
+                  <FilerPanel />
+                </div>
+              )}
+            </div>
+            <Splitter
+              orientation="vertical"
+              onResize={(delta) =>
+                setLeftWidth((width) => clamp(width + delta, 150, 520))
+              }
+            />
+          </>
+        )}
+
+        <div className="center">
+          <TabStrip onNewSession={newSession} />
+          <AddressBar
+            searchOpen={searchOpen}
+            onSearchOpenChange={setSearchOpen}
+          />
+          <TerminalPane onNewSession={newSession} />
+        </div>
+
+        {showRight && (
+          <>
+            <Splitter
+              orientation="vertical"
+              onResize={(delta) =>
+                setRightWidth((width) => clamp(width - delta, 150, 520))
+              }
+            />
+            <div
+              className="sidebar sidebar-right"
+              style={{ width: rightWidth, flex: `0 0 ${rightWidth}px` }}
+            >
+              {panels.sessions && (
+                <div
+                  style={{
+                    flex: panels.outline ? `${sessionRatio} 1 0` : "1 1 0",
+                    display: "flex",
+                    minHeight: 0,
+                  }}
+                >
+                  <SessionPanel
+                    onNewSession={newSession}
+                    onEditProfile={(profile) => setDialog({ profile })}
+                  />
+                </div>
+              )}
+              {panels.sessions && panels.outline && (
+                <Splitter
+                  orientation="horizontal"
+                  onResize={(delta) =>
+                    setSessionRatio((ratio) =>
+                      clamp(ratio + delta / 400, 0.15, 0.85),
+                    )
+                  }
+                />
+              )}
+              {panels.outline && (
+                <div
+                  style={{
+                    flex: panels.sessions ? `${1 - sessionRatio} 1 0` : "1 1 0",
+                    display: "flex",
+                    minHeight: 0,
+                  }}
+                >
+                  <OutlinePanel />
+                </div>
+              )}
+            </div>
+          </>
+        )}
+      </div>
+
+      {panels.sender && (
+        <>
+          <Splitter
+            orientation="horizontal"
+            onResize={(delta) =>
+              setSenderHeight((height) => clamp(height - delta, 80, 400))
+            }
+          />
+          <div className="bottom-dock" style={{ height: senderHeight }}>
+            <SenderPanel />
+          </div>
+        </>
+      )}
+
+      <StatusBar />
+
+      {dialog && (
+        <SessionDialog
+          initial={dialog.profile}
+          onClose={() => setDialog(null)}
+        />
+      )}
+
+      {gotoOpen && (
+        <div className="dialog-backdrop" onMouseDown={() => setGotoOpen(false)}>
+          <div
+            className="dialog"
+            style={{ width: 320 }}
+            onMouseDown={(event) => event.stopPropagation()}
+          >
+            <div className="dialog-header">Go to Line</div>
+            <div className="dialog-body">
+              <input
+                autoFocus
+                value={gotoValue}
+                placeholder="Line number"
+                onChange={(event) => setGotoValue(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key !== "Enter") return;
+                  const line = Number(gotoValue);
+                  if (activeId && Number.isFinite(line)) {
+                    getController(activeId)?.scrollToLine(line);
+                  }
+                  setGotoOpen(false);
+                }}
+              />
+            </div>
+          </div>
+        </div>
+      )}
+
+      {aboutOpen && (
+        <div className="dialog-backdrop" onMouseDown={() => setAboutOpen(false)}>
+          <div
+            className="dialog"
+            style={{ width: 380 }}
+            onMouseDown={(event) => event.stopPropagation()}
+          >
+            <div className="dialog-header">About EdgeTerm</div>
+            <div className="dialog-body" style={{ lineHeight: 1.7 }}>
+              <strong>EdgeTerm 0.1.0</strong>
+              <span>
+                A WindTerm-inspired terminal, SSH and serial client built with
+                Rust + Tauri.
+              </span>
+              <span style={{ color: "var(--fg-faint)" }}>
+                Local shell via portable-pty · SSH and SFTP via russh · serial
+                via serialport · terminal rendering by xterm.js
+              </span>
+            </div>
+            <div className="dialog-footer">
+              <button className="btn" onClick={() => setAboutOpen(false)}>
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
