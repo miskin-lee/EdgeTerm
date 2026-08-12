@@ -104,7 +104,7 @@ jobs:
               --draft
           fi
 
-          release_id="$(gh api "repos/${GITHUB_REPOSITORY}/releases/tags/${TAG_NAME}" --jq .id)"
+          release_id="$(gh release view "$TAG_NAME" --json databaseId --jq .databaseId)"
           echo "release_id=${release_id}" >> "$GITHUB_OUTPUT"
 
   build:
