@@ -1,0 +1,198 @@
+name: Release
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  prepare:
+    name: Validate release version
+    runs-on: ubuntu-22.04
+    timeout-minutes: 5
+    outputs:
+      app_version: ${{ steps.version.outputs.app_version }}
+      tag_name: ${{ steps.version.outputs.tag_name }}
+      release_name: ${{ steps.version.outputs.release_name }}
+
+    steps:
+      - name: Check out repository and tags
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Validate and export version
+        id: version
+        shell: bash
+        run: |
+          app_version="$(node -p "require('./package.json').version")"
+          cargo_version="$(awk -F '"' '/^\[package\]/{in_package=1; next} in_package && /^version = /{print $2; exit}' src-tauri/Cargo.toml)"
+
+          if [[ -z "$app_version" || -z "$cargo_version" ]]; then
+            echo "Unable to read the application version." >&2
+            exit 1
+          fi
+
+          if [[ "$app_version" != "$cargo_version" ]]; then
+            echo "Version mismatch: package.json=$app_version, src-tauri/Cargo.toml=$cargo_version" >&2
+            echo "Run: npm run version:set -- <major.minor.patch>" >&2
+            exit 1
+          fi
+
+          tag_name="v${app_version}"
+
+          if git rev-parse --verify --quiet "refs/tags/${tag_name}^{commit}" >/dev/null; then
+            tagged_commit="$(git rev-parse "refs/tags/${tag_name}^{commit}")"
+            if [[ "$tagged_commit" != "$GITHUB_SHA" ]]; then
+              echo "${tag_name} already points to ${tagged_commit}; bump the application version before releasing ${GITHUB_SHA}." >&2
+              exit 1
+            fi
+          fi
+
+          echo "app_version=${app_version}" >> "$GITHUB_OUTPUT"
+          echo "tag_name=${tag_name}" >> "$GITHUB_OUTPUT"
+          echo "release_name=EdgeTerm v${app_version}" >> "$GITHUB_OUTPUT"
+
+  build:
+    name: ${{ matrix.name }}
+    needs: prepare
+    runs-on: ${{ matrix.platform }}
+    timeout-minutes: 120
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Linux x64
+            platform: ubuntu-22.04
+          - name: Linux ARM64
+            platform: ubuntu-22.04-arm
+          - name: Windows x64
+            platform: windows-2022
+          - name: macOS Intel
+            platform: macos-15-intel
+          - name: macOS Apple Silicon
+            platform: macos-15
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Install Linux system dependencies
+        if: startsWith(matrix.platform, 'ubuntu-')
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev \
+            libappindicator3-dev \
+            librsvg2-dev \
+            libudev-dev \
+            patchelf \
+            xdg-utils
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Rust build artifacts
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: "./src-tauri -> target"
+
+      - name: Install frontend dependencies
+        run: npm ci
+
+      - name: Build and upload Tauri bundles
+        uses: tauri-apps/tauri-action@v1
+        with:
+          uploadWorkflowArtifacts: true
+          workflowArtifactNamePattern: "EdgeTerm-[version]-[platform]-[arch]-[bundle]"
+
+  release:
+    name: Publish release
+    needs:
+      - prepare
+      - build
+    runs-on: ubuntu-22.04
+    timeout-minutes: 15
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Download build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          pattern: EdgeTerm-*
+
+      - name: Prepare release assets
+        shell: bash
+        run: |
+          mkdir -p release-assets
+
+          declare -A filename_counts
+          while IFS= read -r -d '' file; do
+            filename="$(basename "$file")"
+            filename_counts["$filename"]=$(( ${filename_counts["$filename"]:-0} + 1 ))
+          done < <(find artifacts -type f -print0)
+
+          asset_count=0
+          while IFS= read -r -d '' file; do
+            relative_path="${file#artifacts/}"
+            artifact_name="${relative_path%%/*}"
+            filename="$(basename "$file")"
+            asset_name="$filename"
+
+            if (( filename_counts["$filename"] > 1 )); then
+              asset_name="${artifact_name}-${filename}"
+            fi
+
+            cp "$file" "release-assets/$asset_name"
+            asset_count=$((asset_count + 1))
+          done < <(find artifacts -type f -print0)
+
+          if (( asset_count == 0 )); then
+            echo "No build artifacts were downloaded." >&2
+            exit 1
+          fi
+
+          find release-assets -maxdepth 1 -type f -print
+
+      - name: Create or update GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          APP_VERSION: ${{ needs.prepare.outputs.app_version }}
+          TAG_NAME: ${{ needs.prepare.outputs.tag_name }}
+          RELEASE_NAME: ${{ needs.prepare.outputs.release_name }}
+        shell: bash
+        run: |
+          mapfile -d '' assets < <(find release-assets -maxdepth 1 -type f -print0)
+          short_sha="${GITHUB_SHA:0:7}"
+          release_notes="EdgeTerm v${APP_VERSION}, built from commit [\`${short_sha}\`](${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/commit/${GITHUB_SHA})."
+          release_notes+=$'\n\nInstallers are currently unsigned. Download the package matching your operating system and CPU architecture.'
+
+          if gh release view "$TAG_NAME" >/dev/null 2>&1; then
+            gh release upload "$TAG_NAME" "${assets[@]}" --clobber
+            gh release edit "$TAG_NAME" \
+              --title "$RELEASE_NAME" \
+              --notes "$release_notes" \
+              --draft=false \
+              --prerelease=false \
+              --latest
+          else
+            gh release create "$TAG_NAME" "${assets[@]}" \
+              --target "$GITHUB_SHA" \
+              --title "$RELEASE_NAME" \
+              --notes "$release_notes" \
+              --latest
+          fi

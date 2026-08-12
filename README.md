@@ -47,9 +47,17 @@ npm run tauri build    # 打包
 
 要求：Rust 1.77+、Node 20.19+（推荐 Node 22 LTS）。macOS 需要 Xcode Command Line Tools。
 
-## Weekly Build
+## 手动发布
 
-GitHub Actions 会在每周一北京时间 10:00（UTC 02:00）自动构建，也可在仓库的 **Actions → Weekly Build → Run workflow** 中手动触发。
+需要发布时，在仓库的 **Actions → Release → Run workflow** 中手动触发。工作流会校验当前软件版本，构建所有支持的平台，并自动创建同版本的正式 GitHub Release。
+
+发布前使用以下命令设置版本并提交。它会同步 `package.json`、`package-lock.json`、`Cargo.toml` 和 `Cargo.lock`；Tauri 安装包也直接读取这个版本：
+
+```bash
+npm run version:set -- 0.1.1
+```
+
+Release tag 和软件版本严格一一对应，例如软件 `0.1.1` 只会发布为 `v0.1.1`。如果该 tag 已指向其他提交，工作流会停止并要求先提升版本，避免用同一版本号发布不同的软件内容。
 
 当前生成以下原生安装包：
 
@@ -61,14 +69,14 @@ GitHub Actions 会在每周一北京时间 10:00（UTC 02:00）自动构建，�
 | macOS | Intel x64 | `macos-15-intel` |
 | macOS | Apple Silicon ARM64 | `macos-15` |
 
-构建完成后，进入对应的 workflow run，在页面底部 **Artifacts** 区域下载 `.deb`、`.rpm`、`.AppImage`、`.msi`、`.exe`、`.dmg` 等产物。工作流也支持命令行触发：
+构建完成后，可从仓库的 **Releases** 页面下载 `.deb`、`.rpm`、`.AppImage`、`.msi`、`.exe`、`.dmg` 等产物；Actions run 中也会保留构建 Artifacts。工作流支持命令行触发：
 
 ```bash
-gh workflow run weekly-build.yml
+gh workflow run release.yml
 gh run watch
 ```
 
-Weekly Build 默认不做 macOS 公证或 Windows 代码签名，因此更适合内部测试和开发预览；对外分发前应配置平台签名证书。定时任务只会从 GitHub 默认分支运行，工作流文件见 [`.github/workflows/weekly-build.yml`](.github/workflows/weekly-build.yml)。
+Release 默认不做 macOS 公证或 Windows 代码签名，用户安装时可能看到系统安全提示；对外分发前应配置平台签名证书。工作流文件见 [`.github/workflows/release.yml`](.github/workflows/release.yml)。
 
 ## 代码结构
 
