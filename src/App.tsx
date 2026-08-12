@@ -8,12 +8,14 @@ import { Splitter } from "./components/Splitter";
 import { StatusBar } from "./components/StatusBar";
 import { TabStrip } from "./components/TabStrip";
 import { TerminalPane } from "./components/TerminalPane";
+import { UpdateDialog } from "./components/UpdateDialog";
 import { FilerPanel } from "./components/panels/FilerPanel";
 import { SenderPanel } from "./components/panels/SenderPanel";
 import { SessionPanel } from "./components/panels/SessionPanel";
 import { useStore, type PanelName } from "./store";
 import { getController } from "./terminalRegistry";
 import type { SessionProfile, SessionState } from "./types";
+import { useUpdater } from "./updater";
 
 const clamp = (value: number, min: number, max: number) =>
   Math.min(max, Math.max(min, value));
@@ -25,6 +27,7 @@ const viewPanelByShortcutCode: Partial<Record<string, PanelName>> = {
 };
 
 export default function App() {
+  const updater = useUpdater();
   const activeId = useStore((s) => s.activeId);
   const panels = useStore((s) => s.panels);
   const togglePanel = useStore((s) => s.togglePanel);
@@ -154,6 +157,7 @@ export default function App() {
         onNewSession={newSession}
         onFind={() => setSearchOpen(true)}
         onGotoLine={gotoLine}
+        onCheckForUpdates={() => void updater.checkForUpdates()}
         onAbout={() => setAboutOpen(true)}
       />
 
@@ -221,6 +225,14 @@ export default function App() {
 
       <StatusBar />
 
+      <UpdateDialog
+        appVersion={updater.appVersion}
+        state={updater.state}
+        onDismiss={updater.dismiss}
+        onInstall={() => void updater.installUpdate()}
+        onCheckAgain={() => void updater.checkForUpdates()}
+      />
+
       {dialog && (
         <SessionDialog
           initial={dialog.profile}
@@ -265,7 +277,9 @@ export default function App() {
           >
             <div className="dialog-header">About EdgeTerm</div>
             <div className="dialog-body" style={{ lineHeight: 1.7 }}>
-              <strong>EdgeTerm 0.1.0</strong>
+              <strong>
+                EdgeTerm{updater.appVersion ? ` ${updater.appVersion}` : ""}
+              </strong>
               <span>
                 A WindTerm-inspired terminal, SSH and serial client built with
                 Rust + Tauri.

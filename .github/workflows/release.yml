@@ -12,19 +12,37 @@ concurrency:
 
 jobs:
   prepare:
-    name: Validate release version
+    name: Prepare draft release
     runs-on: ubuntu-22.04
-    timeout-minutes: 5
+    timeout-minutes: 10
     outputs:
       app_version: ${{ steps.version.outputs.app_version }}
       tag_name: ${{ steps.version.outputs.tag_name }}
       release_name: ${{ steps.version.outputs.release_name }}
+      release_id: ${{ steps.release.outputs.release_id }}
 
     steps:
       - name: Check out repository and tags
         uses: actions/checkout@v7
         with:
           fetch-depth: 0
+
+      - name: Require updater signing key
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        shell: bash
+        run: |
+          if [[ -z "$TAURI_SIGNING_PRIVATE_KEY" ]]; then
+            echo "Missing repository secret TAURI_SIGNING_PRIVATE_KEY." >&2
+            echo "See the Auto Update section in README.md before publishing." >&2
+            exit 1
+          fi
+          if [[ -z "$TAURI_SIGNING_PRIVATE_KEY_PASSWORD" ]]; then
+            echo "Missing repository secret TAURI_SIGNING_PRIVATE_KEY_PASSWORD." >&2
+            echo "See the Auto Update section in README.md before publishing." >&2
+            exit 1
+          fi
 
       - name: Validate and export version
         id: version
@@ -57,6 +75,37 @@ jobs:
           echo "app_version=${app_version}" >> "$GITHUB_OUTPUT"
           echo "tag_name=${tag_name}" >> "$GITHUB_OUTPUT"
           echo "release_name=EdgeTerm v${app_version}" >> "$GITHUB_OUTPUT"
+
+      - name: Create or reuse draft release
+        id: release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          APP_VERSION: ${{ steps.version.outputs.app_version }}
+          TAG_NAME: ${{ steps.version.outputs.tag_name }}
+          RELEASE_NAME: ${{ steps.version.outputs.release_name }}
+        shell: bash
+        run: |
+          short_sha="${GITHUB_SHA:0:7}"
+          release_notes="EdgeTerm v${APP_VERSION}, built from commit [\`${short_sha}\`](${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/commit/${GITHUB_SHA})."
+          release_notes+=$'\n\nThe application checks this release for signed updates automatically. Download the installer matching your operating system and CPU architecture for a manual installation.'
+
+          if gh release view "$TAG_NAME" >/dev/null 2>&1; then
+            is_draft="$(gh release view "$TAG_NAME" --json isDraft --jq .isDraft)"
+            if [[ "$is_draft" != "true" ]]; then
+              echo "${TAG_NAME} is already published; bump the application version before releasing again." >&2
+              exit 1
+            fi
+            gh release edit "$TAG_NAME" --title "$RELEASE_NAME" --notes "$release_notes"
+          else
+            gh release create "$TAG_NAME" \
+              --target "$GITHUB_SHA" \
+              --title "$RELEASE_NAME" \
+              --notes "$release_notes" \
+              --draft
+          fi
+
+          release_id="$(gh api "repos/${GITHUB_REPOSITORY}/releases/tags/${TAG_NAME}" --jq .id)"
+          echo "release_id=${release_id}" >> "$GITHUB_OUTPUT"
 
   build:
     name: ${{ matrix.name }}
@@ -113,12 +162,25 @@ jobs:
 
       - name: Build and upload Tauri bundles
         uses: tauri-apps/tauri-action@v1
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
+          releaseId: ${{ needs.prepare.outputs.release_id }}
+          tagName: ${{ needs.prepare.outputs.tag_name }}
+          releaseName: ${{ needs.prepare.outputs.release_name }}
+          releaseBody: EdgeTerm ${{ needs.prepare.outputs.app_version }} signed update.
+          releaseDraft: true
+          prerelease: false
+          uploadUpdaterJson: true
+          updaterJsonPreferNsis: true
+          uploadUpdaterSignatures: true
           uploadWorkflowArtifacts: true
           workflowArtifactNamePattern: "EdgeTerm-[version]-[platform]-[arch]-[bundle]"
 
   release:
-    name: Publish release
+    name: Verify and publish release
     needs:
       - prepare
       - build
@@ -126,73 +188,39 @@ jobs:
     timeout-minutes: 15
 
     steps:
-      - name: Check out repository
-        uses: actions/checkout@v7
-
-      - name: Download build artifacts
-        uses: actions/download-artifact@v4
-        with:
-          path: artifacts
-          pattern: EdgeTerm-*
-
-      - name: Prepare release assets
-        shell: bash
-        run: |
-          mkdir -p release-assets
-
-          declare -A filename_counts
-          while IFS= read -r -d '' file; do
-            filename="$(basename "$file")"
-            filename_counts["$filename"]=$(( ${filename_counts["$filename"]:-0} + 1 ))
-          done < <(find artifacts -type f -print0)
-
-          asset_count=0
-          while IFS= read -r -d '' file; do
-            relative_path="${file#artifacts/}"
-            artifact_name="${relative_path%%/*}"
-            filename="$(basename "$file")"
-            asset_name="$filename"
-
-            if (( filename_counts["$filename"] > 1 )); then
-              asset_name="${artifact_name}-${filename}"
-            fi
-
-            cp "$file" "release-assets/$asset_name"
-            asset_count=$((asset_count + 1))
-          done < <(find artifacts -type f -print0)
-
-          if (( asset_count == 0 )); then
-            echo "No build artifacts were downloaded." >&2
-            exit 1
-          fi
-
-          find release-assets -maxdepth 1 -type f -print
-
-      - name: Create or update GitHub Release
+      - name: Verify updater manifest
         env:
           GH_TOKEN: ${{ github.token }}
-          APP_VERSION: ${{ needs.prepare.outputs.app_version }}
+          GH_REPO: ${{ github.repository }}
           TAG_NAME: ${{ needs.prepare.outputs.tag_name }}
-          RELEASE_NAME: ${{ needs.prepare.outputs.release_name }}
         shell: bash
         run: |
-          mapfile -d '' assets < <(find release-assets -maxdepth 1 -type f -print0)
-          short_sha="${GITHUB_SHA:0:7}"
-          release_notes="EdgeTerm v${APP_VERSION}, built from commit [\`${short_sha}\`](${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/commit/${GITHUB_SHA})."
-          release_notes+=$'\n\nInstallers are currently unsigned. Download the package matching your operating system and CPU architecture.'
+          mkdir -p release-check
+          gh release download "$TAG_NAME" --pattern latest.json --dir release-check
+          expected_url_prefix="https://api.github.com/repos/${GITHUB_REPOSITORY}/releases/assets/"
 
-          if gh release view "$TAG_NAME" >/dev/null 2>&1; then
-            gh release upload "$TAG_NAME" "${assets[@]}" --clobber
-            gh release edit "$TAG_NAME" \
-              --title "$RELEASE_NAME" \
-              --notes "$release_notes" \
-              --draft=false \
-              --prerelease=false \
-              --latest
-          else
-            gh release create "$TAG_NAME" "${assets[@]}" \
-              --target "$GITHUB_SHA" \
-              --title "$RELEASE_NAME" \
-              --notes "$release_notes" \
-              --latest
-          fi
+          for platform in \
+            linux-x86_64 \
+            linux-aarch64 \
+            windows-x86_64 \
+            darwin-x86_64 \
+            darwin-aarch64; do
+            jq -e --arg platform "$platform" --arg prefix "$expected_url_prefix" \
+              '.platforms[$platform].url as $url | ($url | type == "string") and ($url | startswith($prefix))' \
+              release-check/latest.json >/dev/null
+            jq -e --arg platform "$platform" \
+              '.platforms[$platform].signature as $signature | ($signature | type == "string") and ($signature | length > 0)' \
+              release-check/latest.json >/dev/null
+          done
+
+      - name: Publish GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          TAG_NAME: ${{ needs.prepare.outputs.tag_name }}
+        shell: bash
+        run: |
+          gh release edit "$TAG_NAME" \
+            --draft=false \
+            --prerelease=false \
+            --latest

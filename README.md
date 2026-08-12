@@ -37,19 +37,45 @@ SSH 密码和私钥口令保存在应用配置目录下仅当前系统用户可�
 | `⌘⌥←` / `⌘⌥→` / `⌘⌥↓` | 显示或隐藏 Filer / Session / Sender |
 | `⌘C` / `⌘V` | 复制 / 粘贴（终端内） |
 
+## 自动更新
+
+正式构建启动后会自动检查 GitHub 上的 Latest Release；发现更高版本时可在应用内下载、校验签名、安装并重启。也可以随时使用 **Help → Check for Updates…** 手动检查。更新源固定为仓库 Release 中由发布工作流生成的 `latest.json`，支持 Windows x64、macOS Intel / Apple Silicon，以及 Linux x64 / ARM64（Linux 应用内更新使用 AppImage）。
+
+更新包使用 Tauri updater 密钥签名，签名校验不能关闭。公钥已经固定在 `src-tauri/tauri.conf.json`，对应私钥仅保存在发布环境中。首次使用新工作流前，仓库管理员必须把本机生成的私钥配置为 Actions Secret：
+
+```bash
+gh secret set TAURI_SIGNING_PRIVATE_KEY \
+  --repo miskin-lee/EdgeTerm \
+  < ~/.tauri/edgeterm-updater.key
+
+security find-generic-password \
+  -a EdgeTerm \
+  -s com.edgeterm.updater-signing \
+  -w | tr -d '\n' | gh secret set TAURI_SIGNING_PRIVATE_KEY_PASSWORD \
+    --repo miskin-lee/EdgeTerm
+```
+
+私钥密码保存在 macOS 登录钥匙串的 `com.edgeterm.updater-signing` 条目。务必把 `~/.tauri/edgeterm-updater.key` 和对应密码分别安全备份；丢失或替换其中任何一个后，已经安装的版本将无法验证后续更新。私钥和密码不得提交到 Git、Release 或构建 Artifact。
+
 ## 运行
 
 ```bash
 npm install
 npm run tauri dev      # 开发模式
-npm run tauri build    # 打包
+npm run tauri build -- --no-bundle  # 仅编译验证，不生成安装包
+
+# 维护者本地生成带 updater 签名的安装包
+TAURI_SIGNING_PRIVATE_KEY="$(< "$HOME/.tauri/edgeterm-updater.key")" \
+TAURI_SIGNING_PRIVATE_KEY_PASSWORD="$(security find-generic-password \
+  -a EdgeTerm -s com.edgeterm.updater-signing -w)" \
+  npm run tauri build
 ```
 
 要求：Rust 1.77+、Node 20.19+（推荐 Node 22 LTS）。macOS 需要 Xcode Command Line Tools。
 
 ## 手动发布
 
-需要发布时，在仓库的 **Actions → Release → Run workflow** 中手动触发。工作流会校验当前软件版本，构建所有支持的平台，并自动创建同版本的正式 GitHub Release。
+需要发布时，在仓库的 **Actions → Release → Run workflow** 中手动触发。工作流会校验版本和 updater 私钥，创建草稿 Release，构建所有支持的平台并生成签名更新包。只有当 `latest.json` 同时包含五个目标平台且签名完整时，Release 才会发布为 Latest。
 
 发布前使用以下命令设置版本并提交。它会同步 `package.json`、`package-lock.json`、`Cargo.toml` 和 `Cargo.lock`；Tauri 安装包也直接读取这个版本：
 
@@ -69,14 +95,14 @@ Release tag 和软件版本严格一一对应，例如软件 `0.1.1` 只会发�
 | macOS | Intel x64 | `macos-15-intel` |
 | macOS | Apple Silicon ARM64 | `macos-15` |
 
-构建完成后，可从仓库的 **Releases** 页面下载 `.deb`、`.rpm`、`.AppImage`、`.msi`、`.exe`、`.dmg` 等产物；Actions run 中也会保留构建 Artifacts。工作流支持命令行触发：
+构建完成后，可从仓库的 **Releases** 页面下载 `.deb`、`.rpm`、`.AppImage`、`.msi`、`.exe`、`.dmg` 等产物；Release 还包含 updater 签名和 `latest.json`，Actions run 中也会保留构建 Artifacts。工作流支持命令行触发：
 
 ```bash
 gh workflow run release.yml
 gh run watch
 ```
 
-Release 默认不做 macOS 公证或 Windows 代码签名，用户安装时可能看到系统安全提示；对外分发前应配置平台签名证书。工作流文件见 [`.github/workflows/release.yml`](.github/workflows/release.yml)。
+Release 默认不做 macOS 公证或 Windows Authenticode 代码签名；macOS 应用只使用 ad-hoc 签名。它们与 updater 包签名是两套不同机制，用户首次安装时仍可能看到系统安全提示；对外分发前应配置平台开发者证书。工作流文件见 [`.github/workflows/release.yml`](.github/workflows/release.yml)。
 
 ## 已知限制
 

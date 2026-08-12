@@ -20,6 +20,7 @@ interface Props {
   onNewSession: () => void;
   onFind: () => void;
   onGotoLine: () => void;
+  onCheckForUpdates: () => void;
   onAbout: () => void;
 }
 
@@ -145,7 +146,11 @@ export function MenuBar(props: Props) {
     },
     {
       title: "Help",
-      entries: [{ label: "About EdgeTerm", action: props.onAbout }],
+      entries: [
+        { label: "Check for Updates…", action: props.onCheckForUpdates },
+        "separator",
+        { label: "About EdgeTerm", action: props.onAbout },
+      ],
     },
   ];
 
