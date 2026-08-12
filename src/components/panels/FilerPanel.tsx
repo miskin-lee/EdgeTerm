@@ -1,3 +1,4 @@
+import { getCurrentWebview } from "@tauri-apps/api/webview";
 import { open as openDialog, save as saveDialog } from "@tauri-apps/plugin-dialog";
 import { useCallback, useEffect, useRef, useState } from "react";
 
@@ -34,8 +35,18 @@ export function FilerPanel() {
   const [error, setError] = useState<string | null>(null);
   const [newFolder, setNewFolder] = useState<string | null>(null);
   const [transfer, setTransfer] = useState<TransferState | null>(null);
+  const [dragOverList, setDragOverList] = useState(false);
+  const listRef = useRef<HTMLDivElement>(null);
+  const remoteIdRef = useRef(remoteId);
+  const pathRef = useRef(path);
+  const busyRef = useRef(busy);
+  const uploadDroppedFilesRef = useRef<(paths: string[]) => void>(() => {});
   const transferClearTimer = useRef<number | null>(null);
   const transferRateSamples = useRef<TransferRateSample[]>([]);
+
+  remoteIdRef.current = remoteId;
+  pathRef.current = path;
+  busyRef.current = busy;
 
   const beginTransfer = (kind: TransferState["kind"], name: string) => {
     if (transferClearTimer.current !== null) {
@@ -201,29 +212,89 @@ export function FilerPanel() {
     }
   };
 
+  const uploadFiles = async (localPaths: string[]) => {
+    if (!remoteId || !path || busyRef.current || localPaths.length === 0) {
+      return;
+    }
+    const destination = path;
+    busyRef.current = true;
+    setBusy(true);
+    setError(null);
+    try {
+      for (const localPath of localPaths) {
+        const name = localFileName(localPath);
+        beginTransfer("upload", name);
+        await api.sftpUpload(
+          remoteId,
+          localPath,
+          joinRemote(destination, name),
+          updateTransferProgress,
+        );
+        finishTransfer("complete");
+      }
+      await load(destination);
+    } catch (e) {
+      finishTransfer("error");
+      await load(destination);
+      setError(String(e));
+    } finally {
+      busyRef.current = false;
+      setBusy(false);
+    }
+  };
+
+  uploadDroppedFilesRef.current = (paths) => {
+    void uploadFiles(paths);
+  };
+
+  useEffect(() => {
+    const unlisten = getCurrentWebview().onDragDropEvent(({ payload }) => {
+      if (payload.type === "leave") {
+        setDragOverList(false);
+        return;
+      }
+
+      const position = payload.position.toLogical(window.devicePixelRatio);
+      const bounds = listRef.current?.getBoundingClientRect();
+      const isOverList = Boolean(
+        bounds &&
+          position.x >= bounds.left &&
+          position.x <= bounds.right &&
+          position.y >= bounds.top &&
+          position.y <= bounds.bottom,
+      );
+      const canUpload = Boolean(
+        remoteIdRef.current &&
+          pathRef.current &&
+          !busyRef.current &&
+          isOverList,
+      );
+
+      if (payload.type === "drop") {
+        setDragOverList(false);
+        if (canUpload && payload.paths.length > 0) {
+          uploadDroppedFilesRef.current(payload.paths);
+        }
+        return;
+      }
+
+      setDragOverList(canUpload);
+    });
+    void unlisten.catch(() => {});
+    return () => {
+      void unlisten.then((off) => off()).catch(() => {});
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!remote || busy) setDragOverList(false);
+  }, [remote, busy]);
+
   const upload = async () => {
     if (!remoteId) return;
     const picked = await openDialog({ multiple: false });
     if (typeof picked !== "string") return;
-    const name = picked.split(/[\\/]/).pop() ?? "upload.bin";
-    setBusy(true);
-    setError(null);
-    beginTransfer("upload", name);
-    try {
-      await api.sftpUpload(
-        remoteId,
-        picked,
-        joinRemote(path, name),
-        updateTransferProgress,
-      );
-      finishTransfer("complete");
-      await load(path);
-    } catch (e) {
-      setError(String(e));
-      finishTransfer("error");
-    } finally {
-      setBusy(false);
-    }
+    await uploadFiles([picked]);
   };
 
   const removeSelected = async () => {
@@ -303,7 +374,7 @@ export function FilerPanel() {
               onClick={upload}
               title="Upload"
               aria-label="Upload"
-              disabled={busy}
+              disabled={busy || !path}
             >
               <FilerActionIcon name="upload" />
             </button>
@@ -365,7 +436,15 @@ export function FilerPanel() {
         <span className="filer-col-date">Modified</span>
       </div>
 
-      <div className="panel-body">
+      <div
+        ref={listRef}
+        className={`panel-body filer-list${dragOverList ? " is-drag-over" : ""}`}
+        aria-label={
+          remote
+            ? "SFTP file list. Drop files here to upload."
+            : "Local file list"
+        }
+      >
         {error && <div className="panel-empty">{error}</div>}
         {newFolder !== null && (
           <div className="row filer-new-folder">
@@ -470,6 +549,8 @@ export function FilerPanel() {
               </span>
             </div>
           </div>
+        ) : dragOverList ? (
+          <span className="filer-drop-message">Drop files to upload</span>
         ) : (
           <>
             <span>{formatEntrySummary(entries)}</span>
@@ -581,6 +662,10 @@ function remoteParent(path: string): string {
 function joinRemote(base: string, name: string): string {
   if (base.endsWith("/")) return `${base}${name}`;
   return `${base}/${name}`;
+}
+
+function localFileName(path: string): string {
+  return path.split(/[\\/]/).filter(Boolean).pop() ?? "upload.bin";
 }
 
 function entryKind(entry: FileEntry): FilerEntryKind {

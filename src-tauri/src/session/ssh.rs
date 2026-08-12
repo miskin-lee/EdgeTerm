@@ -415,7 +415,11 @@ async fn upload_file(
     remote: &str,
     progress: &tauri::ipc::Channel<TransferProgress>,
 ) -> Result<()> {
-    let total = tokio::fs::metadata(local).await?.len();
+    let metadata = tokio::fs::metadata(local).await?;
+    if !metadata.is_file() {
+        return Err(AppError::new("only regular files can be uploaded"));
+    }
+    let total = metadata.len();
     let mut source = tokio::fs::File::open(local).await?;
     let mut target = sftp.create(remote).await?;
     let mut last_report = Instant::now();

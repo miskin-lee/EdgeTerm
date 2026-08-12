@@ -1211,6 +1211,21 @@ textarea:focus {
   font-size: 11px;
 }
 
+.filer-list {
+  transition:
+    background-color 100ms ease,
+    box-shadow 100ms ease;
+}
+
+.filer-list.is-drag-over {
+  background: rgba(78, 161, 243, 0.08);
+  box-shadow: inset 0 0 0 2px var(--accent);
+}
+
+.filer-drop-message {
+  color: var(--accent);
+}
+
 .filer-col-name {
   flex: 1;
 }
