@@ -29,6 +29,27 @@ const RAW_TEXT_INPUT = {
   spellCheck: false,
 } as const;
 
+const COMMON_BAUD_RATES = [
+  1200, 2400, 4800, 9600, 14400, 19200, 38400, 57600, 115200, 230400,
+  460800, 500000, 576000, 921600, 1000000, 1500000, 2000000, 3000000,
+  4000000,
+];
+
+function validateProfile(profile: SessionProfile): string | null {
+  if (profile.kind !== "serial") return null;
+
+  const baudRate = profile.baudRate;
+  if (
+    baudRate == null ||
+    !Number.isInteger(baudRate) ||
+    baudRate <= 0 ||
+    baudRate > 0xffffffff
+  ) {
+    return "Baud rate must be a positive whole number up to 4294967295.";
+  }
+  return null;
+}
+
 export function SessionDialog({ initial, onClose }: Props) {
   const [profile, setProfile] = useState<SessionProfile>(initial ?? BLANK);
   const [ports, setPorts] = useState<SerialPortDesc[]>([]);
@@ -57,10 +78,17 @@ export function SessionDialog({ initial, onClose }: Props) {
   });
 
   const save = async () => {
+    const candidate = normalized();
+    const validationError = validateProfile(candidate);
+    if (validationError) {
+      setError(validationError);
+      return;
+    }
+
     setBusy(true);
+    setError(null);
     try {
-      await upsertProfile(normalized());
-      setError(null);
+      await upsertProfile(candidate);
       onClose();
     } catch (e) {
       setError(String(e));
@@ -70,10 +98,16 @@ export function SessionDialog({ initial, onClose }: Props) {
   };
 
   const connect = async () => {
+    const candidate = normalized();
+    const validationError = validateProfile(candidate);
+    if (validationError) {
+      setError(validationError);
+      return;
+    }
+
     setBusy(true);
     setError(null);
     try {
-      const candidate = normalized();
       // Saving first keeps the profile in the tree and stores its credentials
       // in the operating system's secure credential vault.
       const saved = candidate.name ? await upsertProfile(candidate) : candidate;
@@ -91,214 +125,307 @@ export function SessionDialog({ initial, onClose }: Props) {
     }
   };
 
+  const selectedPort = ports.find(
+    (port) => port.portName === profile.portName,
+  );
+  const parityCode =
+    profile.parity === "odd" ? "O" : profile.parity === "even" ? "E" : "N";
+
   return (
     <div className="dialog-backdrop" onMouseDown={onClose}>
-      <div className="dialog" onMouseDown={(event) => event.stopPropagation()}>
+      <div
+        className="dialog session-dialog"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="session-dialog-title"
+        onMouseDown={(event) => event.stopPropagation()}
+      >
         <div className="dialog-header">
-          <span>{initial?.id ? "Edit Session" : "New Session"}</span>
-          <button className="panel-action" onClick={onClose}>
+          <div>
+            <div id="session-dialog-title" className="session-dialog-title">
+              {initial?.id ? "Edit Session" : "New Session"}
+            </div>
+          </div>
+          <button className="panel-action" onClick={onClose} aria-label="Close">
             ✕
           </button>
         </div>
 
-        <div className="dialog-body">
-          <div className="field">
-            <label>Protocol</label>
-            <div className="kind-picker">
-              {(["ssh", "local", "serial"] as SessionKind[]).map((kind) => (
-                <button
-                  key={kind}
-                  className={`kind-option${profile.kind === kind ? " is-active" : ""}`}
-                  onClick={() =>
-                    patch({ kind, port: kind === "ssh" ? (profile.port ?? 22) : profile.port })
-                  }
-                >
-                  {kind === "ssh" ? "SSH" : kind === "local" ? "Shell" : "Serial"}
-                </button>
-              ))}
+        <div className="dialog-body session-dialog-body">
+          <section className="session-section">
+            <div className="session-section-heading">
+              <span>Session</span>
+              <small>Identity and protocol</small>
             </div>
-          </div>
+            <div className="session-form-grid">
+              <div className="session-field is-wide">
+                <span className="session-field-label">Protocol</span>
+                <div className="kind-picker">
+                  {(["ssh", "local", "serial"] as SessionKind[]).map((kind) => (
+                    <button
+                      key={kind}
+                      className={`kind-option${profile.kind === kind ? " is-active" : ""}`}
+                      onClick={() =>
+                        patch({
+                          kind,
+                          port:
+                            kind === "ssh" ? (profile.port ?? 22) : profile.port,
+                        })
+                      }
+                    >
+                      {kind === "ssh"
+                        ? "SSH"
+                        : kind === "local"
+                          ? "Shell"
+                          : "Serial"}
+                    </button>
+                  ))}
+                </div>
+              </div>
 
-          <div className="field">
-            <label>Name</label>
-            <input
-              {...RAW_TEXT_INPUT}
-              value={profile.name}
-              placeholder={defaultName()}
-              onChange={(event) => patch({ name: event.target.value })}
-            />
-          </div>
+              <label className="session-field">
+                <span className="session-field-label">Name</span>
+                <input
+                  {...RAW_TEXT_INPUT}
+                  value={profile.name}
+                  placeholder={defaultName()}
+                  onChange={(event) => patch({ name: event.target.value })}
+                />
+              </label>
 
-          <div className="field">
-            <label>Group</label>
-            <input
-              {...RAW_TEXT_INPUT}
-              value={profile.group ?? ""}
-              placeholder="Sessions"
-              onChange={(event) => patch({ group: event.target.value })}
-            />
-          </div>
+              <label className="session-field">
+                <span className="session-field-label">Group</span>
+                <input
+                  {...RAW_TEXT_INPUT}
+                  value={profile.group ?? ""}
+                  placeholder="Sessions"
+                  onChange={(event) => patch({ group: event.target.value })}
+                />
+              </label>
+            </div>
+          </section>
 
           {profile.kind === "ssh" && (
-            <>
-              <div className="field">
-                <label>Host</label>
-                <div className="field-row">
+            <section className="session-section">
+              <div className="session-section-heading">
+                <span>SSH connection</span>
+                <small>Server and authentication</small>
+              </div>
+              <div className="session-form-grid">
+                <label className="session-field">
+                  <span className="session-field-label">Host</span>
                   <input
                     {...RAW_TEXT_INPUT}
-                    style={{ flex: 1 }}
                     value={profile.host ?? ""}
                     placeholder="example.com"
                     onChange={(event) => patch({ host: event.target.value })}
                   />
+                </label>
+
+                <label className="session-field">
+                  <span className="session-field-label">Port</span>
                   <input
-                    style={{ width: 76 }}
                     type="number"
+                    min={1}
+                    max={65535}
                     value={profile.port ?? 22}
                     onChange={(event) =>
                       patch({ port: Number(event.target.value) || 22 })
                     }
                   />
-                </div>
-              </div>
+                </label>
 
-              <div className="field">
-                <label>Username</label>
-                <input
-                  {...RAW_TEXT_INPUT}
-                  value={profile.username ?? ""}
-                  onChange={(event) => patch({ username: event.target.value })}
-                />
-              </div>
-
-              <div className="field">
-                <label>Authentication</label>
-                <select
-                  value={profile.auth ?? "password"}
-                  onChange={(event) =>
-                    patch({ auth: event.target.value as SessionProfile["auth"] })
-                  }
-                >
-                  <option value="password">Password</option>
-                  <option value="publicKey">Public key</option>
-                  <option value="agent">SSH agent</option>
-                </select>
-              </div>
-
-              {profile.auth === "password" && (
-                <div className="field">
-                  <label>Password</label>
+                <label className="session-field">
+                  <span className="session-field-label">Username</span>
                   <input
                     {...RAW_TEXT_INPUT}
-                    type="password"
-                    value={profile.password ?? ""}
-                    onChange={(event) => patch({ password: event.target.value })}
+                    value={profile.username ?? ""}
+                    placeholder="user"
+                    onChange={(event) => patch({ username: event.target.value })}
                   />
-                </div>
-              )}
+                </label>
 
-              {profile.auth === "publicKey" && (
-                <>
-                  <div className="field">
-                    <label>Private key</label>
-                    <input
-                      {...RAW_TEXT_INPUT}
-                      value={profile.privateKeyPath ?? ""}
-                      placeholder="~/.ssh/id_ed25519"
-                      onChange={(event) =>
-                        patch({ privateKeyPath: event.target.value })
-                      }
-                    />
-                  </div>
-                  <div className="field">
-                    <label>Passphrase</label>
+                <label className="session-field">
+                  <span className="session-field-label">Authentication</span>
+                  <select
+                    value={profile.auth ?? "password"}
+                    onChange={(event) =>
+                      patch({
+                        auth: event.target.value as SessionProfile["auth"],
+                      })
+                    }
+                  >
+                    <option value="password">Password</option>
+                    <option value="publicKey">Public key</option>
+                    <option value="agent">SSH agent</option>
+                  </select>
+                </label>
+
+                {profile.auth === "password" && (
+                  <label className="session-field is-wide">
+                    <span className="session-field-label">Password</span>
                     <input
                       {...RAW_TEXT_INPUT}
                       type="password"
-                      value={profile.passphrase ?? ""}
+                      value={profile.password ?? ""}
                       onChange={(event) =>
-                        patch({ passphrase: event.target.value })
+                        patch({ password: event.target.value })
                       }
                     />
-                  </div>
-                </>
-              )}
-            </>
+                  </label>
+                )}
+
+                {profile.auth === "publicKey" && (
+                  <>
+                    <label className="session-field is-wide">
+                      <span className="session-field-label">Private key</span>
+                      <input
+                        {...RAW_TEXT_INPUT}
+                        value={profile.privateKeyPath ?? ""}
+                        placeholder="~/.ssh/id_ed25519"
+                        onChange={(event) =>
+                          patch({ privateKeyPath: event.target.value })
+                        }
+                      />
+                    </label>
+                    <label className="session-field is-wide">
+                      <span className="session-field-label">Passphrase</span>
+                      <input
+                        {...RAW_TEXT_INPUT}
+                        type="password"
+                        value={profile.passphrase ?? ""}
+                        onChange={(event) =>
+                          patch({ passphrase: event.target.value })
+                        }
+                      />
+                    </label>
+                  </>
+                )}
+              </div>
+            </section>
           )}
 
           {profile.kind === "local" && (
-            <>
-              <div className="field">
-                <label>Shell</label>
-                <input
-                  {...RAW_TEXT_INPUT}
-                  value={profile.shell ?? ""}
-                  placeholder="$SHELL"
-                  onChange={(event) => patch({ shell: event.target.value })}
-                />
+            <section className="session-section">
+              <div className="session-section-heading">
+                <span>Local shell</span>
+                <small>Process and working directory</small>
               </div>
-              <div className="field">
-                <label>Directory</label>
-                <input
-                  {...RAW_TEXT_INPUT}
-                  value={profile.cwd ?? ""}
-                  placeholder="home directory"
-                  onChange={(event) => patch({ cwd: event.target.value })}
-                />
+              <div className="session-form-grid">
+                <label className="session-field is-wide">
+                  <span className="session-field-label">Shell</span>
+                  <input
+                    {...RAW_TEXT_INPUT}
+                    value={profile.shell ?? ""}
+                    placeholder="$SHELL"
+                    onChange={(event) => patch({ shell: event.target.value })}
+                  />
+                </label>
+                <label className="session-field is-wide">
+                  <span className="session-field-label">Directory</span>
+                  <input
+                    {...RAW_TEXT_INPUT}
+                    value={profile.cwd ?? ""}
+                    placeholder="Home directory"
+                    onChange={(event) => patch({ cwd: event.target.value })}
+                  />
+                </label>
               </div>
-            </>
+            </section>
           )}
 
           {profile.kind === "serial" && (
-            <>
-              <div className="field">
-                <label>Port</label>
-                <div className="field-row">
-                  <select
-                    style={{ flex: 1 }}
-                    value={profile.portName ?? ""}
-                    onChange={(event) => patch({ portName: event.target.value })}
-                  >
-                    <option value="">Select a port…</option>
-                    {ports.map((port) => (
-                      <option key={port.portName} value={port.portName}>
-                        {port.portName}
-                        {port.description ? ` — ${port.description}` : ""}
-                      </option>
-                    ))}
-                  </select>
-                  <button
-                    className="btn"
-                    onClick={() =>
-                      api.listSerialPorts().then(setPorts).catch(() => undefined)
-                    }
-                  >
-                    ⟳
-                  </button>
+            <section className="session-section">
+              <div className="session-section-heading">
+                <span>Serial connection</span>
+                <small>
+                  {profile.dataBits ?? 8}-{parityCode}-{profile.stopBits ?? 1}
+                  {profile.flowControl && profile.flowControl !== "none"
+                    ? ` · ${profile.flowControl} flow`
+                    : " · no flow control"}
+                </small>
+              </div>
+              <div className="session-form-grid">
+                <div className="session-field is-wide">
+                  <span className="session-field-label">Port</span>
+                  <div className="serial-port-row">
+                    <select
+                      value={profile.portName ?? ""}
+                      onChange={(event) =>
+                        patch({ portName: event.target.value })
+                      }
+                    >
+                      <option value="">Select a port…</option>
+                      {ports.map((port) => (
+                        <option key={port.portName} value={port.portName}>
+                          {port.portName}
+                          {port.description ? ` — ${port.description}` : ""}
+                        </option>
+                      ))}
+                    </select>
+                    <button
+                      className="btn serial-refresh"
+                      onClick={() =>
+                        api
+                          .listSerialPorts()
+                          .then(setPorts)
+                          .catch(() => undefined)
+                      }
+                      title="Refresh serial ports"
+                      aria-label="Refresh serial ports"
+                    >
+                      <span aria-hidden="true">⟳</span>
+                    </button>
+                  </div>
+                  <small className="session-field-hint">
+                    {selectedPort?.description ||
+                      (ports.length
+                        ? "Choose a detected COM or TTY device."
+                        : "No serial ports detected. Refresh to scan again.")}
+                  </small>
                 </div>
-              </div>
 
-              <div className="field">
-                <label>Baud rate</label>
-                <select
-                  value={profile.baudRate ?? 115200}
-                  onChange={(event) =>
-                    patch({ baudRate: Number(event.target.value) })
-                  }
-                >
-                  {[9600, 19200, 38400, 57600, 115200, 230400, 460800, 921600].map(
-                    (rate) => (
-                      <option key={rate} value={rate}>
-                        {rate}
-                      </option>
-                    ),
-                  )}
-                </select>
-              </div>
+                <div className="session-field is-wide">
+                  <label
+                    className="session-field-label"
+                    htmlFor="serial-baud-rate"
+                  >
+                    Baud rate
+                  </label>
+                  <div className="input-with-suffix">
+                    <input
+                      id="serial-baud-rate"
+                      type="number"
+                      inputMode="numeric"
+                      min={1}
+                      max={0xffffffff}
+                      step={1}
+                      list="serial-baud-rates"
+                      value={profile.baudRate ?? ""}
+                      placeholder="115200"
+                      onChange={(event) =>
+                        patch({
+                          baudRate:
+                            event.target.value === ""
+                              ? null
+                              : Number(event.target.value),
+                        })
+                      }
+                    />
+                    <span>baud</span>
+                  </div>
+                  <datalist id="serial-baud-rates">
+                    {COMMON_BAUD_RATES.map((rate) => (
+                      <option key={rate} value={rate} />
+                    ))}
+                  </datalist>
+                  <small className="session-field-hint">
+                    Select a common value or enter any custom positive integer.
+                  </small>
+                </div>
 
-              <div className="field">
-                <label>Framing</label>
-                <div className="field-row">
+                <label className="session-field">
+                  <span className="session-field-label">Data bits</span>
                   <select
                     value={profile.dataBits ?? 8}
                     onChange={(event) =>
@@ -307,42 +434,52 @@ export function SessionDialog({ initial, onClose }: Props) {
                   >
                     {[5, 6, 7, 8].map((bits) => (
                       <option key={bits} value={bits}>
-                        {bits} data
+                        {bits} bits
                       </option>
                     ))}
                   </select>
-                  <select
-                    value={profile.parity ?? "none"}
-                    onChange={(event) => patch({ parity: event.target.value })}
-                  >
-                    <option value="none">no parity</option>
-                    <option value="odd">odd</option>
-                    <option value="even">even</option>
-                  </select>
+                </label>
+
+                <label className="session-field">
+                  <span className="session-field-label">Stop bits</span>
                   <select
                     value={profile.stopBits ?? 1}
                     onChange={(event) =>
                       patch({ stopBits: Number(event.target.value) })
                     }
                   >
-                    <option value={1}>1 stop</option>
-                    <option value={2}>2 stop</option>
+                    <option value={1}>1 bit</option>
+                    <option value={2}>2 bits</option>
                   </select>
-                </div>
-              </div>
+                </label>
 
-              <div className="field">
-                <label>Flow control</label>
-                <select
-                  value={profile.flowControl ?? "none"}
-                  onChange={(event) => patch({ flowControl: event.target.value })}
-                >
-                  <option value="none">None</option>
-                  <option value="software">XON/XOFF</option>
-                  <option value="hardware">RTS/CTS</option>
-                </select>
+                <label className="session-field">
+                  <span className="session-field-label">Parity</span>
+                  <select
+                    value={profile.parity ?? "none"}
+                    onChange={(event) => patch({ parity: event.target.value })}
+                  >
+                    <option value="none">None (N)</option>
+                    <option value="odd">Odd (O)</option>
+                    <option value="even">Even (E)</option>
+                  </select>
+                </label>
+
+                <label className="session-field">
+                  <span className="session-field-label">Flow control</span>
+                  <select
+                    value={profile.flowControl ?? "none"}
+                    onChange={(event) =>
+                      patch({ flowControl: event.target.value })
+                    }
+                  >
+                    <option value="none">None</option>
+                    <option value="software">XON/XOFF (software)</option>
+                    <option value="hardware">RTS/CTS (hardware)</option>
+                  </select>
+                </label>
               </div>
-            </>
+            </section>
           )}
 
           {error && <div className="dialog-error">{error}</div>}

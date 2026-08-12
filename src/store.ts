@@ -30,7 +30,8 @@ interface AppStore {
   upsertProfile: (profile: SessionProfile) => Promise<SessionProfile>;
   removeProfile: (id: string) => Promise<void>;
 
-  addTab: (info: SessionInfo) => void;
+  addTab: (info: SessionInfo, state?: SessionState) => void;
+  updateTabInfo: (id: string, info: SessionInfo) => void;
   closeTab: (id: string) => Promise<void>;
   setActive: (id: string) => void;
 
@@ -82,16 +83,24 @@ export const useStore = create<AppStore>((set, get) => ({
     set({ profiles: get().profiles.filter((p) => p.id !== id) });
   },
 
-  addTab(info) {
+  addTab(info, state = "connected") {
     const tab: Tab = {
       info,
-      state: "connected",
+      state,
       cols: 80,
       rows: 24,
       cursorLine: 1,
       cursorColumn: 1,
     };
     set({ tabs: [...get().tabs, tab], activeId: info.id });
+  },
+
+  updateTabInfo(id, info) {
+    set({
+      tabs: get().tabs.map((tab) =>
+        tab.info.id === id ? { ...tab, info } : tab,
+      ),
+    });
   },
 
   async closeTab(id) {

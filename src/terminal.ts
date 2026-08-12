@@ -1,3 +1,4 @@
+import { openUrl } from "@tauri-apps/plugin-opener";
 import { FitAddon } from "@xterm/addon-fit";
 import { SearchAddon } from "@xterm/addon-search";
 import { Unicode11Addon } from "@xterm/addon-unicode11";
@@ -10,6 +11,17 @@ import { semanticRanges } from "./semanticColors";
 export type GutterMode = "off" | "line" | "time" | "both";
 
 const SCROLLBACK = 5000;
+
+function openTerminalWebLink(event: MouseEvent, uri: string) {
+  // Opening terminal output on an unmodified click makes accidental launches
+  // too easy. Match native terminal behavior on macOS and other platforms.
+  if (!event.metaKey && !event.ctrlKey) return;
+
+  event.preventDefault();
+  void openUrl(uri).catch((error) => {
+    console.error(`Failed to open terminal link ${uri}`, error);
+  });
+}
 
 /**
  * A vivid, dark-background 16-color palette. xterm.js supplies the remaining
@@ -101,7 +113,7 @@ export class TerminalController {
 
     this.term.loadAddon(this.fitAddon);
     this.term.loadAddon(this.searchAddon);
-    this.term.loadAddon(new WebLinksAddon());
+    this.term.loadAddon(new WebLinksAddon(openTerminalWebLink));
     const unicode = new Unicode11Addon();
     this.term.loadAddon(unicode);
     this.term.unicode.activeVersion = "11";

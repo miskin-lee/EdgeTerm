@@ -22,6 +22,8 @@ export function TabStrip({ onNewSession }: Props) {
               "tab",
               active ? "is-active" : "",
               tab.state === "closed" ? "is-closed" : "",
+              tab.state === "connecting" ? "is-connecting" : "",
+              tab.state === "error" ? "is-error" : "",
             ]
               .filter(Boolean)
               .join(" ")}
@@ -33,9 +35,13 @@ export function TabStrip({ onNewSession }: Props) {
               className="tab-dot"
               style={{
                 background:
-                  tab.state === "closed"
-                    ? "#5c6370"
-                    : (tab.info.color ?? colorForSession(tab.info.name)),
+                  tab.state === "connecting"
+                    ? "#e3b341"
+                    : tab.state === "error"
+                      ? "#f85149"
+                      : tab.state === "closed"
+                        ? "#5c6370"
+                        : (tab.info.color ?? colorForSession(tab.info.name)),
               }}
             />
             <span className="tab-label">{tab.info.name}</span>

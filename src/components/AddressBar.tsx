@@ -44,11 +44,7 @@ export function AddressBar({ searchOpen, onSearchOpenChange }: Props) {
         <span className="address-host">{tab.info.address}</span>
       </div>
 
-      <span
-        className={`address-state ${
-          tab.state === "connected" ? "is-connected" : "is-closed"
-        }`}
-      >
+      <span className={`address-state is-${tab.state}`}>
         {tab.state}
       </span>
 

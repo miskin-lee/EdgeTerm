@@ -6,11 +6,43 @@ import {
   getController,
   setController,
 } from "./terminalRegistry";
-import type { SessionProfile } from "./types";
+import type { SessionInfo, SessionProfile } from "./types";
 
 function newSessionId(): string {
   if (typeof crypto?.randomUUID === "function") return crypto.randomUUID();
   return `s-${Math.random().toString(36).slice(2)}-${Date.now().toString(36)}`;
+}
+
+function pendingSessionInfo(
+  id: string,
+  profile: SessionProfile,
+): SessionInfo {
+  const name =
+    profile.name || profile.host || profile.portName || "session";
+
+  let protocol: string;
+  let address: string;
+  if (profile.kind === "ssh") {
+    protocol = "ssh";
+    address = `${profile.host || "localhost"}:${profile.port ?? 22}`;
+  } else if (profile.kind === "serial") {
+    protocol = "serial";
+    address = `${profile.portName || "-"}@${profile.baudRate ?? 115_200}`;
+  } else {
+    protocol = "shell";
+    address = profile.shell || "default shell";
+  }
+
+  return {
+    id,
+    profileId: profile.id || null,
+    name,
+    kind: profile.kind,
+    protocol,
+    address,
+    color: profile.color ?? null,
+    supportsSftp: profile.kind === "ssh",
+  };
 }
 
 /**
@@ -49,18 +81,43 @@ export async function openSession(
 
   store.setStatus(`Connecting to ${label}…`);
   store.setError(null);
+  store.addTab(pendingSessionInfo(id, profile), "connecting");
   ensureController(id);
 
   try {
     const info = await api.openSession(profile, id);
-    store.addTab(info);
-    store.setStatus(`Connected to ${info.name}`);
+
+    // The user may close the optimistic tab while SSH is still negotiating.
+    // In that case close the newly-created backend session immediately.
+    const connectedStore = useStore.getState();
+    const tab = connectedStore.tabs.find((item) => item.info.id === id);
+    if (!tab) {
+      await api.closeSession(id).catch(() => undefined);
+      return null;
+    }
+
+    connectedStore.updateTabInfo(id, info);
+    connectedStore.applyState(id, "connected");
+    connectedStore.setStatus(`Connected to ${info.name}`);
+
+    // The pane was fitted while the backend was still connecting, so its
+    // first resize command could not be delivered. Re-send the current size.
+    void api.resizeSession(id, tab.cols, tab.rows).catch(() => undefined);
     return id;
   } catch (e) {
-    disposeController(id);
     const message = String(e);
-    store.setError(message);
-    store.setStatus(`Failed: ${message}`);
+    const failedStore = useStore.getState();
+    if (failedStore.tabs.some((tab) => tab.info.id === id)) {
+      const terminalMessage = message.replace(/[\x00-\x1f\x7f]/g, " ");
+      failedStore.applyState(id, "error", message);
+      failedStore.setError(message);
+      failedStore.setStatus(`Failed: ${message}`);
+      getController(id)?.writeText(
+        `\r\n\x1b[31m[connection failed: ${terminalMessage}]\x1b[0m\r\n`,
+      );
+    } else {
+      disposeController(id);
+    }
     return null;
   }
 }
