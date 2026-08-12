@@ -320,9 +320,8 @@ export function SenderPanel() {
       </div>
 
       <div className="sender-library">
-        <div className="sender-library-head">
-          <span>Saved commands ({savedCommands.length}/{MAX_SAVED_COMMANDS})</span>
-          {pageCount > 1 && (
+        {pageCount > 1 && (
+          <div className="sender-library-head">
             <div className="sender-pagination">
               <button
                 type="button"
@@ -340,8 +339,8 @@ export function SenderPanel() {
                 ›
               </button>
             </div>
-          )}
-        </div>
+          </div>
+        )}
 
         {pageCommands.length === 0 ? (
           <div className="sender-library-empty">

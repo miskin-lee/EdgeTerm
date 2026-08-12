@@ -48,7 +48,7 @@ export default function App() {
 
   const [leftWidth, setLeftWidth] = useState(220);
   const [rightWidth, setRightWidth] = useState(220);
-  const [senderHeight, setSenderHeight] = useState(220);
+  const [senderHeight, setSenderHeight] = useState(160);
 
   // --- backend events -------------------------------------------------------
 
