@@ -362,14 +362,16 @@ export function FilerPanel() {
 
       <div className="filer-columns">
         <span className="filer-col-name">Name</span>
-        <span className="filer-col-date">Date Modified</span>
+        <span className="filer-col-date">Modified</span>
       </div>
 
       <div className="panel-body">
         {error && <div className="panel-empty">{error}</div>}
         {newFolder !== null && (
-          <div className="row">
-            <span className="filer-icon">📁</span>
+          <div className="row filer-new-folder">
+            <span className="filer-icon is-directory">
+              <FilerEntryIcon kind="directory" />
+            </span>
             <input
               autoFocus
               value={newFolder}
@@ -383,23 +385,38 @@ export function FilerPanel() {
             />
           </div>
         )}
-        {entries.map((entry) => (
-          <div
-            key={entry.path}
-            className={`row${entry.path === selected ? " is-active" : ""}`}
-            onMouseDown={() => setSelected(entry.path)}
-            onDoubleClick={() => activate(entry)}
-            title={entry.path}
-          >
-            <span className="filer-icon">
-              {entry.isDir ? "📁" : entry.isSymlink ? "🔗" : "📄"}
-            </span>
-            <span className="row-label">{entry.name}</span>
-            <span className="filer-col-date row-meta">
-              {formatDate(entry.modified)}
-            </span>
-          </div>
-        ))}
+        {entries.map((entry) => {
+          const kind = entryKind(entry);
+          return (
+            <div
+              key={entry.path}
+              className={`row filer-entry is-${kind}${entry.path === selected ? " is-active" : ""}`}
+              onMouseDown={() => setSelected(entry.path)}
+              onDoubleClick={() => activate(entry)}
+              title={entryTitle(entry)}
+            >
+              <span className={`filer-icon is-${kind}`}>
+                <FilerEntryIcon kind={kind} />
+              </span>
+              <span className="filer-entry-main">
+                <span className="row-label">{entry.name}</span>
+                <span className="filer-entry-details">
+                  <span className="filer-entry-kind">
+                    {entryKindLabel(kind)}
+                  </span>
+                  {!entry.isDir && (
+                    <span className="filer-entry-size">
+                      {formatBytes(entry.size)}
+                    </span>
+                  )}
+                </span>
+              </span>
+              <span className="filer-col-date row-meta">
+                {formatDate(entry.modified)}
+              </span>
+            </div>
+          );
+        })}
       </div>
 
       <div className={`filer-footer${transfer ? " has-transfer" : ""}`}>
@@ -455,12 +472,43 @@ export function FilerPanel() {
           </div>
         ) : (
           <>
-            <span>{entries.length} items</span>
+            <span>{formatEntrySummary(entries)}</span>
             {busy && <span>working…</span>}
           </>
         )}
       </div>
     </div>
+  );
+}
+
+type FilerEntryKind = "directory" | "file" | "symlink";
+
+function FilerEntryIcon({ kind }: { kind: FilerEntryKind }) {
+  return (
+    <svg
+      viewBox="0 0 20 20"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.5"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      {kind === "directory" ? (
+        <path d="M2.25 5.25h5l1.6 1.8h8.9v8.7a1.5 1.5 0 0 1-1.5 1.5H3.75a1.5 1.5 0 0 1-1.5-1.5V5.25Z" />
+      ) : kind === "symlink" ? (
+        <>
+          <path d="M6.9 12.7 5.6 14a2.55 2.55 0 1 1-3.6-3.6l2.65-2.65a2.55 2.55 0 0 1 3.6 0" />
+          <path d="m13.1 7.3 1.3-1.3a2.55 2.55 0 1 1 3.6 3.6l-2.65 2.65a2.55 2.55 0 0 1-3.6 0" />
+          <path d="m7.25 12.75 5.5-5.5" />
+        </>
+      ) : (
+        <>
+          <path d="M4 2.25h7.25L16 7v10.75H4V2.25Z" />
+          <path d="M11.25 2.25V7H16M7 10.25h6M7 13.25h6" />
+        </>
+      )}
+    </svg>
   );
 }
 
@@ -533,6 +581,51 @@ function remoteParent(path: string): string {
 function joinRemote(base: string, name: string): string {
   if (base.endsWith("/")) return `${base}${name}`;
   return `${base}/${name}`;
+}
+
+function entryKind(entry: FileEntry): FilerEntryKind {
+  if (entry.isSymlink) return "symlink";
+  return entry.isDir ? "directory" : "file";
+}
+
+function entryKindLabel(kind: FilerEntryKind): string {
+  if (kind === "directory") return "Folder";
+  if (kind === "symlink") return "Link";
+  return "File";
+}
+
+function entryTitle(entry: FileEntry): string {
+  const kind = entryKind(entry);
+  const attributes = [entryKindLabel(kind)];
+  if (!entry.isDir) attributes.push(formatBytes(entry.size));
+  if (entry.permissions !== null) {
+    attributes.push(
+      `Mode ${(entry.permissions & 0o7777).toString(8).padStart(4, "0")}`,
+    );
+  }
+  if (entry.owner) {
+    attributes.push(entry.group ? `${entry.owner}:${entry.group}` : entry.owner);
+  }
+  return `${entry.path}\n${attributes.join(" · ")}`;
+}
+
+function formatEntrySummary(entries: FileEntry[]): string {
+  let folders = 0;
+  let files = 0;
+  let links = 0;
+  for (const entry of entries) {
+    const kind = entryKind(entry);
+    if (kind === "directory") folders += 1;
+    else if (kind === "symlink") links += 1;
+    else files += 1;
+  }
+
+  const parts = [
+    folders > 0 ? `${folders} ${folders === 1 ? "folder" : "folders"}` : "",
+    files > 0 ? `${files} ${files === 1 ? "file" : "files"}` : "",
+    links > 0 ? `${links} ${links === 1 ? "link" : "links"}` : "",
+  ].filter(Boolean);
+  return parts.length > 0 ? parts.join(" · ") : "0 items";
 }
 
 function formatDate(seconds: number | null): string {
