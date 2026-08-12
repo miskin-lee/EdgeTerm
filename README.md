@@ -45,7 +45,30 @@ npm run tauri dev      # 开发模式
 npm run tauri build    # 打包
 ```
 
-要求：Rust 1.77+、Node 18+。macOS 需要 Xcode Command Line Tools。
+要求：Rust 1.77+、Node 20.19+（推荐 Node 22 LTS）。macOS 需要 Xcode Command Line Tools。
+
+## Weekly Build
+
+GitHub Actions 会在每周一北京时间 10:00（UTC 02:00）自动构建，也可在仓库的 **Actions → Weekly Build → Run workflow** 中手动触发。
+
+当前生成以下原生安装包：
+
+| 系统 | 架构 | Runner |
+| --- | --- | --- |
+| Linux | x64 | `ubuntu-22.04` |
+| Linux | ARM64 | `ubuntu-22.04-arm` |
+| Windows | x64 | `windows-2022` |
+| macOS | Intel x64 | `macos-15-intel` |
+| macOS | Apple Silicon ARM64 | `macos-15` |
+
+构建完成后，进入对应的 workflow run，在页面底部 **Artifacts** 区域下载 `.deb`、`.rpm`、`.AppImage`、`.msi`、`.exe`、`.dmg` 等产物。工作流也支持命令行触发：
+
+```bash
+gh workflow run weekly-build.yml
+gh run watch
+```
+
+Weekly Build 默认不做 macOS 公证或 Windows 代码签名，因此更适合内部测试和开发预览；对外分发前应配置平台签名证书。定时任务只会从 GitHub 默认分支运行，工作流文件见 [`.github/workflows/weekly-build.yml`](.github/workflows/weekly-build.yml)。
 
 ## 代码结构
 
