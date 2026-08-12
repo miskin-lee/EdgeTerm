@@ -195,6 +195,7 @@ textarea:focus {
 }
 
 .center {
+  position: relative;
   flex: 1;
   display: flex;
   flex-direction: column;
@@ -415,6 +416,22 @@ textarea:focus {
   flex: 0 0 8px;
 }
 
+.tab.is-connected .tab-dot {
+  background: var(--green);
+}
+
+.tab.is-connecting .tab-dot {
+  background: var(--yellow);
+}
+
+.tab.is-error .tab-dot {
+  background: var(--red);
+}
+
+.tab.is-closed .tab-dot {
+  background: var(--fg-faint);
+}
+
 .tab-label {
   overflow: hidden;
   text-overflow: ellipsis;
@@ -449,71 +466,24 @@ textarea:focus {
   background: var(--bg-app);
 }
 
-/* --- address bar ---------------------------------------------------------- */
+/* --- terminal search ------------------------------------------------------ */
 
-.addressbar {
-  flex: 0 0 30px;
-  height: 30px;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 0 10px;
-  background: var(--bg-app);
-  border-bottom: 1px solid var(--border);
-  color: var(--fg-dim);
-}
-
-.address-crumbs {
-  flex: 1;
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  min-width: 0;
-  overflow: hidden;
-}
-
-.address-sep {
-  color: var(--fg-faint);
-}
-
-.address-proto {
-  color: var(--fg);
-}
-
-.address-host {
-  color: var(--fg);
-}
-
-.address-state {
-  font-size: 11px;
-  padding: 1px 6px;
-  border-radius: 8px;
-  border: 1px solid var(--border-strong);
-}
-
-.address-state.is-connected {
-  color: var(--green);
-  border-color: rgba(63, 185, 80, 0.4);
-}
-
-.address-state.is-connecting {
-  color: var(--yellow);
-  border-color: rgba(227, 179, 65, 0.4);
-}
-
-.address-state.is-closed,
-.address-state.is-error {
-  color: var(--red);
-  border-color: rgba(248, 81, 73, 0.4);
-}
-
-.address-search {
+.terminal-search {
+  position: absolute;
+  top: 38px;
+  right: 8px;
+  z-index: 10;
   display: flex;
   align-items: center;
   gap: 4px;
+  padding: 5px;
+  border: 1px solid var(--border-strong);
+  border-radius: 5px;
+  background: var(--bg-panel);
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.4);
 }
 
-.address-search input {
+.terminal-search input {
   width: 160px;
   background: var(--bg-panel-alt);
 }

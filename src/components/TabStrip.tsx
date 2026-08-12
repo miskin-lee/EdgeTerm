@@ -1,5 +1,4 @@
 import { useStore } from "../store";
-import { colorForSession } from "../types";
 
 interface Props {
   onNewSession: () => void;
@@ -21,29 +20,15 @@ export function TabStrip({ onNewSession }: Props) {
             className={[
               "tab",
               active ? "is-active" : "",
-              tab.state === "closed" ? "is-closed" : "",
-              tab.state === "connecting" ? "is-connecting" : "",
-              tab.state === "error" ? "is-error" : "",
+              `is-${tab.state}`,
             ]
               .filter(Boolean)
               .join(" ")}
             onMouseDown={() => setActive(tab.info.id)}
-            title={`${tab.info.protocol} · ${tab.info.address}`}
+            title={`${tab.info.protocol} · ${tab.info.address} · ${tab.message ?? tab.state}`}
           >
             <span className="tab-index">{index + 1}.</span>
-            <span
-              className="tab-dot"
-              style={{
-                background:
-                  tab.state === "connecting"
-                    ? "#e3b341"
-                    : tab.state === "error"
-                      ? "#f85149"
-                      : tab.state === "closed"
-                        ? "#5c6370"
-                        : (tab.info.color ?? colorForSession(tab.info.name)),
-              }}
-            />
+            <span className="tab-dot" />
             <span className="tab-label">{tab.info.name}</span>
             <button
               className="tab-close"

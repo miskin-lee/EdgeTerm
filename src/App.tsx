@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useState } from "react";
 
 import * as api from "./api";
-import { AddressBar } from "./components/AddressBar";
 import { MenuBar } from "./components/MenuBar";
+import { SearchOverlay } from "./components/SearchOverlay";
 import { SessionDialog } from "./components/SessionDialog";
 import { Splitter } from "./components/Splitter";
 import { StatusBar } from "./components/StatusBar";
@@ -193,10 +193,7 @@ export default function App() {
 
         <div className="center">
           <TabStrip onNewSession={newSession} />
-          <AddressBar
-            searchOpen={searchOpen}
-            onSearchOpenChange={setSearchOpen}
-          />
+          <SearchOverlay open={searchOpen} onOpenChange={setSearchOpen} />
           <TerminalPane onNewSession={newSession} />
         </div>
 
