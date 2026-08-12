@@ -102,6 +102,10 @@ pub async fn connect(profile: &SessionProfile) -> Result<SshConnection> {
     channel
         .request_pty(true, "xterm-256color", 80, 24, 0, 0, &[])
         .await?;
+    // Servers may ignore environment requests, but those that accept them let
+    // modern CLI applications select their 24-bit color output automatically.
+    let _ = channel.set_env(false, "COLORTERM", "truecolor").await;
+    let _ = channel.set_env(false, "TERM_PROGRAM", "EdgeTerm").await;
     channel.request_shell(true).await?;
 
     Ok(SshConnection { handle, channel })

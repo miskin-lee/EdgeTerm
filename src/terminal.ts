@@ -5,53 +5,41 @@ import { WebLinksAddon } from "@xterm/addon-web-links";
 import { WebglAddon } from "@xterm/addon-webgl";
 import { Terminal } from "@xterm/xterm";
 
+import { semanticRanges } from "./semanticColors";
+
 export type GutterMode = "off" | "line" | "time" | "both";
 
 const SCROLLBACK = 5000;
 
 /**
- * xterm's canonical 16-color base palette. xterm.js supplies the remaining
+ * A vivid, dark-background 16-color palette. xterm.js supplies the remaining
  * 240 entries of the xterm-256color cube and grayscale ramp automatically.
  */
 const XTERM_256_THEME = {
   background: "#16181d",
-  foreground: "#e5e5e5",
+  foreground: "#d8dee9",
   cursor: "#7fc4ff",
   cursorAccent: "#16181d",
-  selectionBackground: "#3b4f70",
-  black: "#000000",
-  red: "#cd0000",
-  green: "#00cd00",
-  yellow: "#cdcd00",
-  blue: "#0000ee",
-  magenta: "#cd00cd",
-  cyan: "#00cdcd",
-  white: "#e5e5e5",
-  brightBlack: "#7f7f7f",
-  brightRed: "#ff0000",
-  brightGreen: "#00ff00",
-  brightYellow: "#ffff00",
-  brightBlue: "#5c5cff",
-  brightMagenta: "#ff00ff",
-  brightCyan: "#00ffff",
+  selectionBackground: "#31567a",
+  selectionInactiveBackground: "#25384d",
+  selectionForeground: "#ffffff",
+  black: "#1e222a",
+  red: "#ff5f6d",
+  green: "#8bd450",
+  yellow: "#f0c674",
+  blue: "#5aa9fa",
+  magenta: "#c678dd",
+  cyan: "#56d4dd",
+  white: "#d8dee9",
+  brightBlack: "#6b7280",
+  brightRed: "#ff7a85",
+  brightGreen: "#a6e75f",
+  brightYellow: "#ffe082",
+  brightBlue: "#7fc4ff",
+  brightMagenta: "#dd8ceb",
+  brightCyan: "#78e5ec",
   brightWhite: "#ffffff",
 };
-
-interface SemanticRange {
-  start: number;
-  end: number;
-  color: string;
-}
-
-// Colors are exact entries from the xterm 6x6x6 color cube.
-const SEMANTIC_COLORS = {
-  red: "#ff5f5f", // 203
-  green: "#87d787", // 114
-  yellow: "#ffd75f", // 221
-  blue: "#5fafff", // 75
-  magenta: "#ff87ff", // 213
-  cyan: "#5fd7ff", // 81
-} as const;
 
 interface Callbacks {
   onData: (data: string) => void;
@@ -106,6 +94,7 @@ export class TerminalController {
       letterSpacing: 0,
       scrollback: SCROLLBACK,
       theme: XTERM_256_THEME,
+      drawBoldTextInBrightColors: true,
       macOptionIsMeta: true,
       rightClickSelectsWord: true,
     });
@@ -425,53 +414,4 @@ function formatTime(epochMs: number | undefined): string {
   const pad = (n: number) => String(n).padStart(2, "0");
   const milliseconds = String(d.getMilliseconds()).padStart(3, "0");
   return `[${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}.${milliseconds}]`;
-}
-
-function semanticRanges(text: string): SemanticRange[] {
-  const ranges: SemanticRange[] = [];
-  const add = (start: number, end: number, color: string) => {
-    if (ranges.some((range) => start < range.end && end > range.start)) return;
-    ranges.push({ start, end, color });
-  };
-  const addMatches = (pattern: RegExp, color: string) => {
-    for (const match of text.matchAll(pattern)) {
-      if (match.index !== undefined) {
-        add(match.index, match.index + match[0].length, color);
-      }
-    }
-  };
-
-  // A traditional `date` result gets the same kind of token-by-token semantic
-  // treatment as WindTerm's Linux scheme.
-  const unixDate =
-    /\b(Mon|Tue|Wed|Thu|Fri|Sat|Sun)\s+(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+(\d{1,2})\s+(\d{2}:\d{2}:\d{2}(?:\.\d+)?)\s+([A-Z]{2,5}|[+-]\d{4})\s+(\d{4})\b/g;
-  for (const match of text.matchAll(unixDate)) {
-    if (match.index === undefined) continue;
-    const parts = [
-      [match[1], SEMANTIC_COLORS.cyan],
-      [match[2], SEMANTIC_COLORS.magenta],
-      [match[3], SEMANTIC_COLORS.yellow],
-      [match[4], SEMANTIC_COLORS.green],
-      [match[5], SEMANTIC_COLORS.blue],
-      [match[6], SEMANTIC_COLORS.yellow],
-    ] as const;
-    let from = match.index;
-    for (const [value, color] of parts) {
-      const start = text.indexOf(value, from);
-      if (start < 0) break;
-      add(start, start + value.length, color);
-      from = start + value.length;
-    }
-  }
-
-  addMatches(/\b(?:fatal|error|failed|failure|denied|invalid|exception)\b/gi, SEMANTIC_COLORS.red);
-  addMatches(/\b(?:warn|warning)\b/gi, SEMANTIC_COLORS.yellow);
-  addMatches(/\b(?:ok|done|success|succeeded|connected|active|running)\b/gi, SEMANTIC_COLORS.green);
-  addMatches(/\b\d{4}-\d{2}-\d{2}\b/g, SEMANTIC_COLORS.magenta);
-  addMatches(/\b\d{2}:\d{2}:\d{2}(?:\.\d+)?\b/g, SEMANTIC_COLORS.green);
-  addMatches(/\b(?:\d{1,3}\.){3}\d{1,3}\b/g, SEMANTIC_COLORS.cyan);
-  addMatches(/\b0x[\da-f]+\b/gi, SEMANTIC_COLORS.magenta);
-  addMatches(/\b\d+(?:\.\d+)?\b/g, SEMANTIC_COLORS.yellow);
-
-  return ranges.sort((a, b) => a.start - b.start);
 }

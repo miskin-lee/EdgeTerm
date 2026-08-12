@@ -148,8 +148,7 @@ textarea:focus {
 
 .menu-entry {
   display: flex;
-  justify-content: space-between;
-  gap: 24px;
+  align-items: center;
   width: 100%;
   padding: 5px 8px;
   border-radius: 3px;
@@ -160,13 +159,26 @@ textarea:focus {
   background: var(--accent-soft);
 }
 
-.menu-entry.is-checked::before {
-  content: "✓";
+.menu-check {
+  display: inline-flex;
+  flex: 0 0 12px;
+  align-items: center;
+  justify-content: center;
   margin-right: 6px;
+  line-height: 1;
+  color: transparent;
+}
+
+.menu-entry.is-checked .menu-check {
   color: var(--accent);
 }
 
+.menu-entry-label {
+  flex: 1;
+}
+
 .menu-shortcut {
+  margin-left: 24px;
   color: var(--fg-faint);
 }
 

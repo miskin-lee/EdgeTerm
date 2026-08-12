@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
 
-import { openSession } from "./actions";
 import * as api from "./api";
 import { AddressBar } from "./components/AddressBar";
 import { MenuBar } from "./components/MenuBar";
@@ -11,20 +10,24 @@ import { TabStrip } from "./components/TabStrip";
 import { TerminalPane } from "./components/TerminalPane";
 import { FilerPanel } from "./components/panels/FilerPanel";
 import { SenderPanel } from "./components/panels/SenderPanel";
-import {
-  LOCAL_SHELL_PROFILE,
-  SessionPanel,
-} from "./components/panels/SessionPanel";
-import { useStore } from "./store";
+import { SessionPanel } from "./components/panels/SessionPanel";
+import { useStore, type PanelName } from "./store";
 import { getController } from "./terminalRegistry";
 import type { SessionProfile, SessionState } from "./types";
 
 const clamp = (value: number, min: number, max: number) =>
   Math.min(max, Math.max(min, value));
 
+const viewPanelByShortcutCode: Partial<Record<string, PanelName>> = {
+  ArrowLeft: "filer",
+  ArrowRight: "sessions",
+  ArrowDown: "sender",
+};
+
 export default function App() {
   const activeId = useStore((s) => s.activeId);
   const panels = useStore((s) => s.panels);
+  const togglePanel = useStore((s) => s.togglePanel);
   const loadProfiles = useStore((s) => s.loadProfiles);
   const setActive = useStore((s) => s.setActive);
   const closeTab = useStore((s) => s.closeTab);
@@ -73,10 +76,6 @@ export default function App() {
 
   const newSession = useCallback(() => setDialog({ profile: null }), []);
 
-  const quickShell = useCallback(() => {
-    void openSession(LOCAL_SHELL_PROFILE);
-  }, []);
-
   const gotoLine = useCallback(() => {
     setGotoValue("");
     setGotoOpen(true);
@@ -98,12 +97,18 @@ export default function App() {
 
       const key = event.key.toLowerCase();
 
+      if (event.altKey && !event.shiftKey) {
+        const panel = viewPanelByShortcutCode[event.code];
+        if (panel) {
+          event.preventDefault();
+          togglePanel(panel);
+          return;
+        }
+      }
+
       if (key === "n") {
         event.preventDefault();
         newSession();
-      } else if (key === "t") {
-        event.preventDefault();
-        quickShell();
       } else if (key === "w" && activeId) {
         event.preventDefault();
         void closeTab(activeId);
@@ -127,7 +132,14 @@ export default function App() {
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [activeId, closeTab, gotoLine, newSession, quickShell, setActive]);
+  }, [
+    activeId,
+    closeTab,
+    gotoLine,
+    newSession,
+    setActive,
+    togglePanel,
+  ]);
 
   // --- layout ---------------------------------------------------------------
 
@@ -140,23 +152,8 @@ export default function App() {
 
       <MenuBar
         onNewSession={newSession}
-        onQuickConnect={quickShell}
         onFind={() => setSearchOpen(true)}
         onGotoLine={gotoLine}
-        onSerialPorts={() =>
-          setDialog({
-            profile: {
-              id: "",
-              name: "",
-              kind: "serial",
-              baudRate: 115200,
-              dataBits: 8,
-              stopBits: 1,
-              parity: "none",
-              flowControl: "none",
-            },
-          })
-        }
         onAbout={() => setAboutOpen(true)}
       />
 

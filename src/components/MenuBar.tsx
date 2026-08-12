@@ -18,10 +18,8 @@ interface Menu {
 
 interface Props {
   onNewSession: () => void;
-  onQuickConnect: () => void;
   onFind: () => void;
   onGotoLine: () => void;
-  onSerialPorts: () => void;
   onAbout: () => void;
 }
 
@@ -60,13 +58,17 @@ export function MenuBar(props: Props) {
       title: "Session",
       entries: [
         { label: "New Session…", shortcut: "⌘N", action: props.onNewSession },
-        { label: "Quick Connect…", shortcut: "⌘T", action: props.onQuickConnect },
         "separator",
         {
           label: "Close Session",
           shortcut: "⌘W",
           action: withActive((id) => void closeTab(id)),
         },
+        "separator",
+        gutterEntry("Timestamp + Line Number", "both"),
+        gutterEntry("Line Number Only", "line"),
+        gutterEntry("Timestamp Only", "time"),
+        gutterEntry("No Gutter", "off"),
       ],
     },
     {
@@ -105,20 +107,6 @@ export function MenuBar(props: Props) {
       ],
     },
     {
-      title: "Selection",
-      entries: [
-        {
-          label: "Select All",
-          shortcut: "⌘A",
-          action: withActive((id) => getController(id)?.term.selectAll()),
-        },
-        {
-          label: "Clear Selection",
-          action: withActive((id) => getController(id)?.term.clearSelection()),
-        },
-      ],
-    },
-    {
       title: "Goto",
       entries: [
         { label: "Go to Line…", shortcut: "⌃G", action: props.onGotoLine },
@@ -137,34 +125,22 @@ export function MenuBar(props: Props) {
       entries: [
         {
           label: "Filer",
+          shortcut: "⌘⌥←",
           checked: panels.filer,
           action: () => togglePanel("filer"),
         },
         {
           label: "Session",
+          shortcut: "⌘⌥→",
           checked: panels.sessions,
           action: () => togglePanel("sessions"),
         },
         {
           label: "Sender",
+          shortcut: "⌘⌥↓",
           checked: panels.sender,
           action: () => togglePanel("sender"),
         },
-      ],
-    },
-    {
-      title: "Mode",
-      entries: [
-        gutterEntry("Timestamp + Line Number", "both"),
-        gutterEntry("Line Number Only", "line"),
-        gutterEntry("Timestamp Only", "time"),
-        gutterEntry("No Gutter", "off"),
-      ],
-    },
-    {
-      title: "Tool",
-      entries: [
-        { label: "Serial Ports…", action: props.onSerialPorts },
       ],
     },
     {
@@ -198,7 +174,12 @@ export function MenuBar(props: Props) {
                       entry.action();
                     }}
                   >
-                    <span>{entry.label}</span>
+                    {entry.checked !== undefined && (
+                      <span className="menu-check" aria-hidden="true">
+                        {entry.checked ? "✓" : ""}
+                      </span>
+                    )}
+                    <span className="menu-entry-label">{entry.label}</span>
                     {entry.shortcut && (
                       <span className="menu-shortcut">{entry.shortcut}</span>
                     )}
