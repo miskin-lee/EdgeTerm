@@ -25,6 +25,7 @@ lerna-debug.log*
 !.env.example
 !.env.*.example
 /.claude/settings.local.json
+/AGENTS.md
 
 # Editor directories and files
 .vscode/

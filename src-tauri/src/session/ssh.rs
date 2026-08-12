@@ -7,7 +7,7 @@ use russh::keys::{PrivateKeyWithHashAlg, PublicKey};
 use russh::{Channel, ChannelMsg};
 use russh_sftp::client::SftpSession;
 use tauri::AppHandle;
-use tokio::io::{AsyncReadExt, AsyncWriteExt};
+use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 use tokio::sync::mpsc::UnboundedReceiver;
 
 use super::{
@@ -20,7 +20,7 @@ use crate::model::{AuthKind, DirListing, FileEntry, SessionProfile};
 /// How long output may sit in the pump before it is flushed to the UI.
 const FLUSH_INTERVAL: Duration = Duration::from_millis(8);
 const TRANSFER_PROGRESS_INTERVAL: Duration = Duration::from_millis(50);
-const TRANSFER_CHUNK_SIZE: usize = 64 * 1024;
+const TRANSFER_CHUNK_SIZE: usize = 1024 * 1024;
 
 /// Host key policy: trust on first use, refuse on change.
 ///
@@ -392,23 +392,16 @@ async fn download_file(
     let total = sftp.metadata(remote).await?.size.unwrap_or(0);
     let mut source = sftp.open(remote).await?;
     let mut target = tokio::fs::File::create(local).await?;
-    let mut buffer = vec![0; TRANSFER_CHUNK_SIZE];
-    let mut transferred = 0;
     let mut last_report = Instant::now();
 
-    report_transfer_progress(progress, transferred, total);
-    loop {
-        let count = source.read(&mut buffer).await?;
-        if count == 0 {
-            break;
-        }
-        target.write_all(&buffer[..count]).await?;
-        transferred += count as u64;
+    report_transfer_progress(progress, 0, total);
+    let transferred = copy_in_chunks(&mut source, &mut target, |transferred| {
         if last_report.elapsed() >= TRANSFER_PROGRESS_INTERVAL {
             report_transfer_progress(progress, transferred, total);
             last_report = Instant::now();
         }
-    }
+    })
+    .await?;
 
     target.flush().await?;
     source.close().await?;
@@ -425,27 +418,47 @@ async fn upload_file(
     let total = tokio::fs::metadata(local).await?.len();
     let mut source = tokio::fs::File::open(local).await?;
     let mut target = sftp.create(remote).await?;
-    let mut buffer = vec![0; TRANSFER_CHUNK_SIZE];
-    let mut transferred = 0;
     let mut last_report = Instant::now();
 
-    report_transfer_progress(progress, transferred, total);
-    loop {
-        let count = source.read(&mut buffer).await?;
-        if count == 0 {
-            break;
-        }
-        target.write_all(&buffer[..count]).await?;
-        transferred += count as u64;
+    report_transfer_progress(progress, 0, total);
+    let transferred = copy_in_chunks(&mut source, &mut target, |transferred| {
         if last_report.elapsed() >= TRANSFER_PROGRESS_INTERVAL {
             report_transfer_progress(progress, transferred, total);
             last_report = Instant::now();
         }
-    }
+    })
+    .await?;
 
     target.shutdown().await?;
     report_transfer_progress(progress, transferred, total);
     Ok(())
+}
+
+/// Streams bytes through a fixed-size buffer so transfer memory usage is
+/// independent of the file size.
+async fn copy_in_chunks<R, W, F>(
+    source: &mut R,
+    target: &mut W,
+    mut on_chunk: F,
+) -> std::io::Result<u64>
+where
+    R: AsyncRead + Unpin,
+    W: AsyncWrite + Unpin,
+    F: FnMut(u64),
+{
+    let mut buffer = vec![0; TRANSFER_CHUNK_SIZE];
+    let mut transferred = 0;
+
+    loop {
+        let count = source.read(&mut buffer).await?;
+        if count == 0 {
+            return Ok(transferred);
+        }
+
+        target.write_all(&buffer[..count]).await?;
+        transferred += count as u64;
+        on_chunk(transferred);
+    }
 }
 
 fn report_transfer_progress(
@@ -463,4 +476,33 @@ fn expand_tilde(path: &str) -> String {
         }
     }
     path.to_string()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{copy_in_chunks, TRANSFER_CHUNK_SIZE};
+
+    #[tokio::test]
+    async fn copy_in_chunks_streams_large_inputs_with_a_bounded_buffer() {
+        let payload = vec![0x5a; TRANSFER_CHUNK_SIZE * 3 + 17];
+        let mut source = payload.as_slice();
+        let mut target = Vec::new();
+        let mut checkpoints = Vec::new();
+
+        let transferred = copy_in_chunks(&mut source, &mut target, |total| {
+            checkpoints.push(total);
+        })
+        .await
+        .expect("copy succeeds");
+
+        assert_eq!(transferred, payload.len() as u64);
+        assert_eq!(target, payload);
+        assert_eq!(checkpoints.len(), 4);
+        assert!(
+            checkpoints
+                .windows(2)
+                .all(|pair| pair[1] - pair[0] <= TRANSFER_CHUNK_SIZE as u64),
+            "no transfer step may exceed the fixed-size buffer"
+        );
+    }
 }

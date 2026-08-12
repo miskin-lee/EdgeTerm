@@ -78,43 +78,6 @@ gh run watch
 
 Release 默认不做 macOS 公证或 Windows 代码签名，用户安装时可能看到系统安全提示；对外分发前应配置平台签名证书。工作流文件见 [`.github/workflows/release.yml`](.github/workflows/release.yml)。
 
-## 代码结构
-
-```
-src-tauri/src/
-├── lib.rs           Tauri 应用装配与命令注册
-├── commands.rs      所有 IPC 命令
-├── model.rs         跨 IPC 的数据类型
-├── store.rs         会话配置持久化
-├── fs_local.rs      本地文件浏览
-└── session/
-    ├── mod.rs       会话管理器、命令通道、输出泵
-    ├── local.rs     伪终端
-    ├── ssh.rs       SSH 连接、认证、会话循环、SFTP
-    └── serial.rs    串口
-
-src/
-├── App.tsx          整体布局、事件订阅、快捷键
-├── actions.ts       会话打开流程
-├── store.ts         zustand 状态
-├── terminal.ts      xterm 封装 + 侧栏渲染
-├── api.ts           IPC 封装
-└── components/      各面板与控件
-```
-
-### 几个设计要点
-
-**每个会话一个所有者任务。** 会话的 I/O 句柄（pty、SSH channel、串口）永远只被一个线程或 task 持有，外部通过 `mpsc` 发命令进去，输出以 Tauri 事件发出来。这样避免了在 `Send`/`Sync` 上和这些本质上非线程安全的句柄较劲。
-
-**输出用 base64 传输。** 终端字节流里的多字节 UTF-8 序列会被读操作从中间切开，转成字符串会损坏数据。字节原样送到前端交给 xterm.js 解码。
-
-**会话 id 由前端生成。** 前端先建好 xterm 实例再发起连接，否则 SSH 登录横幅这类在 `open_session` 返回之前就产生的输出会丢失。
-
-**侧栏是原生 DOM，不走 React。** 输出滚动时它每帧都要更新，用 React state 会把整棵树重渲染。行高从 `.xterm-screen` 的高度除以行数得到，这个值缓存起来，逐帧同步时不再读取布局。
-
 ## 已知限制
 
-- SFTP 传输目前是整文件读入内存，超大文件不适合。
-- 已选择保存的密码和密钥口令会写入权限为 0600 的本地 `credentials.json`，方便重启后直接连接；它不具备系统凭据库的硬件级保护，对本机明文凭据存储有更高安全要求时请改用 ssh-agent / 无口令公钥认证。
-- 主机密钥策略为 `accept-new`：首次连接自动记入 `~/.ssh/known_hosts`，密钥变更则拒绝连接。
 - 尚未实现：端口转发 / 隧道、会话录制回放、多标签分屏。
