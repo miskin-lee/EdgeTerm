@@ -372,6 +372,9 @@ async fn run_sftp(sftp: Arc<SftpSession>, request: SftpRequest) -> Result<SftpRe
             download_file(&sftp, &remote, &local, &progress).await?;
             Ok(SftpResponse::Done)
         }
+        SftpRequest::DownloadDirectory { .. } => Err(AppError::new(
+            "recursive folder download is only available for FTP sessions",
+        )),
         SftpRequest::Upload {
             local,
             remote,

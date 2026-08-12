@@ -1,9 +1,9 @@
 {
   "name": "edgeterm",
   "private": true,
-  "version": "0.1.4",
+  "version": "0.1.5",
   "type": "module",
-  "description": "A WindTerm-inspired terminal, SSH and serial client built with Rust + Tauri",
+  "description": "A WindTerm-inspired terminal, SSH, FTP and serial client built with Rust + Tauri",
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build",

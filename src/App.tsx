@@ -12,7 +12,7 @@ import { UpdateDialog } from "./components/UpdateDialog";
 import { FilerPanel } from "./components/panels/FilerPanel";
 import { SenderPanel } from "./components/panels/SenderPanel";
 import { SessionPanel } from "./components/panels/SessionPanel";
-import { useStore, type PanelName } from "./store";
+import { useActiveTab, useStore, type PanelName } from "./store";
 import { getController } from "./terminalRegistry";
 import type { SessionProfile, SessionState } from "./types";
 import { useUpdater } from "./updater";
@@ -35,6 +35,8 @@ export default function App() {
   const setActive = useStore((s) => s.setActive);
   const closeTab = useStore((s) => s.closeTab);
   const applyState = useStore((s) => s.applyState);
+  const activeTab = useActiveTab();
+  const ftpMode = activeTab?.info.kind === "ftp";
 
   const [dialog, setDialog] = useState<{ profile: SessionProfile | null } | null>(
     null,
@@ -115,13 +117,18 @@ export default function App() {
       } else if (key === "w" && activeId) {
         event.preventDefault();
         void closeTab(activeId);
-      } else if (key === "f") {
+      } else if (key === "f" && !ftpMode) {
         event.preventDefault();
         setSearchOpen(true);
-      } else if (key === "k" && activeId) {
+      } else if (key === "k" && activeId && !ftpMode) {
         event.preventDefault();
         getController(activeId)?.clear();
-      } else if (key === "g" && event.ctrlKey && !event.metaKey) {
+      } else if (
+        key === "g" &&
+        event.ctrlKey &&
+        !event.metaKey &&
+        !ftpMode
+      ) {
         event.preventDefault();
         gotoLine();
       } else if (/^[1-9]$/.test(event.key)) {
@@ -139,6 +146,7 @@ export default function App() {
     activeId,
     closeTab,
     gotoLine,
+    ftpMode,
     newSession,
     setActive,
     togglePanel,
@@ -146,7 +154,7 @@ export default function App() {
 
   // --- layout ---------------------------------------------------------------
 
-  const showLeft = panels.filer;
+  const showLeft = panels.filer && !ftpMode;
   const showRight = panels.sessions;
 
   return (
@@ -155,8 +163,12 @@ export default function App() {
 
       <MenuBar
         onNewSession={newSession}
-        onFind={() => setSearchOpen(true)}
-        onGotoLine={gotoLine}
+        onFind={() => {
+          if (!ftpMode) setSearchOpen(true);
+        }}
+        onGotoLine={() => {
+          if (!ftpMode) gotoLine();
+        }}
         onCheckForUpdates={() => void updater.checkForUpdates()}
         onAbout={() => setAboutOpen(true)}
       />
@@ -281,12 +293,13 @@ export default function App() {
                 EdgeTerm{updater.appVersion ? ` ${updater.appVersion}` : ""}
               </strong>
               <span>
-                A WindTerm-inspired terminal, SSH and serial client built with
-                Rust + Tauri.
+                A WindTerm-inspired terminal, SSH, FTP and serial client built
+                with Rust + Tauri.
               </span>
               <span style={{ color: "var(--fg-faint)" }}>
-                Local shell via portable-pty · SSH and SFTP via russh · serial
-                via serialport · terminal rendering by xterm.js
+                Local shell via portable-pty · SSH and SFTP via russh · FTP via
+                SuppaFTP · serial via serialport · terminal rendering by
+                xterm.js
               </span>
             </div>
             <div className="dialog-footer">

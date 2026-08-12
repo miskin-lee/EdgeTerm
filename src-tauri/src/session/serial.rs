@@ -17,13 +17,15 @@ pub fn list_ports() -> Result<Vec<SerialPortDesc>> {
             let (kind, description) = match &p.port_type {
                 SerialPortType::UsbPort(info) => (
                     "usb",
-                    Some(format!(
-                        "{} {}",
-                        info.manufacturer.clone().unwrap_or_default(),
-                        info.product.clone().unwrap_or_default()
-                    )
-                    .trim()
-                    .to_string()),
+                    Some(
+                        format!(
+                            "{} {}",
+                            info.manufacturer.clone().unwrap_or_default(),
+                            info.product.clone().unwrap_or_default()
+                        )
+                        .trim()
+                        .to_string(),
+                    ),
                 ),
                 SerialPortType::BluetoothPort => ("bluetooth", None),
                 SerialPortType::PciPort => ("pci", None),

@@ -1,4 +1,4 @@
-export type SessionKind = "local" | "ssh" | "serial";
+export type SessionKind = "local" | "ssh" | "ftp" | "serial";
 export type AuthKind = "password" | "publicKey" | "agent";
 
 export interface SessionProfile {
@@ -6,13 +6,12 @@ export interface SessionProfile {
   name: string;
   kind: SessionKind;
   color?: string | null;
-  group?: string | null;
 
   // local
   shell?: string | null;
   cwd?: string | null;
 
-  // ssh
+  // ssh / ftp
   host?: string | null;
   port?: number | null;
   username?: string | null;
@@ -38,7 +37,7 @@ export interface SessionInfo {
   protocol: string;
   address: string;
   color: string | null;
-  supportsSftp: boolean;
+  supportsRemoteFiles: boolean;
 }
 
 export interface FileEntry {

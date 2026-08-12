@@ -27,10 +27,7 @@ pub fn list(path: &str) -> Result<DirListing> {
             Ok(m) => m,
             Err(_) => continue,
         };
-        let symlink = entry
-            .file_type()
-            .map(|t| t.is_symlink())
-            .unwrap_or(false);
+        let symlink = entry.file_type().map(|t| t.is_symlink()).unwrap_or(false);
         entries.push(FileEntry {
             path: entry.path().to_string_lossy().into_owned(),
             name,
@@ -56,6 +53,27 @@ pub fn parent_of(path: &str) -> String {
         .parent()
         .map(|p| p.to_string_lossy().into_owned())
         .unwrap_or_else(|| path.to_string())
+}
+
+pub fn mkdir(path: &str) -> Result<()> {
+    std::fs::create_dir(path)?;
+    Ok(())
+}
+
+pub fn rename(from: &str, to: &str) -> Result<()> {
+    std::fs::rename(from, to)?;
+    Ok(())
+}
+
+pub fn remove(path: &str, is_dir: bool) -> Result<()> {
+    if is_dir {
+        // Deliberately non-recursive: a mistaken click must never erase a
+        // directory tree from the local machine.
+        std::fs::remove_dir(path)?;
+    } else {
+        std::fs::remove_file(path)?;
+    }
+    Ok(())
 }
 
 fn modified_secs(meta: &std::fs::Metadata) -> Option<i64> {

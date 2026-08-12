@@ -5,6 +5,7 @@ use serde::{Deserialize, Serialize};
 pub enum SessionKind {
     Local,
     Ssh,
+    Ftp,
     Serial,
 }
 
@@ -34,8 +35,6 @@ pub struct SessionProfile {
     /// Tab / tree dot colour, as a CSS colour string.
     #[serde(default)]
     pub color: Option<String>,
-    #[serde(default)]
-    pub group: Option<String>,
 
     // --- local ---
     #[serde(default)]
@@ -43,7 +42,7 @@ pub struct SessionProfile {
     #[serde(default)]
     pub cwd: Option<String>,
 
-    // --- ssh ---
+    // --- ssh / ftp ---
     #[serde(default)]
     pub host: Option<String>,
     #[serde(default)]
@@ -89,6 +88,11 @@ impl SessionProfile {
                 self.host.as_deref().unwrap_or("localhost"),
                 self.port.unwrap_or(22)
             ),
+            SessionKind::Ftp => format!(
+                "{}:{}",
+                self.host.as_deref().unwrap_or("localhost"),
+                self.port.unwrap_or(21)
+            ),
             SessionKind::Serial => format!(
                 "{}@{}",
                 self.port_name.as_deref().unwrap_or("-"),
@@ -101,6 +105,7 @@ impl SessionProfile {
         match self.kind {
             SessionKind::Local => "shell",
             SessionKind::Ssh => "ssh",
+            SessionKind::Ftp => "ftp",
             SessionKind::Serial => "serial",
         }
     }
@@ -118,7 +123,7 @@ pub struct SessionInfo {
     pub address: String,
     pub color: Option<String>,
     /// Whether the Filer pane can browse this session's remote filesystem.
-    pub supports_sftp: bool,
+    pub supports_remote_files: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

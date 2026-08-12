@@ -30,16 +30,24 @@ export function StatusBar() {
           <span className="status-item">
             {tab.info.kind === "local" ? "Local Mode" : "Remote Mode"}
           </span>
-          <span className="status-item">
-            Window {tab.rows}×{tab.cols}
-          </span>
-          <span className="status-item">
-            Ln {tab.cursorLine} Ch {tab.cursorColumn}
-          </span>
+          {tab.info.kind === "ftp" ? (
+            <span className="status-item">Dual-pane file transfer</span>
+          ) : (
+            <>
+              <span className="status-item">
+                Window {tab.rows}×{tab.cols}
+              </span>
+              <span className="status-item">
+                Ln {tab.cursorLine} Ch {tab.cursorColumn}
+              </span>
+            </>
+          )}
           <span className="status-item">{tab.info.protocol}</span>
         </>
       )}
-      <span className="status-item">gutter: {gutterMode}</span>
+      {tab?.info.kind !== "ftp" && (
+        <span className="status-item">gutter: {gutterMode}</span>
+      )}
       <span className="status-item">{stamp}</span>
     </div>
   );

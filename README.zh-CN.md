@@ -2,7 +2,7 @@
 
 [English](README.md) | [简体中文](README.zh-CN.md)
 
-一个仿照 [WindTerm](https://github.com/kingToolbox/WindTerm) 的终端 / SSH / 串口客户端，用 **Rust + Tauri v2** 构建，前端为 React + xterm.js。
+一个仿照 [WindTerm](https://github.com/kingToolbox/WindTerm) 的终端 / SSH / FTP / 串口客户端，用 **Rust + Tauri v2** 构建，前端为 React + xterm.js。
 
 整个 SSH 栈是纯 Rust 的（russh），不依赖 libssh2、OpenSSL 或 pkg-config，因此在任何装了 Rust 工具链的机器上都能直接编译。
 
@@ -14,15 +14,19 @@
 | --- | --- | --- |
 | 本地 Shell | `portable-pty` | 真正的伪终端，支持窗口尺寸同步 |
 | SSH | `russh` + `russh-sftp` | 密码 / 公钥 / ssh-agent 认证，SFTP 复用同一条连接 |
+| FTP | `suppaftp` | 密码或匿名认证，被动模式浏览，自动识别 UTF-8 / GBK 文件名并进行文件及文件夹流式下载 |
 | 串口 | `serialport` | 波特率、数据位、停止位、校验、流控可配 |
 
-SSH 密码和私钥口令保存在应用配置目录下仅当前系统用户可读的 `credentials.json` 中，不会返回给前端，也不会写入 `sessions.json`。因此重启 EdgeTerm 后可直接连接已保存的会话，不会触发 macOS Keychain 的电脑密码授权框。
+SSH / FTP 密码和 SSH 私钥口令保存在应用配置目录下仅当前系统用户可读的 `credentials.json` 中，不会返回给前端，也不会写入 `sessions.json`。因此重启 EdgeTerm 后可直接连接已保存的会话，不会触发 macOS Keychain 的电脑密码授权框。
+
+标准 FTP 不加密凭据和文件内容，只应在可信网络中使用；需要传输安全时请使用 SSH / SFTP。
 
 **界面**（对应 WindTerm 的布局）
 
 - **时间戳 + 行号侧栏** —— WindTerm 最有辨识度的特性，每一行输出都带 `[HH:MM:SS.SSS]` 与累计行号，光标行高亮。可在 `Session` 菜单下切换四种显示模式。
 - **丰富色彩渲染** —— 支持 ANSI 16 色、256 色和 24-bit 真彩，并为无 ANSI 样式的日志、网络地址、路径、Git diff、HTTP、JSON 等内容补充语义着色。
-- **Filer**（左侧）：文件浏览器。SSH 会话下自动切到 SFTP，可上传 / 下载 / 新建目录 / 删除；其他会话下浏览本地文件系统
+- **Filer**（左侧）：文件浏览器。SSH 会话下自动切到 SFTP，可上传 / 下载 / 新建目录 / 删除；其他终端会话下浏览本地文件系统
+- **FTP 工作区**：FTP 会话使用独立的双栏文件管理器，左侧为 FTP 服务器，右侧为本机，支持双向流式传输，以及新建、重命名和非递归删除
 - **Session**（右侧）：保存的连接配置，按分组折叠，双击连接
 - **Sender**（底部）：批量发送。支持文本 / 十六进制、按行 / 按字符、重复次数、发送间隔、目标为当前会话或全部会话
 - 标签页、地址栏（`ssh › host:port`）、状态栏（窗口尺寸、光标 Ln/Ch、协议）
@@ -73,7 +77,7 @@ TAURI_SIGNING_PRIVATE_KEY_PASSWORD="$(security find-generic-password \
   npm run tauri build
 ```
 
-要求：Rust 1.77+、Node 20.19+（推荐 Node 22 LTS）。macOS 需要 Xcode Command Line Tools。
+要求：Rust 1.80.1+、Node 20.19+（推荐 Node 22 LTS）。macOS 需要 Xcode Command Line Tools。
 
 ## 手动发布
 

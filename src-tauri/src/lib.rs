@@ -43,10 +43,14 @@ pub fn run() {
             commands::sftp_remove,
             commands::sftp_rename,
             commands::sftp_download,
+            commands::ftp_download_directory,
             commands::sftp_upload,
             commands::local_home,
             commands::local_list,
             commands::local_parent,
+            commands::local_mkdir,
+            commands::local_rename,
+            commands::local_remove,
             commands::list_serial_ports,
         ])
         .run(tauri::generate_context!())

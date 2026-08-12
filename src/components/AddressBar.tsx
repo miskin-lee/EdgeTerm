@@ -48,7 +48,7 @@ export function AddressBar({ searchOpen, onSearchOpenChange }: Props) {
         {tab.state}
       </span>
 
-      {searchOpen && (
+      {searchOpen && tab.info.kind !== "ftp" && (
         <div className="address-search">
           <input
             ref={inputRef}

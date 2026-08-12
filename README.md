@@ -2,7 +2,7 @@
 
 [English](README.md) | [简体中文](README.zh-CN.md)
 
-A terminal, SSH, and serial client inspired by [WindTerm](https://github.com/kingToolbox/WindTerm), built with **Rust + Tauri v2** and a React + xterm.js frontend.
+A terminal, SSH, FTP, and serial client inspired by [WindTerm](https://github.com/kingToolbox/WindTerm), built with **Rust + Tauri v2** and a React + xterm.js frontend.
 
 The entire SSH stack is written in pure Rust using `russh`. It does not depend on libssh2, OpenSSL, or pkg-config, so it can be compiled directly on any machine with a Rust toolchain installed.
 
@@ -14,15 +14,19 @@ The entire SSH stack is written in pure Rust using `russh`. It does not depend o
 | --- | --- | --- |
 | Local shell | `portable-pty` | A real pseudoterminal with synchronized window resizing |
 | SSH | `russh` + `russh-sftp` | Password, public-key, and ssh-agent authentication; SFTP reuses the same connection |
+| FTP | `suppaftp` | Password or anonymous authentication; passive-mode browsing, UTF-8/GBK filename decoding, and streaming file/folder downloads |
 | Serial | `serialport` | Configurable baud rate, data bits, stop bits, parity, and flow control |
 
-SSH passwords and private-key passphrases are stored in `credentials.json` in the application configuration directory, readable only by the current system user. They are never returned to the frontend or written to `sessions.json`. As a result, saved sessions can reconnect after EdgeTerm restarts without triggering the macOS Keychain system-password authorization dialog.
+SSH/FTP passwords and SSH private-key passphrases are stored in `credentials.json` in the application configuration directory, readable only by the current system user. They are never returned to the frontend or written to `sessions.json`. As a result, saved sessions can reconnect after EdgeTerm restarts without triggering the macOS Keychain system-password authorization dialog.
+
+Standard FTP does not encrypt credentials or file contents. Use FTP only on a trusted network; use SSH/SFTP when transport security is required.
 
 **Interface** (based on the WindTerm layout)
 
 - **Timestamp and line-number gutter** — WindTerm's most recognizable feature. Every output line includes `[HH:MM:SS.SSS]` and a cumulative line number, with the cursor line highlighted. Four display modes are available from the `Session` menu.
 - **Rich color rendering** — Supports ANSI 16-color, 256-color, and 24-bit true color, with additional semantic highlighting for unstyled logs, network addresses, paths, Git diffs, HTTP, JSON, and more.
-- **Filer** (left): a file browser that automatically switches to SFTP for SSH sessions, with upload, download, create-directory, and delete operations. Other session types browse the local filesystem.
+- **Filer** (left): a file browser that automatically switches to SFTP for SSH sessions, with upload, download, create-directory, and delete operations. Other terminal sessions browse the local filesystem.
+- **FTP workspace**: FTP sessions open a dedicated dual-pane file manager, with the FTP server on the left and the local computer on the right. It supports two-way streaming transfers plus create, rename, and non-recursive delete operations.
 - **Session** (right): saved connection profiles organized into collapsible groups; double-click to connect.
 - **Sender** (bottom): batch sending with text or hexadecimal input, line-by-line or character-by-character modes, repeat counts, configurable intervals, and targeting of the current session or all sessions.
 - Tabs, an address bar (`ssh › host:port`), and a status bar showing the terminal dimensions, cursor Ln/Ch, and protocol.
@@ -73,7 +77,7 @@ TAURI_SIGNING_PRIVATE_KEY_PASSWORD="$(security find-generic-password \
   npm run tauri build
 ```
 
-Requirements: Rust 1.77+ and Node 20.19+ (Node 22 LTS recommended). macOS also requires the Xcode Command Line Tools.
+Requirements: Rust 1.80.1+ and Node 20.19+ (Node 22 LTS recommended). macOS also requires the Xcode Command Line Tools.
 
 ## Manual releases
 

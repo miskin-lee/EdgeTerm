@@ -9,8 +9,14 @@ export const LOCAL_SHELL_PROFILE: SessionProfile = {
   name: "Local Shell",
   kind: "local",
   color: "#3fb950",
-  group: "Shell sessions",
 };
+
+const SESSION_GROUPS = [
+  { kind: "ssh", label: "SSH Sessions" },
+  { kind: "ftp", label: "FTP Sessions" },
+  { kind: "serial", label: "Serial Sessions" },
+  { kind: "local", label: "Shell Sessions" },
+] as const;
 
 interface Props {
   onEditProfile: (profile: SessionProfile) => void;
@@ -28,14 +34,10 @@ export function SessionPanel({ onEditProfile, onNewSession }: Props) {
     const all = [LOCAL_SHELL_PROFILE, ...profiles].filter(
       (p) => !needle || p.name.toLowerCase().includes(needle),
     );
-    const byGroup = new Map<string, SessionProfile[]>();
-    for (const profile of all) {
-      const key = profile.group?.trim() || "Sessions";
-      const bucket = byGroup.get(key);
-      if (bucket) bucket.push(profile);
-      else byGroup.set(key, [profile]);
-    }
-    return [...byGroup.entries()].sort(([a], [b]) => a.localeCompare(b));
+    return SESSION_GROUPS.map(
+      ({ kind, label }) =>
+        [label, all.filter((profile) => profile.kind === kind)] as const,
+    );
   }, [profiles, filter]);
 
   return (
@@ -86,6 +88,8 @@ export function SessionPanel({ onEditProfile, onNewSession }: Props) {
                   title={
                     profile.kind === "ssh"
                       ? `${profile.username ?? ""}@${profile.host ?? ""}:${profile.port ?? 22}`
+                      : profile.kind === "ftp"
+                        ? `${profile.username || "anonymous"}@${profile.host ?? ""}:${profile.port ?? 21}`
                       : profile.kind === "serial"
                         ? `${profile.portName ?? ""} @ ${profile.baudRate ?? 115200}`
                         : (profile.shell ?? "default shell")

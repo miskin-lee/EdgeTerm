@@ -25,6 +25,9 @@ function pendingSessionInfo(
   if (profile.kind === "ssh") {
     protocol = "ssh";
     address = `${profile.host || "localhost"}:${profile.port ?? 22}`;
+  } else if (profile.kind === "ftp") {
+    protocol = "ftp";
+    address = `${profile.host || "localhost"}:${profile.port ?? 21}`;
   } else if (profile.kind === "serial") {
     protocol = "serial";
     address = `${profile.portName || "-"}@${profile.baudRate ?? 115_200}`;
@@ -41,7 +44,7 @@ function pendingSessionInfo(
     protocol,
     address,
     color: profile.color ?? null,
-    supportsSftp: profile.kind === "ssh",
+    supportsRemoteFiles: profile.kind === "ssh" || profile.kind === "ftp",
   };
 }
 
@@ -82,7 +85,7 @@ export async function openSession(
   store.setStatus(`Connecting to ${label}…`);
   store.setError(null);
   store.addTab(pendingSessionInfo(id, profile), "connecting");
-  ensureController(id);
+  if (profile.kind !== "ftp") ensureController(id);
 
   try {
     const info = await api.openSession(profile, id);
@@ -102,7 +105,9 @@ export async function openSession(
 
     // The pane was fitted while the backend was still connecting, so its
     // first resize command could not be delivered. Re-send the current size.
-    void api.resizeSession(id, tab.cols, tab.rows).catch(() => undefined);
+    if (info.kind !== "ftp") {
+      void api.resizeSession(id, tab.cols, tab.rows).catch(() => undefined);
+    }
     return id;
   } catch (e) {
     const message = String(e);

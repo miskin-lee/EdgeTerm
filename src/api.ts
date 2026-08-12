@@ -88,6 +88,22 @@ export const sftpDownload = (
   });
 };
 
+export const ftpDownloadDirectory = (
+  id: string,
+  remote: string,
+  local: string,
+  onProgress: (progress: TransferProgress) => void,
+) => {
+  const progress = new Channel<TransferProgress>();
+  progress.onmessage = onProgress;
+  return invoke<void>("ftp_download_directory", {
+    id,
+    remote,
+    local,
+    onProgress: progress,
+  });
+};
+
 export const sftpUpload = (
   id: string,
   local: string,
@@ -113,6 +129,15 @@ export const localList = (path: string) =>
 
 export const localParent = (path: string) =>
   invoke<string>("local_parent", { path });
+
+export const localMkdir = (path: string) =>
+  invoke<void>("local_mkdir", { path });
+
+export const localRename = (from: string, to: string) =>
+  invoke<void>("local_rename", { from, to });
+
+export const localRemove = (path: string, isDir: boolean) =>
+  invoke<void>("local_remove", { path, isDir });
 
 // --- serial -----------------------------------------------------------------
 

@@ -33,7 +33,7 @@
     "targets": "all",
     "createUpdaterArtifacts": true,
     "category": "DeveloperTool",
-    "shortDescription": "WindTerm-inspired terminal, SSH and serial client",
+    "shortDescription": "WindTerm-inspired terminal, SSH, FTP and serial client",
     "macOS": {
       "signingIdentity": "-"
     },

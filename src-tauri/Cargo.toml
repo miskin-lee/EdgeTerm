@@ -1,7 +1,7 @@
 [package]
 name = "edgeterm"
-version = "0.1.4"
-description = "EdgeTerm - a WindTerm-inspired terminal, SSH and serial client"
+version = "0.1.5"
+description = "EdgeTerm - a WindTerm-inspired terminal, SSH, FTP and serial client"
 authors = ["EdgeTerm contributors"]
 edition = "2021"
 
@@ -29,6 +29,11 @@ tokio = { version = "1", features = ["rt-multi-thread", "sync", "macros", "io-ut
 # to avoid pulling in a cmake-driven C build.
 russh = { version = "0.62", default-features = false, features = ["ring", "flate2", "rsa"] }
 russh-sftp = "2.4"
+# Keep the FTP control connection on its dedicated blocking owner thread. This
+# 6.2.1 reads legacy LIST output as raw bytes before lossy decoding, which is
+# required for FTP servers that expose non-UTF-8 filenames.
+suppaftp = "=6.2.1"
+encoding_rs = "0.8"
 
 portable-pty = "0.9"
 serialport = "4"

@@ -4,9 +4,7 @@ use tokio::sync::mpsc;
 
 use crate::error::{err, AppError, Result};
 use crate::fs_local;
-use crate::model::{
-    DirListing, SerialPortDesc, SessionInfo, SessionKind, SessionProfile,
-};
+use crate::model::{DirListing, SerialPortDesc, SessionInfo, SessionKind, SessionProfile};
 use crate::session::{
     self, SessionCommand, SessionHandle, SessionManager, SftpRequest, SftpResponse,
     TransferProgress,
@@ -26,10 +24,7 @@ pub fn list_profiles(state: State<'_, AppState>) -> Vec<SessionProfile> {
 }
 
 #[tauri::command]
-pub fn save_profile(
-    state: State<'_, AppState>,
-    profile: SessionProfile,
-) -> Result<SessionProfile> {
+pub fn save_profile(state: State<'_, AppState>, profile: SessionProfile) -> Result<SessionProfile> {
     state.store.save(profile)
 }
 
@@ -69,6 +64,13 @@ pub async fn open_session(
     let info = session::make_info(&id, &profile);
 
     match profile.kind {
+        SessionKind::Ftp => {
+            let connect_profile = profile.clone();
+            let conn = tokio::task::spawn_blocking(move || session::ftp::connect(&connect_profile))
+                .await
+                .map_err(|e| AppError::new(format!("ftp connection task failed: {e}")))??;
+            session::ftp::spawn(app.clone(), id.clone(), conn, rx)?;
+        }
         SessionKind::Local => session::local::spawn(app.clone(), id.clone(), &profile, rx)?,
         SessionKind::Serial => session::serial::spawn(app.clone(), id.clone(), &profile, rx)?,
         SessionKind::Ssh => {
@@ -107,22 +109,13 @@ pub fn write_session(state: State<'_, AppState>, id: String, data: String) -> Re
 
 /// Raw bytes, base64-encoded. Used by the Sender pane's hex mode.
 #[tauri::command]
-pub fn write_session_binary(
-    state: State<'_, AppState>,
-    id: String,
-    data: String,
-) -> Result<()> {
+pub fn write_session_binary(state: State<'_, AppState>, id: String, data: String) -> Result<()> {
     let bytes = B64.decode(data).map_err(err)?;
     state.sessions.send(&id, SessionCommand::Write(bytes))
 }
 
 #[tauri::command]
-pub fn resize_session(
-    state: State<'_, AppState>,
-    id: String,
-    cols: u16,
-    rows: u16,
-) -> Result<()> {
+pub fn resize_session(state: State<'_, AppState>, id: String, cols: u16, rows: u16) -> Result<()> {
     state
         .sessions
         .send(&id, SessionCommand::Resize { cols, rows })
@@ -136,11 +129,7 @@ pub async fn sftp_home(state: State<'_, AppState>, id: String) -> Result<String>
 }
 
 #[tauri::command]
-pub async fn sftp_list(
-    state: State<'_, AppState>,
-    id: String,
-    path: String,
-) -> Result<DirListing> {
+pub async fn sftp_list(state: State<'_, AppState>, id: String, path: String) -> Result<DirListing> {
     expect_listing(state.sessions.sftp(&id, SftpRequest::List { path }).await?)
 }
 
@@ -161,7 +150,10 @@ pub async fn sftp_canonicalize(
 
 #[tauri::command]
 pub async fn sftp_mkdir(state: State<'_, AppState>, id: String, path: String) -> Result<()> {
-    state.sessions.sftp(&id, SftpRequest::Mkdir { path }).await?;
+    state
+        .sessions
+        .sftp(&id, SftpRequest::Mkdir { path })
+        .await?;
     Ok(())
 }
 
@@ -216,6 +208,28 @@ pub async fn sftp_download(
 }
 
 #[tauri::command]
+pub async fn ftp_download_directory(
+    state: State<'_, AppState>,
+    id: String,
+    remote: String,
+    local: String,
+    on_progress: Channel<TransferProgress>,
+) -> Result<()> {
+    state
+        .sessions
+        .sftp(
+            &id,
+            SftpRequest::DownloadDirectory {
+                remote,
+                local,
+                progress: on_progress,
+            },
+        )
+        .await?;
+    Ok(())
+}
+
+#[tauri::command]
 pub async fn sftp_upload(
     state: State<'_, AppState>,
     id: String,
@@ -252,6 +266,21 @@ pub fn local_list(path: String) -> Result<DirListing> {
 #[tauri::command]
 pub fn local_parent(path: String) -> String {
     fs_local::parent_of(&path)
+}
+
+#[tauri::command]
+pub fn local_mkdir(path: String) -> Result<()> {
+    fs_local::mkdir(&path)
+}
+
+#[tauri::command]
+pub fn local_rename(from: String, to: String) -> Result<()> {
+    fs_local::rename(&from, &to)
+}
+
+#[tauri::command]
+pub fn local_remove(path: String, is_dir: bool) -> Result<()> {
+    fs_local::remove(&path, is_dir)
 }
 
 // --- serial -----------------------------------------------------------------

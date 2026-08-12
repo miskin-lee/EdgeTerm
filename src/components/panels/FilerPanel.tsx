@@ -22,8 +22,12 @@ interface TransferRateSample {
 
 export function FilerPanel() {
   const tab = useActiveTab();
-  const remote = Boolean(tab?.info.supportsSftp && tab?.state === "connected");
-  // Null for every non-SFTP session, so switching between local tabs does not
+  const remote = Boolean(
+    tab?.info.kind === "ssh" &&
+      tab.info.supportsRemoteFiles &&
+      tab.state === "connected",
+  );
+  // Null for every session without remote files, so switching between local tabs does not
   // count as a source change and reset where the user was browsing.
   const remoteId = remote ? (tab?.info.id ?? null) : null;
 
@@ -349,7 +353,9 @@ export function FilerPanel() {
         <div className="panel-title">
           <span className="panel-dot" style={{ background: "#39c5cf" }} />
           Filer
-          <span className="row-meta">{remote ? "sftp" : "local"}</span>
+          <span className="row-meta">
+            {remote ? tab?.info.protocol : "local"}
+          </span>
         </div>
       </div>
 
@@ -441,7 +447,7 @@ export function FilerPanel() {
         className={`panel-body filer-list${dragOverList ? " is-drag-over" : ""}`}
         aria-label={
           remote
-            ? "SFTP file list. Drop files here to upload."
+            ? `${tab?.info.protocol.toUpperCase()} file list. Drop files here to upload.`
             : "Local file list"
         }
       >

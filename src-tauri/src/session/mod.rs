@@ -1,3 +1,4 @@
+pub mod ftp;
 pub mod local;
 pub mod serial;
 pub mod ssh;
@@ -18,12 +19,29 @@ pub const EVENT_STATE: &str = "session:state";
 
 pub enum SftpRequest {
     Home,
-    List { path: String },
-    Canonicalize { path: String },
-    Mkdir { path: String },
-    Remove { path: String, is_dir: bool },
-    Rename { from: String, to: String },
+    List {
+        path: String,
+    },
+    Canonicalize {
+        path: String,
+    },
+    Mkdir {
+        path: String,
+    },
+    Remove {
+        path: String,
+        is_dir: bool,
+    },
+    Rename {
+        from: String,
+        to: String,
+    },
     Download {
+        remote: String,
+        local: String,
+        progress: Channel<TransferProgress>,
+    },
+    DownloadDirectory {
         remote: String,
         local: String,
         progress: Channel<TransferProgress>,
@@ -237,6 +255,6 @@ pub fn make_info(id: &str, profile: &SessionProfile) -> SessionInfo {
         protocol: profile.protocol().to_string(),
         address: profile.address(),
         color: profile.color.clone(),
-        supports_sftp: profile.kind == SessionKind::Ssh,
+        supports_remote_files: matches!(profile.kind, SessionKind::Ssh | SessionKind::Ftp),
     }
 }

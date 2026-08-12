@@ -104,8 +104,16 @@ export function SenderPanel() {
   };
 
   const targets = (): string[] => {
-    if (target === "all") return tabs.map((tab) => tab.info.id);
-    return activeId ? [activeId] : [];
+    if (target === "all") {
+      return tabs
+        .filter((tab) => tab.info.kind !== "ftp")
+        .map((tab) => tab.info.id);
+    }
+    return tabs.some(
+      (tab) => tab.info.id === activeId && tab.info.kind !== "ftp",
+    ) && activeId
+      ? [activeId]
+      : [];
   };
 
   const saveCommand = () => {

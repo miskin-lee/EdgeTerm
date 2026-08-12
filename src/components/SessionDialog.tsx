@@ -68,6 +68,7 @@ export function SessionDialog({ initial, onClose }: Props) {
 
   const defaultName = () => {
     if (profile.kind === "ssh") return profile.host ?? "ssh";
+    if (profile.kind === "ftp") return profile.host ?? "ftp";
     if (profile.kind === "serial") return profile.portName ?? "serial";
     return "shell";
   };
@@ -161,7 +162,7 @@ export function SessionDialog({ initial, onClose }: Props) {
               <div className="session-field is-wide">
                 <span className="session-field-label">Protocol</span>
                 <div className="kind-picker">
-                  {(["ssh", "local", "serial"] as SessionKind[]).map((kind) => (
+                  {(["ssh", "ftp", "local", "serial"] as SessionKind[]).map((kind) => (
                     <button
                       key={kind}
                       className={`kind-option${profile.kind === kind ? " is-active" : ""}`}
@@ -169,12 +170,22 @@ export function SessionDialog({ initial, onClose }: Props) {
                         patch({
                           kind,
                           port:
-                            kind === "ssh" ? (profile.port ?? 22) : profile.port,
+                            kind === "ssh"
+                              ? profile.kind === "ssh"
+                                ? (profile.port ?? 22)
+                                : 22
+                              : kind === "ftp"
+                                ? profile.kind === "ftp"
+                                  ? (profile.port ?? 21)
+                                  : 21
+                                : profile.port,
                         })
                       }
                     >
                       {kind === "ssh"
                         ? "SSH"
+                        : kind === "ftp"
+                          ? "FTP"
                         : kind === "local"
                           ? "Shell"
                           : "Serial"}
@@ -190,16 +201,6 @@ export function SessionDialog({ initial, onClose }: Props) {
                   value={profile.name}
                   placeholder={defaultName()}
                   onChange={(event) => patch({ name: event.target.value })}
-                />
-              </label>
-
-              <label className="session-field">
-                <span className="session-field-label">Group</span>
-                <input
-                  {...RAW_TEXT_INPUT}
-                  value={profile.group ?? ""}
-                  placeholder="Sessions"
-                  onChange={(event) => patch({ group: event.target.value })}
                 />
               </label>
             </div>
@@ -301,6 +302,65 @@ export function SessionDialog({ initial, onClose }: Props) {
                     </label>
                   </>
                 )}
+              </div>
+            </section>
+          )}
+
+          {profile.kind === "ftp" && (
+            <section className="session-section">
+              <div className="session-section-heading">
+                <span>FTP connection</span>
+                <small>Passive mode · unencrypted</small>
+              </div>
+              <div className="session-form-grid">
+                <label className="session-field">
+                  <span className="session-field-label">Host</span>
+                  <input
+                    {...RAW_TEXT_INPUT}
+                    value={profile.host ?? ""}
+                    placeholder="ftp.example.com"
+                    onChange={(event) => patch({ host: event.target.value })}
+                  />
+                </label>
+
+                <label className="session-field">
+                  <span className="session-field-label">Port</span>
+                  <input
+                    type="number"
+                    min={1}
+                    max={65535}
+                    value={profile.port ?? 21}
+                    onChange={(event) =>
+                      patch({ port: Number(event.target.value) || 21 })
+                    }
+                  />
+                </label>
+
+                <label className="session-field">
+                  <span className="session-field-label">Username</span>
+                  <input
+                    {...RAW_TEXT_INPUT}
+                    value={profile.username ?? ""}
+                    placeholder="anonymous"
+                    onChange={(event) => patch({ username: event.target.value })}
+                  />
+                </label>
+
+                <label className="session-field">
+                  <span className="session-field-label">Password</span>
+                  <input
+                    {...RAW_TEXT_INPUT}
+                    type="password"
+                    value={profile.password ?? ""}
+                    placeholder="Optional for anonymous FTP"
+                    onChange={(event) => patch({ password: event.target.value })}
+                  />
+                </label>
+
+                <small className="session-field-hint is-wide">
+                  Standard FTP sends credentials and file contents without
+                  encryption. Use it only on a trusted network.
+                </small>
               </div>
             </section>
           )}

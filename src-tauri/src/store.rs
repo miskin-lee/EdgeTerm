@@ -20,7 +20,7 @@ struct StoredSecrets {
     passphrase: Option<String>,
 }
 
-/// Session profiles and remembered SSH credentials, persisted as two files in
+/// Session profiles and remembered SSH/FTP credentials, persisted as two files in
 /// the application config directory.
 ///
 /// `sessions.json` never contains credentials and is safe to return to the UI.
@@ -84,10 +84,14 @@ impl Store {
         let profile = self.profiles.lock().iter().find(|p| p.id == id).cloned();
         Ok(profile.map(|mut profile| {
             if let Some(stored) = self.credentials.lock().get(id) {
-                match profile.auth.unwrap_or_default() {
-                    AuthKind::Password => profile.password = stored.password.clone(),
-                    AuthKind::PublicKey => profile.passphrase = stored.passphrase.clone(),
-                    AuthKind::Agent => {}
+                if profile.kind == SessionKind::Ftp {
+                    profile.password = stored.password.clone();
+                } else {
+                    match profile.auth.unwrap_or_default() {
+                        AuthKind::Password => profile.password = stored.password.clone(),
+                        AuthKind::PublicKey => profile.passphrase = stored.passphrase.clone(),
+                        AuthKind::Agent => {}
+                    }
                 }
             }
             profile
@@ -135,12 +139,23 @@ impl Store {
     }
 }
 
-fn sync_secrets(
-    profile: &SessionProfile,
-    credentials: &mut HashMap<String, StoredSecrets>,
-) {
-    if profile.kind != SessionKind::Ssh || profile.auth == Some(AuthKind::Agent) {
+fn sync_secrets(profile: &SessionProfile, credentials: &mut HashMap<String, StoredSecrets>) {
+    if !matches!(profile.kind, SessionKind::Ssh | SessionKind::Ftp)
+        || (profile.kind == SessionKind::Ssh && profile.auth == Some(AuthKind::Agent))
+    {
         credentials.remove(&profile.id);
+        return;
+    }
+
+    if profile.kind == SessionKind::Ftp {
+        let stored = credentials.entry(profile.id.clone()).or_default();
+        stored.passphrase = None;
+        if let Some(password) = &profile.password {
+            stored.password = (!password.is_empty()).then(|| password.clone());
+        }
+        if stored.password.is_none() {
+            credentials.remove(&profile.id);
+        }
         return;
     }
 

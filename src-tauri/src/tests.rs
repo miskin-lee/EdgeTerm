@@ -6,10 +6,7 @@ use crate::session::{join_remote, sort_entries};
 use crate::store::Store;
 
 fn temp_dir(tag: &str) -> PathBuf {
-    let dir = std::env::temp_dir().join(format!(
-        "edgeterm-test-{tag}-{}",
-        uuid::Uuid::new_v4()
-    ));
+    let dir = std::env::temp_dir().join(format!("edgeterm-test-{tag}-{}", uuid::Uuid::new_v4()));
     std::fs::create_dir_all(&dir).expect("create temp dir");
     dir
 }
@@ -20,7 +17,6 @@ fn profile(kind: SessionKind) -> SessionProfile {
         name: "test".into(),
         kind,
         color: None,
-        group: None,
         shell: None,
         cwd: None,
         host: None,
@@ -55,9 +51,15 @@ fn entry(name: &str, is_dir: bool) -> FileEntry {
 
 #[test]
 fn join_remote_builds_absolute_paths() {
-    assert_eq!(join_remote("/home/lijian", "notes.txt"), "/home/lijian/notes.txt");
+    assert_eq!(
+        join_remote("/home/lijian", "notes.txt"),
+        "/home/lijian/notes.txt"
+    );
     // A trailing slash must not produce a doubled separator.
-    assert_eq!(join_remote("/home/lijian/", "notes.txt"), "/home/lijian/notes.txt");
+    assert_eq!(
+        join_remote("/home/lijian/", "notes.txt"),
+        "/home/lijian/notes.txt"
+    );
     assert_eq!(join_remote("/", "etc"), "/etc");
     assert_eq!(join_remote("", "etc"), "/etc");
     // An already-absolute name wins over the base.
@@ -89,6 +91,13 @@ fn profile_renders_its_address_per_protocol() {
     // Port defaults to 22 when unset.
     ssh.port = None;
     assert_eq!(ssh.address(), "serverx:22");
+
+    let mut ftp = profile(SessionKind::Ftp);
+    ftp.host = Some("files.example.com".into());
+    assert_eq!(ftp.protocol(), "ftp");
+    assert_eq!(ftp.address(), "files.example.com:21");
+    ftp.port = Some(2121);
+    assert_eq!(ftp.address(), "files.example.com:2121");
 
     let mut serial = profile(SessionKind::Serial);
     serial.port_name = Some("/dev/tty.usbserial".into());
@@ -160,13 +169,22 @@ fn store_persists_secrets_separately_for_restart_reconnects() {
     let saved_key = store.save(key_profile).expect("save passphrase");
 
     let raw = std::fs::read_to_string(&path).expect("read profiles");
-    assert!(!raw.contains("hunter2"), "password must not reach sessions.json");
+    assert!(
+        !raw.contains("hunter2"),
+        "password must not reach sessions.json"
+    );
     assert!(
         !raw.contains("open-sesame"),
         "passphrase must not reach sessions.json"
     );
-    assert!(saved_password.password.is_none(), "returned profile is redacted");
-    assert!(saved_key.passphrase.is_none(), "returned profile is redacted");
+    assert!(
+        saved_password.password.is_none(),
+        "returned profile is redacted"
+    );
+    assert!(
+        saved_key.passphrase.is_none(),
+        "returned profile is redacted"
+    );
 
     // Saving an edit made from the redacted profile list must keep the existing
     // credential instead of accidentally clearing it.
@@ -192,8 +210,39 @@ fn store_persists_secrets_separately_for_restart_reconnects() {
         Some("open-sesame".into())
     );
 
-    reloaded.delete(&saved_password.id).expect("delete password");
+    reloaded
+        .delete(&saved_password.id)
+        .expect("delete password");
     reloaded.delete(&saved_key.id).expect("delete passphrase");
+
+    std::fs::remove_dir_all(&dir).ok();
+}
+
+#[test]
+fn store_persists_ftp_password_separately() {
+    let dir = temp_dir("ftp-secrets");
+    let path = dir.join("sessions.json");
+    let store = Store::load_from(path.clone());
+
+    let mut ftp = profile(SessionKind::Ftp);
+    ftp.name = "file-server".into();
+    ftp.host = Some("ftp.example.com".into());
+    ftp.username = Some("uploader".into());
+    ftp.password = Some("ftp-secret".into());
+    let saved = store.save(ftp).expect("save ftp profile");
+
+    let raw = std::fs::read_to_string(&path).expect("read profiles");
+    assert!(!raw.contains("ftp-secret"));
+    assert!(saved.password.is_none());
+
+    let reloaded = Store::load_from(path);
+    assert_eq!(
+        reloaded
+            .get(&saved.id)
+            .expect("read ftp password")
+            .and_then(|profile| profile.password),
+        Some("ftp-secret".into())
+    );
 
     std::fs::remove_dir_all(&dir).ok();
 }
@@ -241,4 +290,25 @@ fn local_parent_walks_up_one_level() {
     assert_eq!(fs_local::parent_of("/home/lijian/notes"), "/home/lijian");
     // The root has no parent to walk to.
     assert_eq!(fs_local::parent_of("/"), "/");
+}
+
+#[test]
+fn local_file_operations_are_non_recursive() {
+    let dir = temp_dir("local-operations");
+    let folder = dir.join("folder");
+    fs_local::mkdir(folder.to_str().unwrap()).expect("create folder");
+
+    let original = folder.join("original.txt");
+    let renamed = folder.join("renamed.txt");
+    std::fs::write(&original, b"data").unwrap();
+    fs_local::rename(original.to_str().unwrap(), renamed.to_str().unwrap()).expect("rename file");
+
+    assert!(
+        fs_local::remove(folder.to_str().unwrap(), true).is_err(),
+        "non-empty directories must never be removed recursively"
+    );
+    fs_local::remove(renamed.to_str().unwrap(), false).expect("remove file");
+    fs_local::remove(folder.to_str().unwrap(), true).expect("remove empty folder");
+
+    std::fs::remove_dir_all(&dir).ok();
 }
