@@ -1,9 +1,23 @@
 import { open as openDialog, save as saveDialog } from "@tauri-apps/plugin-dialog";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import * as api from "../../api";
 import { useActiveTab } from "../../store";
 import type { FileEntry } from "../../types";
+
+interface TransferState {
+  kind: "upload" | "download";
+  name: string;
+  transferred: number;
+  total: number;
+  bytesPerSecond: number;
+  status: "running" | "complete" | "error";
+}
+
+interface TransferRateSample {
+  time: number;
+  transferred: number;
+}
 
 export function FilerPanel() {
   const tab = useActiveTab();
@@ -19,6 +33,91 @@ export function FilerPanel() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [newFolder, setNewFolder] = useState<string | null>(null);
+  const [transfer, setTransfer] = useState<TransferState | null>(null);
+  const transferClearTimer = useRef<number | null>(null);
+  const transferRateSamples = useRef<TransferRateSample[]>([]);
+
+  const beginTransfer = (kind: TransferState["kind"], name: string) => {
+    if (transferClearTimer.current !== null) {
+      window.clearTimeout(transferClearTimer.current);
+      transferClearTimer.current = null;
+    }
+    setTransfer({
+      kind,
+      name,
+      transferred: 0,
+      total: 0,
+      bytesPerSecond: 0,
+      status: "running",
+    });
+    transferRateSamples.current = [
+      { time: performance.now(), transferred: 0 },
+    ];
+  };
+
+  const updateTransferProgress = (progress: api.TransferProgress) => {
+    const now = performance.now();
+    const samples = transferRateSamples.current;
+    const latest = samples[samples.length - 1];
+    if (!latest || progress.transferred < latest.transferred) {
+      samples.splice(0, samples.length, {
+        time: now,
+        transferred: progress.transferred,
+      });
+    } else if (
+      progress.transferred !== latest.transferred ||
+      now - latest.time >= 250
+    ) {
+      samples.push({ time: now, transferred: progress.transferred });
+    }
+
+    const cutoff = now - 1000;
+    while (samples.length > 2 && samples[1].time <= cutoff) {
+      samples.shift();
+    }
+    const oldest = samples[0];
+    const elapsedSeconds = oldest ? (now - oldest.time) / 1000 : 0;
+    const bytesPerSecond =
+      oldest && elapsedSeconds > 0
+        ? Math.max(
+            0,
+            (progress.transferred - oldest.transferred) / elapsedSeconds,
+          )
+        : 0;
+
+    setTransfer((current) =>
+      current
+        ? {
+            ...current,
+            transferred: progress.transferred,
+            total: progress.total,
+            bytesPerSecond,
+          }
+        : current,
+    );
+  };
+
+  const finishTransfer = (status: "complete" | "error") => {
+    setTransfer((current) =>
+      current
+        ? {
+            ...current,
+            transferred:
+              status === "complete" && current.total > 0
+                ? current.total
+                : current.transferred,
+            status,
+          }
+        : current,
+    );
+    transferClearTimer.current = window.setTimeout(
+      () => {
+        setTransfer(null);
+        transferClearTimer.current = null;
+      },
+      status === "complete" ? 1800 : 3000,
+    );
+  };
 
   const load = useCallback(
     async (target: string) => {
@@ -58,6 +157,15 @@ export function FilerPanel() {
     };
   }, [remoteId, load]);
 
+  useEffect(
+    () => () => {
+      if (transferClearTimer.current !== null) {
+        window.clearTimeout(transferClearTimer.current);
+      }
+    },
+    [],
+  );
+
   const goUp = async () => {
     if (!path) return;
     const parent = remoteId ? remoteParent(path) : await api.localParent(path);
@@ -75,11 +183,19 @@ export function FilerPanel() {
     const target = await saveDialog({ defaultPath: entry.name });
     if (!target) return;
     setBusy(true);
+    setError(null);
+    beginTransfer("download", entry.name);
     try {
-      await api.sftpDownload(remoteId, entry.path, target);
-      setError(null);
+      await api.sftpDownload(
+        remoteId,
+        entry.path,
+        target,
+        updateTransferProgress,
+      );
+      finishTransfer("complete");
     } catch (e) {
       setError(String(e));
+      finishTransfer("error");
     } finally {
       setBusy(false);
     }
@@ -91,11 +207,20 @@ export function FilerPanel() {
     if (typeof picked !== "string") return;
     const name = picked.split(/[\\/]/).pop() ?? "upload.bin";
     setBusy(true);
+    setError(null);
+    beginTransfer("upload", name);
     try {
-      await api.sftpUpload(remoteId, picked, joinRemote(path, name));
+      await api.sftpUpload(
+        remoteId,
+        picked,
+        joinRemote(path, name),
+        updateTransferProgress,
+      );
+      finishTransfer("complete");
       await load(path);
     } catch (e) {
       setError(String(e));
+      finishTransfer("error");
     } finally {
       setBusy(false);
     }
@@ -127,6 +252,26 @@ export function FilerPanel() {
     }
   };
 
+  const transferPercent = transfer
+    ? transfer.status === "complete"
+      ? 100
+      : transfer.total > 0
+        ? Math.min(
+            100,
+            Math.round((transfer.transferred / transfer.total) * 100),
+          )
+        : null
+    : null;
+  const transferLabel = transfer
+    ? transfer.status === "complete"
+      ? `${transfer.kind === "upload" ? "Upload" : "Download"} complete`
+      : transfer.status === "error"
+        ? `${transfer.kind === "upload" ? "Upload" : "Download"} failed`
+        : transfer.kind === "upload"
+          ? "Uploading"
+          : "Downloading"
+    : "";
+
   return (
     <div className="panel" style={{ flex: 1 }}>
       <div className="panel-header">
@@ -135,48 +280,75 @@ export function FilerPanel() {
           Filer
           <span className="row-meta">{remote ? "sftp" : "local"}</span>
         </div>
+      </div>
+
+      <div
+        className={`filer-toolbar${remote ? " is-remote" : ""}`}
+        role="toolbar"
+        aria-label="File actions"
+      >
         {remote && (
           <>
             <button
-              className="panel-action"
+              className="panel-action filer-action"
               onClick={() => setNewFolder("")}
               title="New folder"
+              aria-label="New folder"
+              disabled={busy}
             >
-              ＋
-            </button>
-            <button className="panel-action" onClick={upload} title="Upload">
-              ↥
+              <FilerActionIcon name="new-folder" />
             </button>
             <button
-              className="panel-action"
+              className="panel-action filer-action"
+              onClick={upload}
+              title="Upload"
+              aria-label="Upload"
+              disabled={busy}
+            >
+              <FilerActionIcon name="upload" />
+            </button>
+            <button
+              className="panel-action filer-action"
               onClick={download}
               title="Download"
-              disabled={!selected}
+              aria-label="Download"
+              disabled={!selected || busy}
             >
-              ↧
-            </button>
-            <button
-              className="panel-action"
-              onClick={removeSelected}
-              title="Delete"
-              disabled={!selected}
-            >
-              🗑
+              <FilerActionIcon name="download" />
             </button>
           </>
         )}
         <button
-          className="panel-action"
+          className="panel-action filer-action"
           onClick={() => void load(path)}
           title="Refresh"
+          aria-label="Refresh"
+          disabled={busy}
         >
-          ⟳
+          <FilerActionIcon name="refresh" />
         </button>
+        {remote && (
+          <button
+            className="panel-action filer-action filer-action-danger"
+            onClick={removeSelected}
+            title="Delete"
+            aria-label="Delete"
+            disabled={!selected || busy}
+          >
+            <FilerActionIcon name="delete" />
+          </button>
+        )}
       </div>
 
       <div className="filer-path">
-        <button className="panel-action" onClick={goUp} title="Parent folder">
-          ↑
+        <button
+          className="panel-action filer-action"
+          onClick={goUp}
+          title="Parent folder"
+          aria-label="Parent folder"
+          disabled={busy}
+        >
+          <FilerActionIcon name="parent-folder" />
         </button>
         <input
           value={draft}
@@ -230,11 +402,124 @@ export function FilerPanel() {
         ))}
       </div>
 
-      <div className="filer-footer">
-        <span>{entries.length} items</span>
-        {busy && <span>working…</span>}
+      <div className={`filer-footer${transfer ? " has-transfer" : ""}`}>
+        {transfer ? (
+          <div
+            className={`filer-transfer is-${transfer.status}`}
+            role="progressbar"
+            aria-label={`${transferLabel}: ${transfer.name}`}
+            aria-valuemin={0}
+            aria-valuemax={100}
+            aria-valuenow={transferPercent ?? undefined}
+            aria-valuetext={
+              transfer.total > 0
+                ? `${formatBytes(transfer.transferred)} of ${formatBytes(transfer.total)} at ${formatBytes(transfer.bytesPerSecond)} per second`
+                : `${formatBytes(transfer.transferred)} at ${formatBytes(transfer.bytesPerSecond)} per second`
+            }
+          >
+            <div className="filer-transfer-label">
+              <span className="filer-transfer-name" title={transfer.name}>
+                {transferLabel}: {transfer.name}
+              </span>
+              <span
+                className="filer-transfer-value"
+              >
+                {transfer.status === "error"
+                  ? "Failed"
+                  : transferPercent === null
+                    ? formatBytes(transfer.transferred)
+                    : `${transferPercent}%`}
+              </span>
+            </div>
+            <div
+              className={`filer-transfer-track${transferPercent === null && transfer.status === "running" ? " is-indeterminate" : ""}`}
+            >
+              <span
+                className="filer-transfer-bar"
+                style={
+                  transferPercent === null
+                    ? undefined
+                    : { width: `${transferPercent}%` }
+                }
+              />
+            </div>
+            <div className="filer-transfer-meta">
+              <span>
+                {formatBytes(transfer.transferred)}
+                {transfer.total > 0 && ` / ${formatBytes(transfer.total)}`}
+              </span>
+              <span title="Transfer speed">
+                {formatBytes(transfer.bytesPerSecond)}/s
+              </span>
+            </div>
+          </div>
+        ) : (
+          <>
+            <span>{entries.length} items</span>
+            {busy && <span>working…</span>}
+          </>
+        )}
       </div>
     </div>
+  );
+}
+
+type FilerActionIconName =
+  | "new-folder"
+  | "upload"
+  | "download"
+  | "delete"
+  | "refresh"
+  | "parent-folder";
+
+function FilerActionIcon({ name }: { name: FilerActionIconName }) {
+  const paths: Record<FilerActionIconName, React.ReactNode> = {
+    "new-folder": (
+      <>
+        <path d="M3.5 6.5h6l2 2h9v9.75a1.75 1.75 0 0 1-1.75 1.75H5.25a1.75 1.75 0 0 1-1.75-1.75V6.5Z" />
+        <path d="M15 11.5v5M12.5 14h5" />
+      </>
+    ),
+    upload: (
+      <>
+        <path d="M12 15V4.5M8 8.5l4-4 4 4" />
+        <path d="M5 14.5v3.75A1.75 1.75 0 0 0 6.75 20h10.5A1.75 1.75 0 0 0 19 18.25V14.5" />
+      </>
+    ),
+    download: (
+      <>
+        <path d="M12 4v10.5M8 10.5l4 4 4-4" />
+        <path d="M5 14.5v3.75A1.75 1.75 0 0 0 6.75 20h10.5A1.75 1.75 0 0 0 19 18.25V14.5" />
+      </>
+    ),
+    delete: (
+      <>
+        <path d="M4.5 7h15M9 7V4.5h6V7M6.5 7l.75 12.5h9.5L17.5 7" />
+        <path d="M10 10.5v5.5M14 10.5v5.5" />
+      </>
+    ),
+    refresh: (
+      <>
+        <path d="M19.25 8A8 8 0 1 0 20 13" />
+        <path d="M19.25 3.5V8h-4.5" />
+      </>
+    ),
+    "parent-folder": <path d="m7 14 5-5 5 5" />,
+  };
+
+  return (
+    <svg
+      className="filer-action-icon"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.8"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      {paths[name]}
+    </svg>
   );
 }
 
@@ -255,4 +540,16 @@ function formatDate(seconds: number | null): string {
   const d = new Date(seconds * 1000);
   const pad = (n: number) => String(n).padStart(2, "0");
   return `${d.getFullYear()}/${pad(d.getMonth() + 1)}/${pad(d.getDate())}`;
+}
+
+function formatBytes(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  const units = ["KB", "MB", "GB", "TB"];
+  let value = bytes / 1024;
+  let unit = units[0];
+  for (let index = 1; index < units.length && value >= 1024; index++) {
+    value /= 1024;
+    unit = units[index];
+  }
+  return `${value >= 10 ? value.toFixed(0) : value.toFixed(1)} ${unit}`;
 }

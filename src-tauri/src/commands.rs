@@ -1,5 +1,5 @@
 use base64::{engine::general_purpose::STANDARD as B64, Engine as _};
-use tauri::{AppHandle, State};
+use tauri::{ipc::Channel, AppHandle, State};
 use tokio::sync::mpsc;
 
 use crate::error::{err, AppError, Result};
@@ -9,6 +9,7 @@ use crate::model::{
 };
 use crate::session::{
     self, SessionCommand, SessionHandle, SessionManager, SftpRequest, SftpResponse,
+    TransferProgress,
 };
 use crate::store::Store;
 
@@ -198,10 +199,18 @@ pub async fn sftp_download(
     id: String,
     remote: String,
     local: String,
+    on_progress: Channel<TransferProgress>,
 ) -> Result<()> {
     state
         .sessions
-        .sftp(&id, SftpRequest::Download { remote, local })
+        .sftp(
+            &id,
+            SftpRequest::Download {
+                remote,
+                local,
+                progress: on_progress,
+            },
+        )
         .await?;
     Ok(())
 }
@@ -212,10 +221,18 @@ pub async fn sftp_upload(
     id: String,
     local: String,
     remote: String,
+    on_progress: Channel<TransferProgress>,
 ) -> Result<()> {
     state
         .sessions
-        .sftp(&id, SftpRequest::Upload { local, remote })
+        .sftp(
+            &id,
+            SftpRequest::Upload {
+                local,
+                remote,
+                progress: on_progress,
+            },
+        )
         .await?;
     Ok(())
 }

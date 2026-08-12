@@ -7,7 +7,7 @@ use std::collections::HashMap;
 use base64::{engine::general_purpose::STANDARD as B64, Engine as _};
 use parking_lot::Mutex;
 use serde::Serialize;
-use tauri::{AppHandle, Emitter};
+use tauri::{ipc::Channel, AppHandle, Emitter};
 use tokio::sync::{mpsc, oneshot};
 
 use crate::error::{AppError, Result};
@@ -16,7 +16,6 @@ use crate::model::{DirListing, FileEntry, SessionInfo, SessionKind, SessionProfi
 pub const EVENT_OUTPUT: &str = "session:output";
 pub const EVENT_STATE: &str = "session:state";
 
-#[derive(Debug)]
 pub enum SftpRequest {
     Home,
     List { path: String },
@@ -24,8 +23,16 @@ pub enum SftpRequest {
     Mkdir { path: String },
     Remove { path: String, is_dir: bool },
     Rename { from: String, to: String },
-    Download { remote: String, local: String },
-    Upload { local: String, remote: String },
+    Download {
+        remote: String,
+        local: String,
+        progress: Channel<TransferProgress>,
+    },
+    Upload {
+        local: String,
+        remote: String,
+        progress: Channel<TransferProgress>,
+    },
 }
 
 #[derive(Debug)]
@@ -33,6 +40,13 @@ pub enum SftpResponse {
     Listing(DirListing),
     Path(String),
     Done,
+}
+
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TransferProgress {
+    pub transferred: u64,
+    pub total: u64,
 }
 
 pub enum SessionCommand {

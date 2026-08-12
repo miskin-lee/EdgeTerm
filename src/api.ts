@@ -1,4 +1,4 @@
-import { invoke } from "@tauri-apps/api/core";
+import { Channel, invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 
 import type {
@@ -18,6 +18,11 @@ export interface StateEvent {
   id: string;
   state: string;
   message: string | null;
+}
+
+export interface TransferProgress {
+  transferred: number;
+  total: number;
 }
 
 // --- profiles ---------------------------------------------------------------
@@ -67,11 +72,37 @@ export const sftpRemove = (id: string, path: string, isDir: boolean) =>
 export const sftpRename = (id: string, from: string, to: string) =>
   invoke<void>("sftp_rename", { id, from, to });
 
-export const sftpDownload = (id: string, remote: string, local: string) =>
-  invoke<void>("sftp_download", { id, remote, local });
+export const sftpDownload = (
+  id: string,
+  remote: string,
+  local: string,
+  onProgress: (progress: TransferProgress) => void,
+) => {
+  const progress = new Channel<TransferProgress>();
+  progress.onmessage = onProgress;
+  return invoke<void>("sftp_download", {
+    id,
+    remote,
+    local,
+    onProgress: progress,
+  });
+};
 
-export const sftpUpload = (id: string, local: string, remote: string) =>
-  invoke<void>("sftp_upload", { id, local, remote });
+export const sftpUpload = (
+  id: string,
+  local: string,
+  remote: string,
+  onProgress: (progress: TransferProgress) => void,
+) => {
+  const progress = new Channel<TransferProgress>();
+  progress.onmessage = onProgress;
+  return invoke<void>("sftp_upload", {
+    id,
+    local,
+    remote,
+    onProgress: progress,
+  });
+};
 
 // --- local filesystem -------------------------------------------------------
 

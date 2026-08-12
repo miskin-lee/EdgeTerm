@@ -1,21 +1,25 @@
 use std::sync::Arc;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use russh::client::{self, Handle, Msg};
 use russh::keys::{PrivateKeyWithHashAlg, PublicKey};
 use russh::{Channel, ChannelMsg};
 use russh_sftp::client::SftpSession;
 use tauri::AppHandle;
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::sync::mpsc::UnboundedReceiver;
 
 use super::{
     emit_state, join_remote, sort_entries, OutputPump, SessionCommand, SftpRequest, SftpResponse,
+    TransferProgress,
 };
 use crate::error::{AppError, Result};
 use crate::model::{AuthKind, DirListing, FileEntry, SessionProfile};
 
 /// How long output may sit in the pump before it is flushed to the UI.
 const FLUSH_INTERVAL: Duration = Duration::from_millis(8);
+const TRANSFER_PROGRESS_INTERVAL: Duration = Duration::from_millis(50);
+const TRANSFER_CHUNK_SIZE: usize = 64 * 1024;
 
 /// Host key policy: trust on first use, refuse on change.
 ///
@@ -331,17 +335,96 @@ async fn run_sftp(sftp: Arc<SftpSession>, request: SftpRequest) -> Result<SftpRe
             sftp.rename(from, to).await?;
             Ok(SftpResponse::Done)
         }
-        SftpRequest::Download { remote, local } => {
-            let data = sftp.read(remote).await?;
-            std::fs::write(&local, data)?;
+        SftpRequest::Download {
+            remote,
+            local,
+            progress,
+        } => {
+            download_file(&sftp, &remote, &local, &progress).await?;
             Ok(SftpResponse::Done)
         }
-        SftpRequest::Upload { local, remote } => {
-            let data = std::fs::read(&local)?;
-            sftp.write(remote, &data).await?;
+        SftpRequest::Upload {
+            local,
+            remote,
+            progress,
+        } => {
+            upload_file(&sftp, &local, &remote, &progress).await?;
             Ok(SftpResponse::Done)
         }
     }
+}
+
+async fn download_file(
+    sftp: &SftpSession,
+    remote: &str,
+    local: &str,
+    progress: &tauri::ipc::Channel<TransferProgress>,
+) -> Result<()> {
+    let total = sftp.metadata(remote).await?.size.unwrap_or(0);
+    let mut source = sftp.open(remote).await?;
+    let mut target = tokio::fs::File::create(local).await?;
+    let mut buffer = vec![0; TRANSFER_CHUNK_SIZE];
+    let mut transferred = 0;
+    let mut last_report = Instant::now();
+
+    report_transfer_progress(progress, transferred, total);
+    loop {
+        let count = source.read(&mut buffer).await?;
+        if count == 0 {
+            break;
+        }
+        target.write_all(&buffer[..count]).await?;
+        transferred += count as u64;
+        if last_report.elapsed() >= TRANSFER_PROGRESS_INTERVAL {
+            report_transfer_progress(progress, transferred, total);
+            last_report = Instant::now();
+        }
+    }
+
+    target.flush().await?;
+    source.close().await?;
+    report_transfer_progress(progress, transferred, total);
+    Ok(())
+}
+
+async fn upload_file(
+    sftp: &SftpSession,
+    local: &str,
+    remote: &str,
+    progress: &tauri::ipc::Channel<TransferProgress>,
+) -> Result<()> {
+    let total = tokio::fs::metadata(local).await?.len();
+    let mut source = tokio::fs::File::open(local).await?;
+    let mut target = sftp.create(remote).await?;
+    let mut buffer = vec![0; TRANSFER_CHUNK_SIZE];
+    let mut transferred = 0;
+    let mut last_report = Instant::now();
+
+    report_transfer_progress(progress, transferred, total);
+    loop {
+        let count = source.read(&mut buffer).await?;
+        if count == 0 {
+            break;
+        }
+        target.write_all(&buffer[..count]).await?;
+        transferred += count as u64;
+        if last_report.elapsed() >= TRANSFER_PROGRESS_INTERVAL {
+            report_transfer_progress(progress, transferred, total);
+            last_report = Instant::now();
+        }
+    }
+
+    target.shutdown().await?;
+    report_transfer_progress(progress, transferred, total);
+    Ok(())
+}
+
+fn report_transfer_progress(
+    progress: &tauri::ipc::Channel<TransferProgress>,
+    transferred: u64,
+    total: u64,
+) {
+    let _ = progress.send(TransferProgress { transferred, total });
 }
 
 fn expand_tilde(path: &str) -> String {

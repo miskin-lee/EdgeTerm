@@ -1072,6 +1072,66 @@ textarea:focus {
 
 /* --- filer ---------------------------------------------------------------- */
 
+.filer-toolbar {
+  flex: 0 0 32px;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  height: 32px;
+  padding: 4px 8px;
+  border-top: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-panel-alt);
+}
+
+.filer-toolbar.is-remote {
+  justify-content: space-between;
+}
+
+.filer-action {
+  display: inline-flex;
+  flex: 0 0 24px;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  color: var(--fg-dim);
+}
+
+.filer-action-icon {
+  display: block;
+  width: 16px;
+  height: 16px;
+  pointer-events: none;
+}
+
+.filer-action:hover:not(:disabled) {
+  color: var(--fg);
+  background: var(--bg-hover);
+}
+
+.filer-action:active:not(:disabled) {
+  color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.filer-action:focus-visible {
+  outline: 1px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.filer-action:disabled {
+  color: var(--fg-faint);
+  cursor: default;
+  opacity: 0.45;
+}
+
+.filer-action-danger:hover:not(:disabled) {
+  color: var(--red);
+  background: rgba(248, 81, 73, 0.12);
+}
+
 .filer-path {
   display: flex;
   align-items: center;
@@ -1114,11 +1174,105 @@ textarea:focus {
 
 .filer-footer {
   display: flex;
+  flex: 0 0 auto;
   align-items: center;
+  justify-content: space-between;
   gap: 10px;
-  height: 24px;
+  min-height: 24px;
   padding: 0 8px;
   border-top: 1px solid var(--border);
   color: var(--fg-faint);
   font-size: 11px;
+}
+
+.filer-footer.has-transfer {
+  display: block;
+  min-height: 59px;
+  padding: 6px 8px 7px;
+  background: var(--bg-panel-alt);
+}
+
+.filer-transfer-label {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.filer-transfer-name {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--fg-dim);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.filer-transfer-value {
+  flex: 0 0 auto;
+  color: var(--fg);
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+.filer-transfer-track {
+  position: relative;
+  height: 5px;
+  margin-top: 7px;
+  overflow: hidden;
+  border-radius: 3px;
+  background: var(--border-strong);
+}
+
+.filer-transfer-bar {
+  display: block;
+  width: 0;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--accent);
+  transition: width 80ms linear;
+}
+
+.filer-transfer-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 4px;
+  color: var(--fg-faint);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+}
+
+.filer-transfer.is-complete .filer-transfer-name,
+.filer-transfer.is-complete .filer-transfer-value {
+  color: var(--green);
+}
+
+.filer-transfer.is-complete .filer-transfer-bar {
+  background: var(--green);
+}
+
+.filer-transfer.is-error .filer-transfer-name,
+.filer-transfer.is-error .filer-transfer-value {
+  color: var(--red);
+}
+
+.filer-transfer.is-error .filer-transfer-bar {
+  background: var(--red);
+}
+
+.filer-transfer-track.is-indeterminate .filer-transfer-bar {
+  width: 35%;
+  animation: filer-transfer-indeterminate 1s ease-in-out infinite;
+}
+
+@keyframes filer-transfer-indeterminate {
+  from {
+    transform: translateX(-110%);
+  }
+
+  to {
+    transform: translateX(300%);
+  }
 }
