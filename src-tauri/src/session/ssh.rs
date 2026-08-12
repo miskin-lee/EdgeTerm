@@ -2,6 +2,7 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use russh::client::{self, Handle, Msg};
+use russh::keys::agent::client::{AgentClient, AgentStream};
 use russh::keys::{PrivateKeyWithHashAlg, PublicKey};
 use russh::{Channel, ChannelMsg};
 use russh_sftp::client::SftpSession;
@@ -161,9 +162,7 @@ async fn authenticate(
 }
 
 async fn authenticate_agent(handle: &mut Handle<Client>, username: &str) -> Result<()> {
-    let mut agent = russh::keys::agent::client::AgentClient::connect_env()
-        .await
-        .map_err(|e| AppError::new(format!("cannot reach the ssh agent: {e}")))?;
+    let mut agent = connect_agent().await?;
     let identities = agent
         .request_identities()
         .await
@@ -194,6 +193,36 @@ async fn authenticate_agent(handle: &mut Handle<Client>, username: &str) -> Resu
     Err(AppError::new(format!(
         "no identity in the ssh agent was accepted for {username}"
     )))
+}
+
+type DynamicAgentClient = AgentClient<Box<dyn AgentStream + Send + Unpin>>;
+
+#[cfg(unix)]
+async fn connect_agent() -> Result<DynamicAgentClient> {
+    AgentClient::connect_env()
+        .await
+        .map(AgentClient::dynamic)
+        .map_err(|e| AppError::new(format!("cannot reach the ssh agent: {e}")))
+}
+
+#[cfg(windows)]
+async fn connect_agent() -> Result<DynamicAgentClient> {
+    // Windows OpenSSH exposes its agent through this named pipe. Respect an
+    // explicit SSH_AUTH_SOCK first so compatible third-party agents can
+    // override it, then fall back to PuTTY's Pageant transport.
+    let pipe =
+        std::env::var_os("SSH_AUTH_SOCK").unwrap_or_else(|| r"\\.\pipe\openssh-ssh-agent".into());
+    let named_pipe_error = match AgentClient::connect_named_pipe(&pipe).await {
+        Ok(agent) => return Ok(agent.dynamic()),
+        Err(error) => error,
+    };
+
+    match AgentClient::connect_pageant().await {
+        Ok(agent) => Ok(agent.dynamic()),
+        Err(pageant_error) => Err(AppError::new(format!(
+            "cannot reach a Windows SSH agent (OpenSSH: {named_pipe_error}; Pageant: {pageant_error})"
+        ))),
+    }
 }
 
 /// Drives one SSH shell session: pumps channel output to the UI and applies
