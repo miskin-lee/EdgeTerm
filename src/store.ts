@@ -34,6 +34,7 @@ interface AppStore {
   updateTabInfo: (id: string, info: SessionInfo) => void;
   closeTab: (id: string) => Promise<void>;
   setActive: (id: string) => void;
+  activateAdjacentTab: (direction: -1 | 1) => void;
 
   applyState: (id: string, state: SessionState, message?: string) => void;
   setSize: (id: string, cols: number, rows: number) => void;
@@ -118,6 +119,16 @@ export const useStore = create<AppStore>((set, get) => ({
 
   setActive(id) {
     set({ activeId: id });
+  },
+
+  activateAdjacentTab(direction) {
+    const { tabs, activeId } = get();
+    if (tabs.length === 0) return;
+
+    const activeIndex = tabs.findIndex((tab) => tab.info.id === activeId);
+    const startIndex = activeIndex === -1 ? (direction > 0 ? -1 : 0) : activeIndex;
+    const nextIndex = (startIndex + direction + tabs.length) % tabs.length;
+    set({ activeId: tabs[nextIndex].info.id });
   },
 
   applyState(id, state, message) {

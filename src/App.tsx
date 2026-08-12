@@ -33,6 +33,7 @@ export default function App() {
   const togglePanel = useStore((s) => s.togglePanel);
   const loadProfiles = useStore((s) => s.loadProfiles);
   const setActive = useStore((s) => s.setActive);
+  const activateAdjacentTab = useStore((s) => s.activateAdjacentTab);
   const closeTab = useStore((s) => s.closeTab);
   const applyState = useStore((s) => s.applyState);
   const activeTab = useActiveTab();
@@ -111,6 +112,18 @@ export default function App() {
         }
       }
 
+      if (
+        event.metaKey &&
+        !event.ctrlKey &&
+        !event.altKey &&
+        !event.shiftKey &&
+        (event.code === "ArrowLeft" || event.code === "ArrowRight")
+      ) {
+        event.preventDefault();
+        activateAdjacentTab(event.code === "ArrowLeft" ? -1 : 1);
+        return;
+      }
+
       if (key === "n") {
         event.preventDefault();
         newSession();
@@ -143,6 +156,7 @@ export default function App() {
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [
+    activateAdjacentTab,
     activeId,
     closeTab,
     gotoLine,

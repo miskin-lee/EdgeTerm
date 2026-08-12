@@ -34,6 +34,7 @@ export function MenuBar(props: Props) {
   const gutterMode = useStore((s) => s.gutterMode);
   const setGutterMode = useStore((s) => s.setGutterMode);
   const closeTab = useStore((s) => s.closeTab);
+  const activateAdjacentTab = useStore((s) => s.activateAdjacentTab);
 
   useEffect(() => {
     if (!open) return;
@@ -59,6 +60,17 @@ export function MenuBar(props: Props) {
       title: "Session",
       entries: [
         { label: "New Session…", shortcut: "⌘N", action: props.onNewSession },
+        "separator",
+        {
+          label: "Previous Session",
+          shortcut: "⌘←",
+          action: () => activateAdjacentTab(-1),
+        },
+        {
+          label: "Next Session",
+          shortcut: "⌘→",
+          action: () => activateAdjacentTab(1),
+        },
         "separator",
         {
           label: "Close Session",
