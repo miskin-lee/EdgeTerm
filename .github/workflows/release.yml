@@ -95,7 +95,10 @@ jobs:
               echo "${TAG_NAME} is already published; bump the application version before releasing again." >&2
               exit 1
             fi
-            gh release edit "$TAG_NAME" --title "$RELEASE_NAME" --notes "$release_notes"
+            gh release edit "$TAG_NAME" \
+              --target "$GITHUB_SHA" \
+              --title "$RELEASE_NAME" \
+              --notes "$release_notes"
           else
             gh release create "$TAG_NAME" \
               --target "$GITHUB_SHA" \
