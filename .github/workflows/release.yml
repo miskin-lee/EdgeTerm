@@ -125,8 +125,6 @@ jobs:
             platform: ubuntu-22.04-arm
           - name: Windows x64
             platform: windows-2022
-          - name: macOS Intel
-            platform: macos-15-intel
           - name: macOS Apple Silicon
             platform: macos-15
 
@@ -206,7 +204,6 @@ jobs:
             linux-x86_64 \
             linux-aarch64 \
             windows-x86_64 \
-            darwin-x86_64 \
             darwin-aarch64; do
             jq -e --arg platform "$platform" --arg prefix "$expected_url_prefix" \
               '.platforms[$platform].url as $url | ($url | type == "string") and ($url | startswith($prefix))' \
