@@ -1,4 +1,7 @@
+import type { CSSProperties } from "react";
+
 import { useStore } from "../store";
+import { colorForSession } from "../types";
 
 interface Props {
   onNewSession: () => void;
@@ -14,6 +17,9 @@ export function TabStrip({ onNewSession }: Props) {
     <div className="tabstrip">
       {tabs.map((tab, index) => {
         const active = tab.info.id === activeId;
+        const sessionColor =
+          tab.info.color ??
+          colorForSession(tab.info.profileId ?? tab.info.name);
         return (
           <div
             key={tab.info.id}
@@ -24,11 +30,12 @@ export function TabStrip({ onNewSession }: Props) {
             ]
               .filter(Boolean)
               .join(" ")}
+            style={{ "--session-color": sessionColor } as CSSProperties}
             onMouseDown={() => setActive(tab.info.id)}
             title={`${tab.info.protocol} · ${tab.info.address} · ${tab.message ?? tab.state}`}
           >
             <span className="tab-index">{index + 1}.</span>
-            <span className="tab-dot" />
+            <span className="tab-dot" aria-hidden="true" />
             <span className="tab-label">{tab.info.name}</span>
             <button
               className="tab-close"

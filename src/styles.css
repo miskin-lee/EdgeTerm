@@ -388,7 +388,7 @@ textarea:focus {
   background: var(--bg-terminal);
   color: var(--fg);
   font-style: normal;
-  box-shadow: inset 0 2px 0 var(--accent);
+  box-shadow: inset 0 2px 0 var(--session-color, var(--accent));
 }
 
 .tab.is-closed .tab-label {
@@ -414,22 +414,11 @@ textarea:focus {
   height: 8px;
   border-radius: 2px;
   flex: 0 0 8px;
-}
-
-.tab.is-connected .tab-dot {
-  background: var(--green);
-}
-
-.tab.is-connecting .tab-dot {
-  background: var(--yellow);
-}
-
-.tab.is-error .tab-dot {
-  background: var(--red);
+  background: var(--session-color, var(--accent));
 }
 
 .tab.is-closed .tab-dot {
-  background: var(--fg-faint);
+  opacity: 0.45;
 }
 
 .tab-label {
@@ -1477,6 +1466,37 @@ textarea:focus {
 
 .session-field-hint.is-wide {
   grid-column: 1 / -1;
+}
+
+.session-color-picker {
+  display: grid;
+  grid-template-columns: repeat(8, 20px);
+  align-items: center;
+  gap: 5px;
+  min-height: 28px;
+}
+
+.session-color-option {
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border: 2px solid transparent;
+  border-radius: 4px;
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.1);
+}
+
+.session-color-option:hover {
+  filter: brightness(1.15);
+}
+
+.session-color-option.is-selected {
+  border-color: var(--fg);
+  box-shadow: 0 0 0 1px var(--bg-terminal);
+}
+
+.session-color-option:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
 }
 
 .serial-port-row {

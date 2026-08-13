@@ -3,7 +3,14 @@ import { useEffect, useState } from "react";
 import { openSession } from "../actions";
 import * as api from "../api";
 import { useStore } from "../store";
-import type { SerialPortDesc, SessionKind, SessionProfile } from "../types";
+import {
+  colorForSession,
+  randomSessionColor,
+  SESSION_COLORS,
+  type SerialPortDesc,
+  type SessionKind,
+  type SessionProfile,
+} from "../types";
 
 interface Props {
   initial: SessionProfile | null;
@@ -51,7 +58,15 @@ function validateProfile(profile: SessionProfile): string | null {
 }
 
 export function SessionDialog({ initial, onClose }: Props) {
-  const [profile, setProfile] = useState<SessionProfile>(initial ?? BLANK);
+  const [profile, setProfile] = useState<SessionProfile>(() =>
+    initial
+      ? {
+          ...initial,
+          color:
+            initial.color ?? colorForSession(initial.id || initial.name),
+        }
+      : { ...BLANK, color: randomSessionColor() },
+  );
   const [ports, setPorts] = useState<SerialPortDesc[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -203,6 +218,28 @@ export function SessionDialog({ initial, onClose }: Props) {
                   onChange={(event) => patch({ name: event.target.value })}
                 />
               </label>
+
+              <div className="session-field">
+                <span className="session-field-label">Color</span>
+                <div
+                  className="session-color-picker"
+                  role="group"
+                  aria-label="Session color"
+                >
+                  {SESSION_COLORS.map((color) => (
+                    <button
+                      key={color}
+                      type="button"
+                      className={`session-color-option${profile.color === color ? " is-selected" : ""}`}
+                      style={{ background: color }}
+                      aria-pressed={profile.color === color}
+                      aria-label={`Use session color ${color}`}
+                      title={color}
+                      onClick={() => patch({ color })}
+                    />
+                  ))}
+                </div>
+              </div>
             </div>
           </section>
 

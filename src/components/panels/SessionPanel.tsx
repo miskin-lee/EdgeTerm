@@ -99,7 +99,8 @@ export function SessionPanel({ onEditProfile, onNewSession }: Props) {
                     className="row-dot"
                     style={{
                       background:
-                        profile.color ?? colorForSession(profile.name),
+                        profile.color ??
+                        colorForSession(profile.id || profile.name),
                     }}
                   />
                   <span className="row-label">{profile.name}</span>

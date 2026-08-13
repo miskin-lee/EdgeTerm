@@ -75,7 +75,19 @@ export const SESSION_COLORS = [
   "#39c5cf",
   "#ff7b72",
   "#a5d6ff",
+  "#f0883e",
+  "#db61a2",
+  "#7ee787",
+  "#6e8cff",
+  "#2db89a",
+  "#f0c36e",
+  "#e56bce",
+  "#d2a8ff",
 ];
+
+export function randomSessionColor(): string {
+  return SESSION_COLORS[Math.floor(Math.random() * SESSION_COLORS.length)];
+}
 
 export function colorForSession(seed: string): string {
   let hash = 0;
