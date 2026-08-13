@@ -160,13 +160,14 @@ export class TerminalController {
       if (event.type !== "keydown") return true;
       const mod = event.metaKey || (event.ctrlKey && event.shiftKey);
       if (mod && event.key.toLowerCase() === "c" && this.term.hasSelection()) {
-        navigator.clipboard.writeText(this.term.getSelection());
+        // Let the browser emit its native copy event. xterm handles that event
+        // and writes the current selection to the clipboard exactly once.
         return false;
       }
       if (mod && event.key.toLowerCase() === "v") {
-        navigator.clipboard.readText().then((text) => {
-          if (text) this.callbacks.onData(text);
-        });
+        // Let the browser emit its native paste event. xterm handles newline
+        // normalization and bracketed paste before forwarding the text through
+        // onData. Reading and forwarding it here as well would paste it twice.
         return false;
       }
       return true;
