@@ -83,6 +83,9 @@ pub enum SessionCommand {
 pub struct SessionHandle {
     pub info: SessionInfo,
     pub tx: mpsc::UnboundedSender<SessionCommand>,
+    /// Serial sessions use a blocking owner thread. Joining it during close
+    /// guarantees that the OS device handle is gone before the command returns.
+    pub owner_thread: Option<std::thread::JoinHandle<()>>,
 }
 
 #[derive(Default)]

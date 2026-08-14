@@ -1,9 +1,10 @@
 use std::io::{Read, Write};
+use std::thread::JoinHandle;
 use std::time::Duration;
 
 use serialport::{DataBits, FlowControl, Parity, SerialPortType, StopBits};
 use tauri::AppHandle;
-use tokio::sync::mpsc::UnboundedReceiver;
+use tokio::sync::mpsc::{error::TryRecvError, UnboundedReceiver};
 
 use super::{emit_state, reject_sftp, OutputPump, SessionCommand};
 use crate::error::{err, AppError, Result};
@@ -44,8 +45,8 @@ pub fn spawn(
     app: AppHandle,
     id: String,
     profile: &SessionProfile,
-    mut rx: UnboundedReceiver<SessionCommand>,
-) -> Result<()> {
+    rx: UnboundedReceiver<SessionCommand>,
+) -> Result<JoinHandle<()>> {
     let port_name = profile
         .port_name
         .clone()
@@ -82,9 +83,6 @@ pub fn spawn(
         .open()
         .map_err(|e| AppError::new(format!("cannot open {port_name}: {e}")))?;
 
-    let mut reader = port.try_clone().map_err(err)?;
-    let mut writer = port;
-
     emit_state(
         &app,
         &id,
@@ -92,54 +90,114 @@ pub fn spawn(
         Some(format!("{port_name} @ {baud}")),
     );
 
-    let reader_app = app.clone();
-    let reader_id = id.clone();
     std::thread::Builder::new()
-        .name(format!("edgeterm-serial-read-{id}"))
+        .name(format!("edgeterm-serial-{id}"))
         .spawn(move || {
-            let mut pump = OutputPump::new(reader_app.clone(), reader_id.clone());
-            let mut buf = vec![0u8; 8192];
-            loop {
-                match reader.read(&mut buf) {
-                    Ok(0) => {
-                        pump.flush();
-                        std::thread::sleep(Duration::from_millis(10));
-                    }
-                    Ok(n) => {
-                        pump.push(&buf[..n]);
-                        pump.flush();
-                    }
-                    Err(e) if e.kind() == std::io::ErrorKind::TimedOut => {
-                        // A read timeout is the idle case, not a failure.
-                        pump.flush();
-                    }
-                    Err(e) if e.kind() == std::io::ErrorKind::Interrupted => continue,
-                    Err(_) => break,
-                }
-            }
+            let mut pump = OutputPump::new(app.clone(), id.clone());
+            run_owner_loop(port, rx, |bytes| {
+                pump.push(bytes);
+                pump.flush();
+            });
             pump.flush();
-            emit_state(&reader_app, &reader_id, "closed", None);
+            emit_state(&app, &id, "closed", None);
         })
-        .map_err(err)?;
+        .map_err(err)
+}
 
-    std::thread::Builder::new()
-        .name(format!("edgeterm-serial-ctl-{id}"))
-        .spawn(move || {
-            while let Some(cmd) = rx.blocking_recv() {
-                match cmd {
-                    SessionCommand::Write(data) => {
-                        if writer.write_all(&data).is_err() || writer.flush().is_err() {
-                            break;
-                        }
-                    }
-                    // A serial line has no window to resize.
-                    SessionCommand::Resize { .. } => {}
-                    SessionCommand::Close => break,
-                    other => reject_sftp(other, SessionKind::Serial),
+/// Owns the serial handle for its entire lifetime. In particular, do not clone
+/// the handle for a separate reader: dropping only the writer would leave the
+/// cloned descriptor open and keep the device busy forever.
+fn run_owner_loop<P, F>(mut port: P, mut rx: UnboundedReceiver<SessionCommand>, mut on_output: F)
+where
+    P: Read + Write,
+    F: FnMut(&[u8]),
+{
+    let mut buf = vec![0u8; 8192];
+    loop {
+        match rx.try_recv() {
+            Ok(SessionCommand::Write(data)) => {
+                if port.write_all(&data).is_err() || port.flush().is_err() {
+                    break;
                 }
             }
-        })
-        .map_err(err)?;
+            // A serial line has no window to resize.
+            Ok(SessionCommand::Resize { .. }) => {}
+            Ok(SessionCommand::Close) | Err(TryRecvError::Disconnected) => break,
+            Ok(other) => reject_sftp(other, SessionKind::Serial),
+            Err(TryRecvError::Empty) => {}
+        }
 
-    Ok(())
+        match port.read(&mut buf) {
+            Ok(0) => std::thread::sleep(Duration::from_millis(10)),
+            Ok(n) => on_output(&buf[..n]),
+            Err(e) if e.kind() == std::io::ErrorKind::TimedOut => {
+                // A read timeout is the idle case and also bounds how long a
+                // queued close command has to wait before it can be handled.
+            }
+            Err(e) if e.kind() == std::io::ErrorKind::Interrupted => continue,
+            Err(_) => break,
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::io;
+    use std::sync::{
+        atomic::{AtomicBool, Ordering},
+        mpsc, Arc,
+    };
+
+    use super::*;
+
+    struct MockPort {
+        dropped: Arc<AtomicBool>,
+        read_started: Option<mpsc::Sender<()>>,
+    }
+
+    impl Read for MockPort {
+        fn read(&mut self, _buf: &mut [u8]) -> io::Result<usize> {
+            if let Some(started) = self.read_started.take() {
+                let _ = started.send(());
+            }
+            std::thread::sleep(Duration::from_millis(10));
+            Err(io::Error::new(io::ErrorKind::TimedOut, "idle"))
+        }
+    }
+
+    impl Write for MockPort {
+        fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+            Ok(buf.len())
+        }
+
+        fn flush(&mut self) -> io::Result<()> {
+            Ok(())
+        }
+    }
+
+    impl Drop for MockPort {
+        fn drop(&mut self) {
+            self.dropped.store(true, Ordering::SeqCst);
+        }
+    }
+
+    #[test]
+    fn close_releases_the_owned_serial_handle() {
+        let dropped = Arc::new(AtomicBool::new(false));
+        let (read_started_tx, read_started_rx) = mpsc::channel();
+        let port = MockPort {
+            dropped: dropped.clone(),
+            read_started: Some(read_started_tx),
+        };
+        let (command_tx, command_rx) = tokio::sync::mpsc::unbounded_channel();
+
+        let owner = std::thread::spawn(move || run_owner_loop(port, command_rx, |_| {}));
+        read_started_rx
+            .recv_timeout(Duration::from_secs(1))
+            .expect("owner should start reading");
+        command_tx.send(SessionCommand::Close).unwrap();
+        owner.join().unwrap();
+
+        assert!(dropped.load(Ordering::SeqCst));
+    }
 }

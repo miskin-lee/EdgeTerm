@@ -63,25 +63,36 @@ pub async fn open_session(
     let (tx, rx) = mpsc::unbounded_channel();
     let info = session::make_info(&id, &profile);
 
-    match profile.kind {
+    let owner_thread = match profile.kind {
         SessionKind::Ftp => {
             let connect_profile = profile.clone();
             let conn = tokio::task::spawn_blocking(move || session::ftp::connect(&connect_profile))
                 .await
                 .map_err(|e| AppError::new(format!("ftp connection task failed: {e}")))??;
             session::ftp::spawn(app.clone(), id.clone(), conn, rx)?;
+            None
         }
-        SessionKind::Local => session::local::spawn(app.clone(), id.clone(), &profile, rx)?,
-        SessionKind::Serial => session::serial::spawn(app.clone(), id.clone(), &profile, rx)?,
+        SessionKind::Local => {
+            session::local::spawn(app.clone(), id.clone(), &profile, rx)?;
+            None
+        }
+        SessionKind::Serial => Some(session::serial::spawn(
+            app.clone(),
+            id.clone(),
+            &profile,
+            rx,
+        )?),
         SessionKind::Ssh => {
             let conn = session::ssh::connect(&profile).await?;
             session::ssh::spawn(app.clone(), id.clone(), conn, rx);
+            None
         }
-    }
+    };
 
     state.sessions.insert(SessionHandle {
         info: info.clone(),
         tx,
+        owner_thread,
     });
     Ok(info)
 }
@@ -90,6 +101,11 @@ pub async fn open_session(
 pub fn close_session(state: State<'_, AppState>, id: String) -> Result<()> {
     if let Some(handle) = state.sessions.remove(&id) {
         let _ = handle.tx.send(SessionCommand::Close);
+        if let Some(owner_thread) = handle.owner_thread {
+            owner_thread.join().map_err(|_| {
+                AppError::new(format!("serial session {id} panicked while closing"))
+            })?;
+        }
     }
     Ok(())
 }
