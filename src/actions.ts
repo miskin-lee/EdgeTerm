@@ -115,7 +115,7 @@ export async function openSession(
     if (failedStore.tabs.some((tab) => tab.info.id === id)) {
       const terminalMessage = message.replace(/[\x00-\x1f\x7f]/g, " ");
       failedStore.applyState(id, "error", message);
-      failedStore.setError(message);
+      failedStore.setError(message, id);
       failedStore.setStatus(`Failed: ${message}`);
       getController(id)?.writeText(
         `\r\n\x1b[31m[connection failed: ${terminalMessage}]\x1b[0m\r\n`,

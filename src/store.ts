@@ -25,6 +25,7 @@ interface AppStore {
   panels: Record<PanelName, boolean>;
   status: string;
   error: string | null;
+  errorSessionId: string | null;
 
   loadProfiles: () => Promise<void>;
   upsertProfile: (profile: SessionProfile) => Promise<SessionProfile>;
@@ -43,7 +44,7 @@ interface AppStore {
   togglePanel: (panel: PanelName) => void;
   setGutterMode: (mode: GutterMode) => void;
   setStatus: (status: string) => void;
-  setError: (error: string | null) => void;
+  setError: (error: string | null, sessionId?: string) => void;
 }
 
 const patchTab = (tabs: Tab[], id: string, patch: Partial<Tab>): Tab[] =>
@@ -61,6 +62,7 @@ export const useStore = create<AppStore>((set, get) => ({
   },
   status: "Ready",
   error: null,
+  errorSessionId: null,
 
   async loadProfiles() {
     set({ profiles: await api.listProfiles() });
@@ -107,13 +109,18 @@ export const useStore = create<AppStore>((set, get) => ({
   async closeTab(id) {
     await api.closeSession(id).catch(() => undefined);
     disposeController(id);
-    const remaining = get().tabs.filter((tab) => tab.info.id !== id);
-    const wasActive = get().activeId === id;
+    const current = get();
+    const remaining = current.tabs.filter((tab) => tab.info.id !== id);
+    const wasActive = current.activeId === id;
+    const clearsSessionError = current.errorSessionId === id;
     set({
       tabs: remaining,
       activeId: wasActive
         ? (remaining[remaining.length - 1]?.info.id ?? null)
-        : get().activeId,
+        : current.activeId,
+      status: clearsSessionError ? "Ready" : current.status,
+      error: clearsSessionError ? null : current.error,
+      errorSessionId: clearsSessionError ? null : current.errorSessionId,
     });
   },
 
@@ -156,8 +163,8 @@ export const useStore = create<AppStore>((set, get) => ({
     set({ status });
   },
 
-  setError(error) {
-    set({ error });
+  setError(error, sessionId) {
+    set({ error, errorSessionId: error ? (sessionId ?? null) : null });
   },
 }));
 
