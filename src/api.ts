@@ -3,6 +3,7 @@ import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 
 import type {
   DirListing,
+  SavedCommand,
   SerialPortDesc,
   SessionInfo,
   SessionProfile,
@@ -34,6 +35,17 @@ export const saveProfile = (profile: SessionProfile) =>
 
 export const deleteProfile = (id: string) =>
   invoke<void>("delete_profile", { id });
+
+// --- sender commands -------------------------------------------------------
+
+export const listSenderCommands = () =>
+  invoke<SavedCommand[]>("list_sender_commands");
+
+export const saveSenderCommand = (command: SavedCommand) =>
+  invoke<SavedCommand>("save_sender_command", { command });
+
+export const deleteSenderCommand = (id: string) =>
+  invoke<void>("delete_sender_command", { id });
 
 // --- sessions ---------------------------------------------------------------
 

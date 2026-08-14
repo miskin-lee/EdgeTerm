@@ -4,7 +4,9 @@ use tokio::sync::mpsc;
 
 use crate::error::{err, AppError, Result};
 use crate::fs_local;
-use crate::model::{DirListing, SerialPortDesc, SessionInfo, SessionKind, SessionProfile};
+use crate::model::{
+    DirListing, SavedCommand, SerialPortDesc, SessionInfo, SessionKind, SessionProfile,
+};
 use crate::session::{
     self, SessionCommand, SessionHandle, SessionManager, SftpRequest, SftpResponse,
     TransferProgress,
@@ -31,6 +33,26 @@ pub fn save_profile(state: State<'_, AppState>, profile: SessionProfile) -> Resu
 #[tauri::command]
 pub fn delete_profile(state: State<'_, AppState>, id: String) -> Result<()> {
     state.store.delete(&id)
+}
+
+// --- sender commands -------------------------------------------------------
+
+#[tauri::command]
+pub fn list_sender_commands(state: State<'_, AppState>) -> Vec<SavedCommand> {
+    state.store.list_sender_commands()
+}
+
+#[tauri::command]
+pub fn save_sender_command(
+    state: State<'_, AppState>,
+    command: SavedCommand,
+) -> Result<SavedCommand> {
+    state.store.save_sender_command(command)
+}
+
+#[tauri::command]
+pub fn delete_sender_command(state: State<'_, AppState>, id: String) -> Result<()> {
+    state.store.delete_sender_command(&id)
 }
 
 // --- sessions ---------------------------------------------------------------

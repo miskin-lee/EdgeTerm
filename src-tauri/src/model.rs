@@ -126,6 +126,33 @@ pub struct SessionInfo {
     pub supports_remote_files: bool,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum SenderFormat {
+    Text,
+    Hex,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum LineEnding {
+    None,
+    Lf,
+    Crlf,
+}
+
+/// A reusable command shown as a tag in the Sender pane.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SavedCommand {
+    #[serde(default)]
+    pub id: String,
+    pub name: String,
+    pub text: String,
+    pub format: SenderFormat,
+    pub ending: LineEnding,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct FileEntry {

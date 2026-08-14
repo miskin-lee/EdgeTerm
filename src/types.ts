@@ -65,6 +65,17 @@ export interface SerialPortDesc {
 
 export type SessionState = "connecting" | "connected" | "closed" | "error";
 
+export type SenderFormat = "text" | "hex";
+export type LineEnding = "none" | "lf" | "crlf";
+
+export interface SavedCommand {
+  id: string;
+  name: string;
+  text: string;
+  format: SenderFormat;
+  ending: LineEnding;
+}
+
 /** Colours used for session dots, mirroring WindTerm's per-session markers. */
 export const SESSION_COLORS = [
   "#4ea1f3",

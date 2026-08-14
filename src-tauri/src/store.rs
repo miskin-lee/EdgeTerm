@@ -5,7 +5,9 @@ use parking_lot::Mutex;
 use serde::{Deserialize, Serialize};
 
 use crate::error::{AppError, Result};
-use crate::model::{AuthKind, SessionKind, SessionProfile};
+use crate::model::{AuthKind, SavedCommand, SessionKind, SessionProfile};
+
+const MAX_SAVED_COMMANDS: usize = 1000;
 
 /// Secrets are kept separately from the public session profiles.  This avoids
 /// returning them to the webview while still allowing a saved session to be
@@ -20,19 +22,22 @@ struct StoredSecrets {
     passphrase: Option<String>,
 }
 
-/// Session profiles and remembered SSH/FTP credentials, persisted as two files in
-/// the application config directory.
+/// Session profiles, remembered SSH/FTP credentials, and Sender commands persisted
+/// in the application config directory.
 ///
 /// `sessions.json` never contains credentials and is safe to return to the UI.
 /// `credentials.json` is readable only by the current OS user and is consulted
 /// solely while opening a saved session.  Keeping credentials app-local avoids
 /// the macOS Keychain authorization dialog that otherwise reappears when an
 /// unsigned development build changes identity between restarts.
+/// `sender_commands.json` keeps reusable Sender tags across restarts and upgrades.
 pub struct Store {
     path: PathBuf,
     credentials_path: PathBuf,
+    sender_commands_path: PathBuf,
     profiles: Mutex<Vec<SessionProfile>>,
     credentials: Mutex<HashMap<String, StoredSecrets>>,
+    sender_commands: Mutex<Vec<SavedCommand>>,
 }
 
 impl Store {
@@ -46,6 +51,8 @@ impl Store {
         // private credential map when loading, then keep the UI copy redacted.
         let mut credentials: HashMap<String, StoredSecrets> =
             read_json(&credentials_path_for(&path)).unwrap_or_default();
+        let sender_commands_path = sender_commands_path_for(&path);
+        let sender_commands = read_json(&sender_commands_path).unwrap_or_default();
         let mut imported_legacy_credentials = false;
         for profile in &mut profiles {
             if profile.password.is_some() || profile.passphrase.is_some() {
@@ -64,9 +71,11 @@ impl Store {
 
         let store = Store {
             credentials_path: credentials_path_for(&path),
+            sender_commands_path,
             path,
             profiles: Mutex::new(profiles),
             credentials: Mutex::new(credentials),
+            sender_commands: Mutex::new(sender_commands),
         };
         if imported_legacy_credentials {
             // Best effort migration. A later explicit save will surface any
@@ -124,6 +133,38 @@ impl Store {
         self.persist()
     }
 
+    pub fn list_sender_commands(&self) -> Vec<SavedCommand> {
+        self.sender_commands.lock().clone()
+    }
+
+    pub fn save_sender_command(&self, mut command: SavedCommand) -> Result<SavedCommand> {
+        if command.id.is_empty() {
+            command.id = uuid::Uuid::new_v4().to_string();
+        }
+
+        {
+            let mut commands = self.sender_commands.lock();
+            if let Some(index) = commands.iter().position(|saved| saved.id == command.id) {
+                commands[index] = command.clone();
+            } else if commands.len() < MAX_SAVED_COMMANDS {
+                commands.push(command.clone());
+            } else {
+                return Err(AppError::new(format!(
+                    "saved command limit is {MAX_SAVED_COMMANDS}"
+                )));
+            }
+        }
+        self.persist_sender_commands()?;
+        Ok(command)
+    }
+
+    pub fn delete_sender_command(&self, id: &str) -> Result<()> {
+        self.sender_commands
+            .lock()
+            .retain(|command| command.id != id);
+        self.persist_sender_commands()
+    }
+
     fn persist(&self) -> Result<()> {
         let parent = self
             .path
@@ -136,6 +177,17 @@ impl Store {
 
         let credentials = serde_json::to_string_pretty(&*self.credentials.lock())?;
         write_owner_only(&self.credentials_path, &credentials)
+    }
+
+    fn persist_sender_commands(&self) -> Result<()> {
+        let parent = self
+            .sender_commands_path
+            .parent()
+            .ok_or_else(|| AppError::new("config directory has no parent"))?;
+        std::fs::create_dir_all(parent)?;
+
+        let commands = serde_json::to_string_pretty(&*self.sender_commands.lock())?;
+        write_owner_only(&self.sender_commands_path, &commands)
     }
 }
 
@@ -189,6 +241,10 @@ fn read_json<T: serde::de::DeserializeOwned>(path: &Path) -> Option<T> {
 
 fn credentials_path_for(path: &Path) -> PathBuf {
     path.with_file_name("credentials.json")
+}
+
+fn sender_commands_path_for(path: &Path) -> PathBuf {
+    path.with_file_name("sender_commands.json")
 }
 
 fn config_path() -> PathBuf {

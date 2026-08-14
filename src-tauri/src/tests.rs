@@ -1,7 +1,9 @@
 use std::path::PathBuf;
 
 use crate::fs_local;
-use crate::model::{AuthKind, FileEntry, SessionKind, SessionProfile};
+use crate::model::{
+    AuthKind, FileEntry, LineEnding, SavedCommand, SenderFormat, SessionKind, SessionProfile,
+};
 use crate::session::{join_remote, sort_entries};
 use crate::store::Store;
 
@@ -150,6 +152,42 @@ fn store_assigns_ids_and_round_trips_profiles() {
 }
 
 #[test]
+fn store_persists_sender_commands_across_restarts() {
+    let dir = temp_dir("sender-commands");
+    let path = dir.join("sessions.json");
+    let store = Store::load_from(path.clone());
+
+    let saved = store
+        .save_sender_command(SavedCommand {
+            id: String::new(),
+            name: "List files".into(),
+            text: "ls -la".into(),
+            format: SenderFormat::Text,
+            ending: LineEnding::Lf,
+        })
+        .expect("save sender command");
+    assert!(!saved.id.is_empty());
+
+    let mut updated = saved.clone();
+    updated.ending = LineEnding::Crlf;
+    store
+        .save_sender_command(updated.clone())
+        .expect("update sender command");
+    assert_eq!(store.list_sender_commands(), vec![updated.clone()]);
+
+    let reloaded = Store::load_from(path);
+    assert_eq!(reloaded.list_sender_commands(), vec![updated]);
+    reloaded
+        .delete_sender_command(&saved.id)
+        .expect("delete sender command");
+    assert!(Store::load_from(dir.join("sessions.json"))
+        .list_sender_commands()
+        .is_empty());
+
+    std::fs::remove_dir_all(&dir).ok();
+}
+
+#[test]
 fn store_persists_secrets_separately_for_restart_reconnects() {
     let dir = temp_dir("secrets");
     let path = dir.join("sessions.json");
@@ -258,8 +296,21 @@ fn store_files_are_owner_readable_only() {
     let mut saved = profile(SessionKind::Ssh);
     saved.password = Some("private".into());
     store.save(saved).expect("save");
+    store
+        .save_sender_command(SavedCommand {
+            id: String::new(),
+            name: "private tag".into(),
+            text: "secret command".into(),
+            format: SenderFormat::Text,
+            ending: LineEnding::Lf,
+        })
+        .expect("save sender command");
 
-    for file in [path, dir.join("credentials.json")] {
+    for file in [
+        path,
+        dir.join("credentials.json"),
+        dir.join("sender_commands.json"),
+    ] {
         let mode = std::fs::metadata(&file).unwrap().permissions().mode();
         assert_eq!(mode & 0o777, 0o600, "{} must be private", file.display());
     }

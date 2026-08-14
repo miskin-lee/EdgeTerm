@@ -2,19 +2,15 @@ import { useEffect, useRef, useState } from "react";
 
 import * as api from "../../api";
 import { useStore } from "../../store";
+import type {
+  LineEnding,
+  SavedCommand,
+  SenderFormat,
+} from "../../types";
 
-type SenderFormat = "text" | "hex";
 type Target = "current" | "all";
-type LineEnding = "none" | "lf" | "crlf";
-type SavedCommand = {
-  id: number;
-  name: string;
-  text: string;
-  format: SenderFormat;
-  ending: LineEnding;
-};
 type CommandContextMenu = {
-  commandId: number;
+  commandId: string;
   x: number;
   y: number;
 };
@@ -37,15 +33,34 @@ export function SenderPanel() {
   const [tagName, setTagName] = useState("");
   const [ending, setEnding] = useState<LineEnding>("lf");
   const [savedCommands, setSavedCommands] = useState<SavedCommand[]>([]);
-  const [selectedCommandId, setSelectedCommandId] = useState<number | null>(null);
+  const [selectedCommandId, setSelectedCommandId] = useState<string | null>(null);
   const [contextMenu, setContextMenu] = useState<CommandContextMenu | null>(null);
   const [commandTooltip, setCommandTooltip] = useState<CommandTooltip | null>(null);
   const [page, setPage] = useState(1);
   const [format, setFormat] = useState<SenderFormat>("text");
   const [target, setTarget] = useState<Target>("current");
   const [running, setRunning] = useState(false);
-  const nextCommandId = useRef(1);
+  const [commandsLoading, setCommandsLoading] = useState(true);
+  const [libraryBusy, setLibraryBusy] = useState(false);
   const tooltipTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    void api
+      .listSenderCommands()
+      .then((commands) => {
+        if (!cancelled) setSavedCommands(commands);
+      })
+      .catch((error) => {
+        if (!cancelled) setStatus(`Sender: failed to load saved commands: ${error}`);
+      })
+      .finally(() => {
+        if (!cancelled) setCommandsLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [setStatus]);
 
   useEffect(() => () => {
     if (tooltipTimer.current) clearTimeout(tooltipTimer.current);
@@ -116,7 +131,8 @@ export function SenderPanel() {
       : [];
   };
 
-  const saveCommand = () => {
+  const saveCommand = async () => {
+    if (commandsLoading || libraryBusy) return;
     if (text.length === 0) {
       setStatus("Sender: enter a command before saving");
       return;
@@ -126,40 +142,69 @@ export function SenderPanel() {
       return;
     }
 
-    const command: SavedCommand = {
-      id: nextCommandId.current++,
+    const newCommand: SavedCommand = {
+      id: "",
       name: tagName.trim() || text,
       text,
       format,
       ending,
     };
     const nextLength = savedCommands.length + 1;
-    setSavedCommands((current) => [...current, command]);
-    setSelectedCommandId(command.id);
-    setPage(Math.ceil(nextLength / COMMANDS_PER_PAGE));
-    setTagName("");
-    setStatus(`Sender: saved command ${nextLength}/${MAX_SAVED_COMMANDS}`);
+    setLibraryBusy(true);
+    try {
+      const saved = await api.saveSenderCommand(newCommand);
+      setSavedCommands((current) => [...current, saved]);
+      setSelectedCommandId(saved.id);
+      setPage(Math.ceil(nextLength / COMMANDS_PER_PAGE));
+      setTagName("");
+      setStatus(`Sender: saved command ${nextLength}/${MAX_SAVED_COMMANDS}`);
+    } catch (error) {
+      setStatus(`Sender: failed to save command: ${error}`);
+    } finally {
+      setLibraryBusy(false);
+    }
   };
 
-  const updateSavedEnding = (id: number, value: LineEnding) => {
-    setSavedCommands((current) =>
-      current.map((command) =>
-        command.id === id ? { ...command, ending: value } : command,
-      ),
-    );
+  const updateSavedEnding = async (id: string, value: LineEnding) => {
+    if (libraryBusy) return;
     setContextMenu(null);
+    const command = savedCommands.find((candidate) => candidate.id === id);
+    if (!command) return;
+
+    setLibraryBusy(true);
+    try {
+      const saved = await api.saveSenderCommand({ ...command, ending: value });
+      setSavedCommands((current) =>
+        current.map((candidate) =>
+          candidate.id === id ? saved : candidate,
+        ),
+      );
+    } catch (error) {
+      setStatus(`Sender: failed to update command: ${error}`);
+    } finally {
+      setLibraryBusy(false);
+    }
   };
 
-  const removeCommand = (id: number) => {
+  const removeCommand = async (id: string) => {
+    if (libraryBusy) return;
     const nextLength = savedCommands.length - 1;
-    setSavedCommands((current) =>
-      current.filter((command) => command.id !== id),
-    );
-    if (selectedCommandId === id) setSelectedCommandId(null);
-    if (contextMenu?.commandId === id) setContextMenu(null);
-    setPage((current) =>
-      Math.min(current, Math.max(1, Math.ceil(nextLength / COMMANDS_PER_PAGE))),
-    );
+    setLibraryBusy(true);
+    try {
+      await api.deleteSenderCommand(id);
+      setSavedCommands((current) =>
+        current.filter((command) => command.id !== id),
+      );
+      if (selectedCommandId === id) setSelectedCommandId(null);
+      if (contextMenu?.commandId === id) setContextMenu(null);
+      setPage((current) =>
+        Math.min(current, Math.max(1, Math.ceil(nextLength / COMMANDS_PER_PAGE))),
+      );
+    } catch (error) {
+      setStatus(`Sender: failed to delete command: ${error}`);
+    } finally {
+      setLibraryBusy(false);
+    }
   };
 
   const sendCommand = async (
@@ -312,8 +357,13 @@ export function SenderPanel() {
         <button
           className="sender-save-btn"
           type="button"
-          disabled={text.length === 0 || savedCommands.length >= MAX_SAVED_COMMANDS}
-          onClick={saveCommand}
+          disabled={
+            commandsLoading ||
+            libraryBusy ||
+            text.length === 0 ||
+            savedCommands.length >= MAX_SAVED_COMMANDS
+          }
+          onClick={() => void saveCommand()}
         >
           Save
         </button>
@@ -344,7 +394,9 @@ export function SenderPanel() {
 
         {pageCommands.length === 0 ? (
           <div className="sender-library-empty">
-            Save a command to add it here.
+            {commandsLoading
+              ? "Loading saved commands…"
+              : "Save a command to add it here."}
           </div>
         ) : (
           <div className="sender-command-tags">
@@ -354,6 +406,7 @@ export function SenderPanel() {
                 key={command.id}
                 onContextMenu={(event) => {
                   event.preventDefault();
+                  if (libraryBusy) return;
                   hideCommandTooltip();
                   setSelectedCommandId(command.id);
                   setContextMenu({
@@ -387,7 +440,8 @@ export function SenderPanel() {
                   className="sender-command-remove"
                   type="button"
                   title="Delete saved command"
-                  onClick={() => removeCommand(command.id)}
+                  disabled={libraryBusy}
+                  onClick={() => void removeCommand(command.id)}
                 >
                   ×
                 </button>
@@ -417,8 +471,9 @@ export function SenderPanel() {
               <button
                 className={command.ending === value ? "is-checked" : ""}
                 type="button"
+                disabled={libraryBusy}
                 key={value}
-                onClick={() => updateSavedEnding(command.id, value)}
+                onClick={() => void updateSavedEnding(command.id, value)}
               >
                 <span>{command.ending === value ? "✓" : ""}</span>
                 {label}
