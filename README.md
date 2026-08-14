@@ -87,7 +87,7 @@ To publish a release, manually trigger **Actions → Release → Run workflow** 
 Before releasing, use the following command to set and commit the version. It synchronizes `package.json`, `package-lock.json`, `Cargo.toml`, and `Cargo.lock`; Tauri installers also read this version directly:
 
 ```bash
-npm run version:set -- 0.2.5
+npm run version:set -- 0.2.6
 ```
 
 Release tags map one-to-one to application versions. For example, version `0.1.1` can only be published as `v0.1.1`. If that tag already points to another commit, the workflow stops and requires a version bump, preventing different builds from being published under the same version number.

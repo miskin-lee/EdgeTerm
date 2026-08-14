@@ -297,8 +297,10 @@ pub fn local_home() -> String {
 }
 
 #[tauri::command]
-pub fn local_list(path: String) -> Result<DirListing> {
-    fs_local::list(&path)
+pub async fn local_list(path: String) -> Result<DirListing> {
+    tokio::task::spawn_blocking(move || fs_local::list(&path))
+        .await
+        .map_err(|error| AppError::new(format!("local listing task failed: {error}")))?
 }
 
 #[tauri::command]

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 
 import * as api from "../api";
 import type { Tab } from "../store";
@@ -55,6 +55,7 @@ export function FtpPane({ tab, active }: Props) {
   const [localSelected, setLocalSelected] = useState<string | null>(null);
   const [localLoading, setLocalLoading] = useState(false);
   const [localError, setLocalError] = useState<string | null>(null);
+  const localRequest = useRef(0);
 
   const [transferring, setTransferring] = useState(false);
   const [transfer, setTransfer] = useState<TransferState | null>(null);
@@ -79,18 +80,21 @@ export function FtpPane({ tab, active }: Props) {
   );
 
   const loadLocal = useCallback(async (target: string) => {
+    const request = ++localRequest.current;
     setLocalLoading(true);
     setLocalError(null);
     try {
       const listing = await api.localList(target);
+      if (request !== localRequest.current) return;
       setLocalPath(listing.path);
       setLocalDraft(listing.path);
       setLocalEntries(listing.entries);
       setLocalSelected(null);
     } catch (error) {
+      if (request !== localRequest.current) return;
       setLocalError(String(error));
     } finally {
-      setLocalLoading(false);
+      if (request === localRequest.current) setLocalLoading(false);
     }
   }, []);
 
