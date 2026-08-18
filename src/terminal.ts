@@ -4,7 +4,13 @@ import { SearchAddon } from "@xterm/addon-search";
 import { Unicode11Addon } from "@xterm/addon-unicode11";
 import { WebLinksAddon } from "@xterm/addon-web-links";
 import { WebglAddon } from "@xterm/addon-webgl";
-import { Terminal } from "@xterm/xterm";
+import {
+  Terminal,
+  type IBufferCell,
+  type IBufferLine,
+  type IDecoration,
+  type IMarker,
+} from "@xterm/xterm";
 
 import { semanticRanges } from "./semanticColors";
 
@@ -59,6 +65,14 @@ interface Callbacks {
   onCursorMove: (line: number, column: number) => void;
 }
 
+interface SemanticRow {
+  /** Tracks the row across scrolling and scrollback trimming. */
+  marker: IMarker;
+  /** The row's text when it was last processed; a change forces a recolor. */
+  text: string;
+  decorations: IDecoration[];
+}
+
 /**
  * Owns one xterm.js instance plus the WindTerm-style gutter that runs down the
  * left edge showing a timestamp and line number for every row.
@@ -83,7 +97,16 @@ export class TerminalController {
 
   private gutterMode: GutterMode = "both";
   private pendingShellClear = false;
-  private pendingSemanticLines = new Set<number>();
+  /**
+   * Semantic coloring is render-driven: only rows in and around the viewport
+   * are colored, on the frame they become visible or change. Keeping the
+   * live marker count near the viewport size (instead of one per scrollback
+   * line) is what keeps write throughput flat — xterm walks every live
+   * marker each time the buffer trims a line.
+   */
+  private semanticRows: SemanticRow[] = [];
+  /** Reused cell for buffer walks, to avoid per-cell allocation. */
+  private workCell: IBufferCell | undefined;
   private disposed = false;
   /**
    * Cached so the per-frame gutter sync never reads layout. Recomputed only on
@@ -132,11 +155,8 @@ export class TerminalController {
     this.term.onWriteParsed(() => {
       if (this.pendingShellClear) {
         this.pendingShellClear = false;
-        this.term.clear();
-        this.resetLineMetadata();
-        return;
+        this.clearBufferAndMetadata();
       }
-      this.applySemanticColors();
     });
 
     this.term.onResize(({ cols, rows }) => {
@@ -146,7 +166,10 @@ export class TerminalController {
     });
 
     this.term.onLineFeed(() => this.recordLine());
-    this.term.onRender(() => this.syncGutter());
+    this.term.onRender(() => {
+      this.refreshSemanticColors();
+      this.syncGutter();
+    });
     this.term.onScroll(() => this.syncGutter());
     this.term.onCursorMove(() => {
       const buf = this.term.buffer.active;
@@ -241,6 +264,15 @@ export class TerminalController {
   }
 
   clear() {
+    this.clearBufferAndMetadata();
+  }
+
+  private clearBufferAndMetadata() {
+    // Dispose our decorations while their markers still hold valid lines.
+    // term.clear()'s own mass marker disposal invalidates the marker first,
+    // which corrupts the decoration service's sorted-by-line lookups whenever
+    // decorated markers die out of line order.
+    this.disposeAllSemanticColors();
     this.term.clear();
     this.resetLineMetadata();
   }
@@ -248,7 +280,6 @@ export class TerminalController {
   private resetLineMetadata() {
     this.lineTimes = [Date.now()];
     this.firstLineNumber = 1;
-    this.pendingSemanticLines.clear();
     this.syncGutter();
   }
 
@@ -275,6 +306,7 @@ export class TerminalController {
     this.host = null;
     this.gutter = null;
     this.rowPool = [];
+    this.semanticRows = [];
   }
 
   // --- internals ------------------------------------------------------------
@@ -296,9 +328,6 @@ export class TerminalController {
     const buf = this.term.buffer.active;
     const index = buf.baseY + buf.cursorY;
     const now = Date.now();
-    if (buf.type === "normal" && index > 0) {
-      this.pendingSemanticLines.add(index - 1);
-    }
     while (this.lineTimes.length <= index) this.lineTimes.push(now);
     this.lineTimes[index] = now;
 
@@ -317,43 +346,185 @@ export class TerminalController {
    * foreground color. Decorations keep the byte stream untouched, so cursor
    * movement, copying and full-screen applications continue to behave normally.
    */
-  private applySemanticColors() {
+  /**
+   * Recolors the viewport after each render. Rows keep their state (marker,
+   * last-seen text, decorations) while they stay near the viewport; a row is
+   * only re-processed when its text changes, so an idle screen costs a few
+   * string compares per frame and a full-speed flood costs one viewport of
+   * regex work per frame instead of per line.
+   */
+  private refreshSemanticColors() {
     const buf = this.term.buffer.active;
-    if (buf.type !== "normal" || this.pendingSemanticLines.size === 0) return;
+    if (buf.type !== "normal" || this.term.rows === 0) return;
+
+    const top = buf.viewportY;
+    const bottom = Math.min(top + this.term.rows - 1, buf.length - 1);
+    // A margin above and below the viewport keeps ordinary scrolling from
+    // dropping and recoloring the same rows frame after frame.
+    const keepFirst = top - this.term.rows;
+    const keepLast = bottom + this.term.rows;
+
+    const byLine = new Map<number, SemanticRow>();
+    for (const state of this.semanticRows) {
+      if (state.marker.isDisposed) continue;
+      const line = state.marker.line;
+      if (line < keepFirst || line > keepLast || byLine.has(line)) {
+        this.disposeSemanticRow(state);
+        continue;
+      }
+      byLine.set(line, state);
+    }
+
+    // The cursor's logical line is still being written (echoed keystrokes,
+    // prompt redraws); it is colored once the cursor has left it.
+    const cursorIndex = buf.baseY + buf.cursorY;
+    let cursorFirst = cursorIndex;
+    while (cursorFirst > 0 && buf.getLine(cursorFirst)?.isWrapped) {
+      cursorFirst -= 1;
+    }
+
+    let row = top;
+    while (row <= bottom) {
+      // The logical line containing `row`: soft-wrapped rows join their
+      // neighbors so tokens split by wrapping are matched whole.
+      let first = row;
+      while (first > 0 && buf.getLine(first)?.isWrapped) first -= 1;
+      let last = row;
+      while (buf.getLine(last + 1)?.isWrapped) last += 1;
+      row = last + 1;
+
+      let changed = false;
+      for (let r = first; r <= last && !changed; r += 1) {
+        const state = byLine.get(r);
+        const text = buf.getLine(r)?.translateToString(true) ?? "";
+        changed = state ? state.text !== text : text.length > 0;
+      }
+      if (!changed) continue;
+
+      for (let r = first; r <= last; r += 1) {
+        const state = byLine.get(r);
+        if (state) {
+          this.disposeSemanticRow(state);
+          byLine.delete(r);
+        }
+      }
+      if (last < cursorFirst || first > cursorIndex) {
+        this.colorLogicalLine(first, last, byLine);
+      }
+    }
+
+    this.semanticRows = [...byLine.values()];
+  }
+
+  /**
+   * Colors one logical line (rows [first..last] joined across soft wraps) and
+   * records one SemanticRow per member row. The text is rebuilt from cells
+   * with a string-index → column map so decorations align across wide (CJK)
+   * glyphs and wrapped rows instead of assuming one column per code unit.
+   */
+  private colorLogicalLine(
+    first: number,
+    last: number,
+    byLine: Map<number, SemanticRow>,
+  ) {
+    const buf = this.term.buffer.active;
+    const work = (this.workCell ??= buf.getNullCell());
+
+    let text = "";
+    const rows: number[] = [];
+    const cols: number[] = [];
+    const widths: number[] = [];
+    for (let row = first; row <= last && text.length <= 4000; row += 1) {
+      const line = buf.getLine(row);
+      if (!line) break;
+      for (let col = 0; col < line.length; ) {
+        const cell = line.getCell(col, work);
+        if (!cell) break;
+        const width = cell.getWidth();
+        if (width === 0) {
+          col += 1;
+          continue;
+        }
+        const chars = cell.getChars() || " ";
+        for (let i = 0; i < chars.length; i += 1) {
+          rows.push(row);
+          cols.push(col);
+          widths.push(width);
+        }
+        text += chars;
+        col += width;
+      }
+    }
+    text = text.replace(/\s+$/, "");
+    // Pathological logical lines (minified assets, base64 blobs) are not
+    // worth the regex cost; their rows are still recorded below so they are
+    // not re-examined every frame.
+    const ranges =
+      text && text.length <= 4000 ? semanticRanges(text) : [];
 
     const cursorIndex = buf.baseY + buf.cursorY;
-    for (const lineIndex of this.pendingSemanticLines) {
-      const line = buf.getLine(lineIndex);
-      const text = line?.translateToString(true) ?? "";
-      // The rules below use JavaScript string offsets as terminal columns.
-      // Restrict them to single-width ASCII so decorations always align.
-      if (!line || !text || !/^[\x20-\x7e]*$/.test(text)) continue;
+    const rowMarkers = new Map<number, IMarker>();
+    const rowDecorations = new Map<number, IDecoration[]>();
 
-      const ranges = semanticRanges(text);
-      if (ranges.length === 0) continue;
-      const marker = this.term.registerMarker(lineIndex - cursorIndex);
-      if (!marker) continue;
+    for (const range of ranges) {
+      // A range that crosses a soft wrap becomes one decoration per row.
+      let start = range.start;
+      while (start < range.end) {
+        const row = rows[start];
+        let end = start;
+        while (end < range.end && rows[end] === row) end += 1;
+        const startCol = cols[start];
+        const endCol = cols[end - 1] + widths[end - 1];
+        start = end;
 
-      for (const range of ranges) {
-        let isUnstyled = true;
-        for (let x = range.start; x < range.end; x += 1) {
-          const cell = line.getCell(x);
-          if (!cell?.isFgDefault() || !cell.isBgDefault()) {
-            isUnstyled = false;
-            break;
-          }
+        const line = buf.getLine(row);
+        if (!line || !isUnstyledSpan(line, startCol, endCol, work)) continue;
+
+        let marker = rowMarkers.get(row);
+        if (!marker) {
+          marker = this.term.registerMarker(row - cursorIndex);
+          if (!marker) continue;
+          rowMarkers.set(row, marker);
         }
-        if (!isUnstyled) continue;
-        this.term.registerDecoration({
+        const decoration = this.term.registerDecoration({
           marker,
-          x: range.start,
-          width: range.end - range.start,
+          x: startCol,
+          width: endCol - startCol,
           foregroundColor: range.color,
           layer: "top",
         });
+        if (!decoration) continue;
+        let list = rowDecorations.get(row);
+        if (!list) rowDecorations.set(row, (list = []));
+        list.push(decoration);
       }
     }
-    this.pendingSemanticLines.clear();
+
+    for (let row = first; row <= last; row += 1) {
+      const rowText = buf.getLine(row)?.translateToString(true) ?? "";
+      const decorations = rowDecorations.get(row) ?? [];
+      // Blank rows carry no state; they are skipped by the change check.
+      if (!rowText && decorations.length === 0) continue;
+      let marker = rowMarkers.get(row);
+      if (!marker) {
+        marker = this.term.registerMarker(row - cursorIndex);
+        if (!marker) continue;
+      }
+      byLine.set(row, { marker, text: rowText, decorations });
+    }
+  }
+
+  private disposeSemanticRow(state: SemanticRow) {
+    if (state.marker.isDisposed) return;
+    // Decorations first: the decoration service unindexes them by the
+    // marker's line, which the marker's own dispose() resets to -1.
+    for (const decoration of state.decorations) decoration.dispose();
+    state.marker.dispose();
+  }
+
+  private disposeAllSemanticColors() {
+    for (const state of this.semanticRows) this.disposeSemanticRow(state);
+    this.semanticRows = [];
   }
 
   /**
@@ -419,6 +590,20 @@ export class TerminalController {
       }
     }
   }
+}
+
+/** Semantic colors must never repaint output that styled itself via ANSI. */
+function isUnstyledSpan(
+  line: IBufferLine,
+  start: number,
+  end: number,
+  work: IBufferCell,
+): boolean {
+  for (let x = start; x < end; x += 1) {
+    const cell = line.getCell(x, work);
+    if (!cell?.isFgDefault() || !cell.isBgDefault()) return false;
+  }
+  return true;
 }
 
 function formatTime(epochMs: number | undefined): string {

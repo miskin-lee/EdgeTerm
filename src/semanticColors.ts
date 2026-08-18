@@ -180,8 +180,10 @@ export function semanticRanges(text: string): SemanticRange[] {
   );
 
   // Filesystem artifacts, permissions and common source/config filenames.
+  // `\p{L}` keeps path segments and filenames whole when they contain CJK or
+  // other non-ASCII letters.
   addCaptureMatches(
-    /(?:^|[\s=(\[{'"])((?:~|\.{1,2})?\/(?:[\w.@%+,:=-]+\/)*[\w.@%+,:=-]+\/?)/g,
+    /(?:^|[\s=(\[{'"])((?:~|\.{1,2})?\/(?:[\w\p{L}.@%+,:=-]+\/)*[\w\p{L}.@%+,:=-]+\/?)/gu,
     1,
     SEMANTIC_COLORS.blue,
   );
@@ -189,8 +191,9 @@ export function semanticRanges(text: string): SemanticRange[] {
     /\b[A-Za-z]:\\(?:[^\\\s]+\\)*[^\\\s]*\b/g,
     SEMANTIC_COLORS.blue,
   );
-  addMatches(
-    /\b[\w@+-][\w.@+-]*\.(?:bash|c|cc|conf|cpp|css|csv|go|h|hpp|html|ini|java|js|json|jsx|lock|log|md|mjs|py|rs|sh|sql|toml|ts|tsx|txt|xml|ya?ml|zsh)\b/gi,
+  addCaptureMatches(
+    /(?:^|[^\w\p{L}])([\w\p{L}@+-][\w\p{L}.@+-]*\.(?:bash|c|cc|conf|cpp|css|csv|go|h|hpp|html|ini|java|js|json|jsx|lock|log|md|mjs|py|rs|sh|sql|toml|ts|tsx|txt|xml|ya?ml|zsh))\b/giu,
+    1,
     SEMANTIC_COLORS.teal,
   );
 
