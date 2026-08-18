@@ -260,6 +260,14 @@ pub fn spawn(
                                 break;
                             }
                         }
+                        Some(SessionCommand::WriteConfirmed { data, reply }) => {
+                            let result = writer.data_bytes(data).await.map_err(AppError::from);
+                            let failed = result.is_err();
+                            let _ = reply.send(result);
+                            if failed {
+                                break;
+                            }
+                        }
                         Some(SessionCommand::Resize { cols, rows }) => {
                             let _ = writer.window_change(cols as u32, rows as u32, 0, 0).await;
                         }

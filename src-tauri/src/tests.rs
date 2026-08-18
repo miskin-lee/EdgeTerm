@@ -1,5 +1,10 @@
 use std::path::PathBuf;
 
+use base64::{engine::general_purpose::STANDARD as B64, Engine as _};
+
+use crate::commands::{
+    zmodem_create_file, zmodem_file_info, zmodem_finish_file, zmodem_read_chunk, zmodem_write_chunk,
+};
 use crate::fs_local;
 use crate::model::{
     AuthKind, FileEntry, LineEnding, SavedCommand, SenderFormat, SessionKind, SessionProfile,
@@ -360,6 +365,55 @@ fn local_file_operations_are_non_recursive() {
     );
     fs_local::remove(renamed.to_str().unwrap(), false).expect("remove file");
     fs_local::remove(folder.to_str().unwrap(), true).expect("remove empty folder");
+
+    std::fs::remove_dir_all(&dir).ok();
+}
+
+#[tokio::test]
+async fn zmodem_file_io_uses_bounded_chunks_and_preserves_offsets() {
+    const CHUNK_SIZE: usize = 1024 * 1024;
+
+    let dir = temp_dir("zmodem-file-io");
+    let path = dir.join("payload.bin");
+    let path_string = path.to_string_lossy().into_owned();
+    zmodem_create_file(path_string.clone())
+        .await
+        .expect("create target");
+
+    let first = vec![0x5a; CHUNK_SIZE];
+    let second = vec![0xa5; 17];
+    zmodem_write_chunk(path_string.clone(), 0, B64.encode(&first))
+        .await
+        .expect("write first chunk");
+    zmodem_write_chunk(path_string.clone(), CHUNK_SIZE as u64, B64.encode(&second))
+        .await
+        .expect("write second chunk");
+    zmodem_finish_file(path_string.clone(), (first.len() + second.len()) as u64)
+        .await
+        .expect("finish target");
+
+    let info = zmodem_file_info(path_string.clone())
+        .await
+        .expect("read metadata");
+    assert_eq!(info.name, "payload.bin");
+    assert_eq!(info.size, (first.len() + second.len()) as u64);
+
+    let encoded = zmodem_read_chunk(path_string.clone(), CHUNK_SIZE as u64, 17)
+        .await
+        .expect("read second chunk");
+    assert_eq!(B64.decode(encoded).unwrap(), second);
+    assert!(
+        zmodem_read_chunk(path_string.clone(), 0, (CHUNK_SIZE + 1) as u32)
+            .await
+            .is_err(),
+        "reads larger than the fixed application chunk must be rejected"
+    );
+    assert!(
+        zmodem_write_chunk(path_string, 0, B64.encode(vec![0; CHUNK_SIZE + 1]))
+            .await
+            .is_err(),
+        "writes larger than the fixed application chunk must be rejected"
+    );
 
     std::fs::remove_dir_all(&dir).ok();
 }

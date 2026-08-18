@@ -328,6 +328,9 @@ pub fn spawn(
                     // terminal, so keyboard input and resize events do not map
                     // to protocol commands.
                     SessionCommand::Write(_) | SessionCommand::Resize { .. } => {}
+                    other @ SessionCommand::WriteConfirmed { .. } => {
+                        super::reject_sftp(other, crate::model::SessionKind::Ftp);
+                    }
                 }
             }
 

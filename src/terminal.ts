@@ -13,6 +13,10 @@ import {
 } from "@xterm/xterm";
 
 import { semanticRanges } from "./semanticColors";
+import {
+  ZmodemController,
+  type ZmodemNoticeKind,
+} from "./zmodem";
 
 export type GutterMode = "off" | "line" | "time" | "both";
 
@@ -63,6 +67,7 @@ interface Callbacks {
   onData: (data: string) => void;
   onResize: (cols: number, rows: number) => void;
   onCursorMove: (line: number, column: number) => void;
+  onStatus: (message: string, error?: boolean) => void;
 }
 
 interface SemanticRow {
@@ -84,6 +89,9 @@ export class TerminalController {
   readonly term: Terminal;
   readonly fitAddon = new FitAddon();
   readonly searchAddon = new SearchAddon();
+  private readonly zmodem: ZmodemController;
+  private readonly zmodemNotice: HTMLElement;
+  private zmodemNoticeTimer: number | null = null;
 
   private root: HTMLElement | null = null;
   private host: HTMLElement | null = null;
@@ -134,6 +142,17 @@ export class TerminalController {
       rightClickSelectsWord: true,
     });
 
+    this.zmodemNotice = document.createElement("div");
+    this.zmodemNotice.className = "zmodem-notice is-hidden";
+    this.zmodemNotice.setAttribute("role", "status");
+    this.zmodemNotice.setAttribute("aria-live", "polite");
+
+    this.zmodem = new ZmodemController(sessionId, {
+      toTerminal: (bytes) => this.term.write(bytes),
+      onStatus: callbacks.onStatus,
+      onNotice: (message, kind) => this.showZmodemNotice(message, kind),
+    });
+
     this.term.loadAddon(this.fitAddon);
     this.term.loadAddon(this.searchAddon);
     this.term.loadAddon(new WebLinksAddon(openTerminalWebLink));
@@ -141,7 +160,11 @@ export class TerminalController {
     this.term.loadAddon(unicode);
     this.term.unicode.activeVersion = "11";
 
-    this.term.onData((data) => this.callbacks.onData(data));
+    // ZMODEM owns the byte stream while a transfer is active. Forwarding
+    // keystrokes or paste data in the middle of a binary frame corrupts it.
+    this.term.onData((data) => {
+      if (!this.zmodem.isActive()) this.callbacks.onData(data);
+    });
     this.term.parser.registerCsiHandler({ final: "J" }, (params) => {
       const mode = params[0];
       if (
@@ -205,7 +228,7 @@ export class TerminalController {
     // Re-parenting keeps the existing xterm instance (and its scrollback)
     // alive if React ever hands us a fresh container node.
     if (this.root && this.gutter && this.host) {
-      root.replaceChildren(this.gutter, this.host);
+      root.replaceChildren(this.gutter, this.host, this.zmodemNotice);
       this.root = root;
       this.fit();
       return;
@@ -222,6 +245,7 @@ export class TerminalController {
 
     root.appendChild(this.gutter);
     root.appendChild(this.host);
+    root.appendChild(this.zmodemNotice);
 
     this.term.open(this.host);
 
@@ -252,11 +276,19 @@ export class TerminalController {
   }
 
   write(data: Uint8Array) {
-    this.term.write(data);
+    this.zmodem.consume(data);
   }
 
   writeText(text: string) {
     this.term.write(text);
+  }
+
+  isZmodemActive(): boolean {
+    return this.zmodem.isActive();
+  }
+
+  cancelZmodem(): boolean {
+    return this.zmodem.cancel();
   }
 
   focus() {
@@ -301,6 +333,11 @@ export class TerminalController {
 
   dispose() {
     this.disposed = true;
+    if (this.zmodemNoticeTimer !== null) {
+      window.clearTimeout(this.zmodemNoticeTimer);
+      this.zmodemNoticeTimer = null;
+    }
+    this.zmodem.dispose();
     this.term.dispose();
     this.root = null;
     this.host = null;
@@ -310,6 +347,26 @@ export class TerminalController {
   }
 
   // --- internals ------------------------------------------------------------
+
+  private showZmodemNotice(message: string, kind: ZmodemNoticeKind) {
+    if (this.disposed) return;
+    if (this.zmodemNoticeTimer !== null) {
+      window.clearTimeout(this.zmodemNoticeTimer);
+      this.zmodemNoticeTimer = null;
+    }
+
+    this.zmodemNotice.textContent = message;
+    this.zmodemNotice.className = `zmodem-notice is-${kind}`;
+    if (kind !== "active") {
+      this.zmodemNoticeTimer = window.setTimeout(
+        () => {
+          this.zmodemNotice.classList.add("is-hidden");
+          this.zmodemNoticeTimer = null;
+        },
+        kind === "error" ? 7000 : 4500,
+      );
+    }
+  }
 
   private applyGutterMode() {
     if (!this.gutter) return;

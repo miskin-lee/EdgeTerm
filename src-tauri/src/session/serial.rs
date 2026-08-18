@@ -120,6 +120,17 @@ where
                     break;
                 }
             }
+            Ok(SessionCommand::WriteConfirmed { data, reply }) => {
+                let result = port
+                    .write_all(&data)
+                    .and_then(|_| port.flush())
+                    .map_err(err);
+                let failed = result.is_err();
+                let _ = reply.send(result);
+                if failed {
+                    break;
+                }
+            }
             // A serial line has no window to resize.
             Ok(SessionCommand::Resize { .. }) => {}
             Ok(SessionCommand::Close) | Err(TryRecvError::Disconnected) => break,
@@ -195,6 +206,17 @@ mod tests {
         read_started_rx
             .recv_timeout(Duration::from_secs(1))
             .expect("owner should start reading");
+        let (write_reply, write_response) = tokio::sync::oneshot::channel();
+        command_tx
+            .send(SessionCommand::WriteConfirmed {
+                data: vec![0, 1, 2, 3],
+                reply: write_reply,
+            })
+            .unwrap();
+        write_response
+            .blocking_recv()
+            .expect("owner should acknowledge the write")
+            .expect("mock write should succeed");
         command_tx.send(SessionCommand::Close).unwrap();
         owner.join().unwrap();
 

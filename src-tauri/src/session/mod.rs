@@ -69,6 +69,13 @@ pub struct TransferProgress {
 
 pub enum SessionCommand {
     Write(Vec<u8>),
+    /// Binary protocol data that needs transport-level backpressure. The
+    /// owner resolves `reply` only after the bytes have actually been written
+    /// to the PTY, SSH channel, or serial port.
+    WriteConfirmed {
+        data: Vec<u8>,
+        reply: oneshot::Sender<Result<()>>,
+    },
     Resize {
         cols: u16,
         rows: u16,
@@ -119,6 +126,18 @@ impl SessionManager {
             .tx
             .send(cmd)
             .map_err(|_| AppError::new(format!("session {id} has terminated")))
+    }
+
+    /// Sends one bounded binary chunk and waits until the owning session has
+    /// actually written it. Unlike the ordinary keyboard-input path, this
+    /// applies backpressure so a large protocol transfer cannot accumulate in
+    /// the unbounded command channel.
+    pub async fn write_confirmed(&self, id: &str, data: Vec<u8>) -> Result<()> {
+        let (reply, response) = oneshot::channel();
+        self.send(id, SessionCommand::WriteConfirmed { data, reply })?;
+        response
+            .await
+            .map_err(|_| AppError::new(format!("session {id} closed before writing binary data")))?
     }
 
     /// Round-trips an SFTP request through the owning session task.
@@ -215,11 +234,20 @@ impl OutputPump {
 // --- helpers shared by the backends ----------------------------------------
 
 pub fn reject_sftp(cmd: SessionCommand, kind: SessionKind) {
-    if let SessionCommand::Sftp { reply, .. } = cmd {
-        let _ = reply.send(Err(AppError::new(format!(
-            "{:?} sessions have no remote filesystem",
-            kind
-        ))));
+    match cmd {
+        SessionCommand::Sftp { reply, .. } => {
+            let _ = reply.send(Err(AppError::new(format!(
+                "{:?} sessions have no remote filesystem",
+                kind
+            ))));
+        }
+        SessionCommand::WriteConfirmed { reply, .. } => {
+            let _ = reply.send(Err(AppError::new(format!(
+                "{:?} session does not accept binary terminal data",
+                kind
+            ))));
+        }
+        _ => {}
     }
 }
 
@@ -259,5 +287,57 @@ pub fn make_info(id: &str, profile: &SessionProfile) -> SessionInfo {
         address: profile.address(),
         color: profile.color.clone(),
         supports_remote_files: matches!(profile.kind, SessionKind::Ssh | SessionKind::Ftp),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::sync::Arc;
+
+    use super::*;
+
+    #[tokio::test]
+    async fn confirmed_binary_write_waits_for_the_session_owner() {
+        let manager = Arc::new(SessionManager::default());
+        let (tx, mut rx) = mpsc::unbounded_channel();
+        manager.insert(SessionHandle {
+            info: SessionInfo {
+                id: "confirmed-write".into(),
+                profile_id: None,
+                name: "test".into(),
+                kind: SessionKind::Ssh,
+                protocol: "ssh".into(),
+                address: "example.test:22".into(),
+                color: None,
+                supports_remote_files: true,
+            },
+            tx,
+            owner_thread: None,
+        });
+
+        let write_task = tokio::spawn({
+            let manager = manager.clone();
+            async move {
+                manager
+                    .write_confirmed("confirmed-write", vec![1, 2, 3, 4])
+                    .await
+            }
+        });
+
+        let command = rx.recv().await.expect("write command");
+        let SessionCommand::WriteConfirmed { data, reply } = command else {
+            panic!("expected a confirmed write command");
+        };
+        assert_eq!(data, vec![1, 2, 3, 4]);
+        assert!(
+            !write_task.is_finished(),
+            "the caller must remain blocked until the owner finishes writing"
+        );
+
+        reply.send(Ok(())).expect("acknowledge write");
+        write_task
+            .await
+            .expect("write task should not panic")
+            .expect("confirmed write should succeed");
     }
 }

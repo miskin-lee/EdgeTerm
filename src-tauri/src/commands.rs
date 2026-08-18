@@ -1,11 +1,15 @@
 use base64::{engine::general_purpose::STANDARD as B64, Engine as _};
+use std::path::Path;
+use std::time::UNIX_EPOCH;
 use tauri::{ipc::Channel, AppHandle, State};
+use tokio::io::{AsyncReadExt, AsyncSeekExt, AsyncWriteExt};
 use tokio::sync::mpsc;
 
 use crate::error::{err, AppError, Result};
 use crate::fs_local;
 use crate::model::{
     DirListing, SavedCommand, SerialPortDesc, SessionInfo, SessionKind, SessionProfile,
+    ZmodemFileInfo,
 };
 use crate::session::{
     self, SessionCommand, SessionHandle, SessionManager, SftpRequest, SftpResponse,
@@ -147,9 +151,13 @@ pub fn write_session(state: State<'_, AppState>, id: String, data: String) -> Re
 
 /// Raw bytes, base64-encoded. Used by the Sender pane's hex mode.
 #[tauri::command]
-pub fn write_session_binary(state: State<'_, AppState>, id: String, data: String) -> Result<()> {
+pub async fn write_session_binary(
+    state: State<'_, AppState>,
+    id: String,
+    data: String,
+) -> Result<()> {
     let bytes = B64.decode(data).map_err(err)?;
-    state.sessions.send(&id, SessionCommand::Write(bytes))
+    state.sessions.write_confirmed(&id, bytes).await
 }
 
 #[tauri::command]
@@ -157,6 +165,85 @@ pub fn resize_session(state: State<'_, AppState>, id: String, cols: u16, rows: u
     state
         .sessions
         .send(&id, SessionCommand::Resize { cols, rows })
+}
+
+// --- ZMODEM local file streaming -------------------------------------------
+
+/// Keep file IPC bounded. zmodem.js further divides outgoing data into 8 KiB
+/// protocol subpackets, while this larger application-level chunk keeps the
+/// number of disk and IPC round trips reasonable.
+const ZMODEM_FILE_CHUNK_SIZE: usize = 1024 * 1024;
+
+#[tauri::command]
+pub async fn zmodem_file_info(path: String) -> Result<ZmodemFileInfo> {
+    let metadata = tokio::fs::metadata(&path).await?;
+    if !metadata.is_file() {
+        return Err(AppError::new(format!("not a regular file: {path}")));
+    }
+
+    let name = Path::new(&path)
+        .file_name()
+        .and_then(|name| name.to_str())
+        .filter(|name| !name.is_empty())
+        .ok_or_else(|| AppError::new(format!("file has no usable name: {path}")))?
+        .to_string();
+    let modified = metadata
+        .modified()
+        .ok()
+        .and_then(|time| time.duration_since(UNIX_EPOCH).ok())
+        .map(|duration| duration.as_secs());
+
+    Ok(ZmodemFileInfo {
+        name,
+        size: metadata.len(),
+        modified,
+    })
+}
+
+#[tauri::command]
+pub async fn zmodem_read_chunk(path: String, offset: u64, length: u32) -> Result<String> {
+    let length = length as usize;
+    if length == 0 || length > ZMODEM_FILE_CHUNK_SIZE {
+        return Err(AppError::new(format!(
+            "ZMODEM read length must be between 1 and {ZMODEM_FILE_CHUNK_SIZE} bytes"
+        )));
+    }
+
+    let mut file = tokio::fs::File::open(path).await?;
+    file.seek(std::io::SeekFrom::Start(offset)).await?;
+    let mut bytes = Vec::with_capacity(length);
+    file.take(length as u64).read_to_end(&mut bytes).await?;
+    Ok(B64.encode(bytes))
+}
+
+#[tauri::command]
+pub async fn zmodem_create_file(path: String) -> Result<()> {
+    let file = tokio::fs::File::create(path).await?;
+    file.sync_all().await?;
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn zmodem_write_chunk(path: String, offset: u64, data: String) -> Result<()> {
+    let bytes = B64.decode(data).map_err(err)?;
+    if bytes.len() > ZMODEM_FILE_CHUNK_SIZE {
+        return Err(AppError::new(format!(
+            "ZMODEM write chunk exceeds {ZMODEM_FILE_CHUNK_SIZE} bytes"
+        )));
+    }
+
+    let mut file = tokio::fs::OpenOptions::new().write(true).open(path).await?;
+    file.seek(std::io::SeekFrom::Start(offset)).await?;
+    file.write_all(&bytes).await?;
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn zmodem_finish_file(path: String, size: u64) -> Result<()> {
+    let file = tokio::fs::OpenOptions::new().write(true).open(path).await?;
+    file.set_len(size).await?;
+    file.sync_all().await?;
+    Ok(())
 }
 
 // --- remote filesystem ------------------------------------------------------

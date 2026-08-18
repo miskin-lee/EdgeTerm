@@ -86,6 +86,17 @@ pub fn spawn(
                             break;
                         }
                     }
+                    SessionCommand::WriteConfirmed { data, reply } => {
+                        let result = writer
+                            .write_all(&data)
+                            .and_then(|_| writer.flush())
+                            .map_err(err);
+                        let failed = result.is_err();
+                        let _ = reply.send(result);
+                        if failed {
+                            break;
+                        }
+                    }
                     SessionCommand::Resize { cols, rows } => {
                         let _ = master.resize(PtySize {
                             rows,

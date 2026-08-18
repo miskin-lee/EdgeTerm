@@ -1,7 +1,7 @@
 {
   "name": "edgeterm",
   "private": true,
-  "version": "0.2.7",
+  "version": "0.2.8",
   "type": "module",
   "description": "A WindTerm-inspired terminal, SSH, FTP and serial client built with Rust + Tauri",
   "scripts": {
@@ -28,6 +28,7 @@
     "@xterm/xterm": "^5.5.0",
     "react": "^19.1.0",
     "react-dom": "^19.1.0",
+    "zmodem.js": "^0.1.10",
     "zustand": "^5.0.2"
   },
   "devDependencies": {

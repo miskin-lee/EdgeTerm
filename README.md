@@ -31,6 +31,10 @@ Standard FTP does not encrypt credentials or file contents. Use FTP only on a tr
 - **Sender** (bottom): batch sending with text or hexadecimal input, line-by-line or character-by-character modes, repeat counts, configurable intervals, and targeting of the current session or all sessions.
 - Tabs, an address bar (`ssh › host:port`), and a status bar showing the terminal dimensions, cursor Ln/Ch, and protocol.
 
+**ZMODEM transfers**
+
+Local shell, SSH, and serial terminals automatically detect ZMODEM sessions. Run `rz` in the terminal to choose and send one or more local files, or run `sz <file>` to choose where each incoming file is saved. The peer must provide a compatible `rz`/`sz` implementation such as `lrzsz`. File I/O and terminal output remain binary-safe and files are read or written through fixed 1 MiB application chunks. Use **Session → Cancel ZMODEM Transfer** to stop an active transfer.
+
 **Keyboard shortcuts**
 
 | Shortcut | Action |
@@ -87,7 +91,7 @@ To publish a release, manually trigger **Actions → Release → Run workflow** 
 Before releasing, use the following command to set and commit the version. It synchronizes `package.json`, `package-lock.json`, `Cargo.toml`, and `Cargo.lock`; Tauri installers also read this version directly:
 
 ```bash
-npm run version:set -- 0.2.7
+npm run version:set -- 0.2.8
 ```
 
 Release tags map one-to-one to application versions. For example, version `0.1.1` can only be published as `v0.1.1`. If that tag already points to another commit, the workflow stops and requires a version bump, preventing different builds from being published under the same version number.
@@ -113,4 +117,5 @@ By default, releases are not notarized on macOS or code-signed with Windows Auth
 
 ## Known limitations
 
+- ZMODEM transfer resume is not supported; restart an interrupted transfer from the beginning.
 - Not yet implemented: port forwarding/tunneling, session recording and playback, and split panes with multiple tabs.

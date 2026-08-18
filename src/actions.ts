@@ -65,6 +65,12 @@ export function ensureController(id: string): TerminalController {
     },
     onCursorMove: (line, column) =>
       useStore.getState().setCursor(id, line, column),
+    onStatus: (message, error = false) => {
+      const store = useStore.getState();
+      store.setStatus(message);
+      if (error) store.setError(message, id);
+      else if (store.errorSessionId === id) store.setError(null);
+    },
   });
   setController(id, controller);
   return controller;

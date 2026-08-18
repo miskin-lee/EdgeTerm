@@ -33,6 +33,7 @@ export function MenuBar(props: Props) {
   const togglePanel = useStore((s) => s.togglePanel);
   const gutterMode = useStore((s) => s.gutterMode);
   const setGutterMode = useStore((s) => s.setGutterMode);
+  const setStatus = useStore((s) => s.setStatus);
   const closeTab = useStore((s) => s.closeTab);
   const activateAdjacentTab = useStore((s) => s.activateAdjacentTab);
 
@@ -76,6 +77,14 @@ export function MenuBar(props: Props) {
           label: "Close Session",
           shortcut: "⌘W",
           action: withActive((id) => void closeTab(id)),
+        },
+        {
+          label: "Cancel ZMODEM Transfer",
+          action: withActive((id) => {
+            if (!getController(id)?.cancelZmodem()) {
+              setStatus("ZMODEM: no active transfer");
+            }
+          }),
         },
         "separator",
         gutterEntry("Timestamp + Line Number", "both"),

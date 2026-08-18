@@ -936,6 +936,43 @@ textarea:focus {
   height: 100%;
 }
 
+.zmodem-notice {
+  position: absolute;
+  top: 10px;
+  right: 12px;
+  z-index: 8;
+  max-width: min(520px, calc(100% - 32px));
+  overflow: hidden;
+  padding: 7px 11px;
+  border: 1px solid rgba(78, 161, 243, 0.55);
+  border-radius: 5px;
+  background: rgba(24, 35, 48, 0.95);
+  box-shadow: 0 5px 18px rgba(0, 0, 0, 0.38);
+  color: #b9dcff;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  line-height: 1.4;
+  pointer-events: none;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.zmodem-notice.is-hidden {
+  display: none;
+}
+
+.zmodem-notice.is-success {
+  border-color: rgba(63, 185, 80, 0.6);
+  background: rgba(24, 48, 31, 0.96);
+  color: #9ee6aa;
+}
+
+.zmodem-notice.is-error {
+  border-color: rgba(248, 81, 73, 0.65);
+  background: rgba(55, 27, 29, 0.96);
+  color: #ffaaa5;
+}
+
 .term-empty {
   position: absolute;
   inset: 0;

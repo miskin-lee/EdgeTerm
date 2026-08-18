@@ -175,6 +175,18 @@ pub struct DirListing {
     pub entries: Vec<FileEntry>,
 }
 
+/// Metadata needed to offer a local file through ZMODEM. The file contents
+/// travel through separate bounded chunk commands so large files are never
+/// materialized in one IPC message.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ZmodemFileInfo {
+    pub name: String,
+    pub size: u64,
+    /// Unix seconds.
+    pub modified: Option<u64>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SerialPortDesc {

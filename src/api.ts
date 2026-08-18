@@ -26,6 +26,13 @@ export interface TransferProgress {
   total: number;
 }
 
+export interface ZmodemFileInfo {
+  name: string;
+  size: number;
+  /** Unix seconds. */
+  modified: number | null;
+}
+
 // --- profiles ---------------------------------------------------------------
 
 export const listProfiles = () => invoke<SessionProfile[]>("list_profiles");
@@ -64,6 +71,34 @@ export const writeSessionBinary = (id: string, base64: string) =>
 
 export const resizeSession = (id: string, cols: number, rows: number) =>
   invoke<void>("resize_session", { id, cols, rows });
+
+// --- ZMODEM local file streaming -------------------------------------------
+
+export const zmodemFileInfo = (path: string) =>
+  invoke<ZmodemFileInfo>("zmodem_file_info", { path });
+
+export const zmodemReadChunk = (
+  path: string,
+  offset: number,
+  length: number,
+) => invoke<string>("zmodem_read_chunk", { path, offset, length });
+
+export const zmodemCreateFile = (path: string) =>
+  invoke<void>("zmodem_create_file", { path });
+
+export const zmodemWriteChunk = (
+  path: string,
+  offset: number,
+  bytes: Uint8Array,
+) =>
+  invoke<void>("zmodem_write_chunk", {
+    path,
+    offset,
+    data: bytesToBase64(bytes),
+  });
+
+export const zmodemFinishFile = (path: string, size: number) =>
+  invoke<void>("zmodem_finish_file", { path, size });
 
 // --- remote filesystem ------------------------------------------------------
 

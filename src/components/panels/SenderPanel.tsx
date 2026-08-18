@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 
 import * as api from "../../api";
 import { useStore } from "../../store";
+import { getController } from "../../terminalRegistry";
 import type {
   LineEnding,
   SavedCommand,
@@ -213,9 +214,16 @@ export function SenderPanel() {
     commandEnding: LineEnding,
   ) => {
     if (running) return;
-    const ids = targets();
-    if (ids.length === 0) {
+    const targetIds = targets();
+    if (targetIds.length === 0) {
       setStatus("Sender: no session selected");
+      return;
+    }
+    const ids = targetIds.filter(
+      (id) => !getController(id)?.isZmodemActive(),
+    );
+    if (ids.length === 0) {
+      setStatus("Sender: blocked while ZMODEM is transferring");
       return;
     }
 
@@ -239,7 +247,11 @@ export function SenderPanel() {
             : api.writeSessionBinary(id, api.bytesToBase64(unit)),
         ),
       );
-      setStatus("Sender: sent command");
+      setStatus(
+        ids.length === targetIds.length
+          ? "Sender: sent command"
+          : `Sender: sent command; skipped ${targetIds.length - ids.length} ZMODEM session(s)`,
+      );
     } catch (e) {
       setStatus(`Sender: ${e}`);
     } finally {
