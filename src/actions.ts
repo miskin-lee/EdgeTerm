@@ -57,21 +57,25 @@ export function ensureController(id: string): TerminalController {
   const existing = getController(id);
   if (existing) return existing;
 
-  const controller = new TerminalController(id, {
-    onData: (data) => void api.writeSession(id, data).catch(() => undefined),
-    onResize: (cols, rows) => {
-      useStore.getState().setSize(id, cols, rows);
-      void api.resizeSession(id, cols, rows).catch(() => undefined);
+  const controller = new TerminalController(
+    id,
+    {
+      onData: (data) => void api.writeSession(id, data).catch(() => undefined),
+      onResize: (cols, rows) => {
+        useStore.getState().setSize(id, cols, rows);
+        void api.resizeSession(id, cols, rows).catch(() => undefined);
+      },
+      onCursorMove: (line, column) =>
+        useStore.getState().setCursor(id, line, column),
+      onStatus: (message, error = false) => {
+        const store = useStore.getState();
+        store.setStatus(message);
+        if (error) store.setError(message, id);
+        else if (store.errorSessionId === id) store.setError(null);
+      },
     },
-    onCursorMove: (line, column) =>
-      useStore.getState().setCursor(id, line, column),
-    onStatus: (message, error = false) => {
-      const store = useStore.getState();
-      store.setStatus(message);
-      if (error) store.setError(message, id);
-      else if (store.errorSessionId === id) store.setError(null);
-    },
-  });
+    useStore.getState().bufferFontSize,
+  );
   setController(id, controller);
   return controller;
 }

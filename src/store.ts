@@ -17,11 +17,99 @@ export interface Tab {
 
 export type PanelName = "filer" | "sessions" | "sender";
 
+export const PANEL_FONT_SIZE = { min: 9, max: 18, default: 12 } as const;
+export const BUFFER_FONT_SIZE = { min: 8, max: 32, default: 13 } as const;
+const DEFAULT_PANELS: Record<PanelName, boolean> = {
+  filer: true,
+  sessions: true,
+  sender: true,
+};
+
+const PANEL_FONT_SIZE_KEY = "edgeterm.panelFontSize";
+const BUFFER_FONT_SIZE_KEY = "edgeterm.bufferFontSize";
+const GUTTER_MODE_KEY = "edgeterm.gutterMode";
+const PANELS_KEY = "edgeterm.panels";
+
+const loadPanels = (): Record<PanelName, boolean> => {
+  try {
+    const stored = localStorage.getItem(PANELS_KEY);
+    if (stored) {
+      const parsed = JSON.parse(stored) as Partial<Record<PanelName, unknown>>;
+      return {
+        filer:
+          typeof parsed.filer === "boolean"
+            ? parsed.filer
+            : DEFAULT_PANELS.filer,
+        sessions:
+          typeof parsed.sessions === "boolean"
+            ? parsed.sessions
+            : DEFAULT_PANELS.sessions,
+        sender:
+          typeof parsed.sender === "boolean"
+            ? parsed.sender
+            : DEFAULT_PANELS.sender,
+      };
+    }
+  } catch {
+    // Use the defaults when storage is unavailable or malformed.
+  }
+  return { ...DEFAULT_PANELS };
+};
+
+const loadGutterMode = (): GutterMode => {
+  try {
+    const stored = localStorage.getItem(GUTTER_MODE_KEY);
+    if (
+      stored === "both" ||
+      stored === "line" ||
+      stored === "time" ||
+      stored === "off"
+    ) {
+      return stored;
+    }
+  } catch {
+    // Use the default when storage is unavailable.
+  }
+  return "both";
+};
+
+const normalizeFontSize = (
+  value: number,
+  range: { min: number; max: number; default: number },
+) => {
+  if (!Number.isFinite(value)) return range.default;
+  return Math.min(range.max, Math.max(range.min, Math.round(value)));
+};
+
+const loadFontSize = (
+  key: string,
+  range: { min: number; max: number; default: number },
+) => {
+  try {
+    const stored = localStorage.getItem(key);
+    return stored === null
+      ? range.default
+      : normalizeFontSize(Number(stored), range);
+  } catch {
+    return range.default;
+  }
+};
+
+const saveFontSize = (key: string, value: number) => {
+  try {
+    localStorage.setItem(key, String(value));
+  } catch {
+    // Font settings still work for this run when storage is unavailable.
+  }
+};
+
 interface AppStore {
   profiles: SessionProfile[];
   tabs: Tab[];
   activeId: string | null;
   gutterMode: GutterMode;
+  panelFontSize: number;
+  bufferFontSize: number;
   panels: Record<PanelName, boolean>;
   status: string;
   error: string | null;
@@ -43,6 +131,9 @@ interface AppStore {
 
   togglePanel: (panel: PanelName) => void;
   setGutterMode: (mode: GutterMode) => void;
+  setPanelFontSize: (size: number) => void;
+  setBufferFontSize: (size: number) => void;
+  resetSettings: () => void;
   setStatus: (status: string) => void;
   setError: (error: string | null, sessionId?: string) => void;
 }
@@ -54,12 +145,10 @@ export const useStore = create<AppStore>((set, get) => ({
   profiles: [],
   tabs: [],
   activeId: null,
-  gutterMode: "both",
-  panels: {
-    filer: true,
-    sessions: true,
-    sender: true,
-  },
+  gutterMode: loadGutterMode(),
+  panelFontSize: loadFontSize(PANEL_FONT_SIZE_KEY, PANEL_FONT_SIZE),
+  bufferFontSize: loadFontSize(BUFFER_FONT_SIZE_KEY, BUFFER_FONT_SIZE),
+  panels: loadPanels(),
   status: "Ready",
   error: null,
   errorSessionId: null,
@@ -152,11 +241,51 @@ export const useStore = create<AppStore>((set, get) => ({
 
   togglePanel(panel) {
     const panels = get().panels;
-    set({ panels: { ...panels, [panel]: !panels[panel] } });
+    const nextPanels = { ...panels, [panel]: !panels[panel] };
+    set({ panels: nextPanels });
+    try {
+      localStorage.setItem(PANELS_KEY, JSON.stringify(nextPanels));
+    } catch {
+      // The setting still applies for this run when storage is unavailable.
+    }
   },
 
   setGutterMode(mode) {
     set({ gutterMode: mode });
+    try {
+      localStorage.setItem(GUTTER_MODE_KEY, mode);
+    } catch {
+      // The setting still applies for this run when storage is unavailable.
+    }
+  },
+
+  setPanelFontSize(size) {
+    const panelFontSize = normalizeFontSize(size, PANEL_FONT_SIZE);
+    set({ panelFontSize });
+    saveFontSize(PANEL_FONT_SIZE_KEY, panelFontSize);
+  },
+
+  setBufferFontSize(size) {
+    const bufferFontSize = normalizeFontSize(size, BUFFER_FONT_SIZE);
+    set({ bufferFontSize });
+    saveFontSize(BUFFER_FONT_SIZE_KEY, bufferFontSize);
+  },
+
+  resetSettings() {
+    set({
+      panels: { ...DEFAULT_PANELS },
+      gutterMode: "both",
+      panelFontSize: PANEL_FONT_SIZE.default,
+      bufferFontSize: BUFFER_FONT_SIZE.default,
+    });
+    try {
+      localStorage.removeItem(PANELS_KEY);
+      localStorage.removeItem(GUTTER_MODE_KEY);
+      localStorage.removeItem(PANEL_FONT_SIZE_KEY);
+      localStorage.removeItem(BUFFER_FONT_SIZE_KEY);
+    } catch {
+      // The defaults still apply for this run when storage is unavailable.
+    }
   },
 
   setStatus(status) {

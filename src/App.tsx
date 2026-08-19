@@ -1,6 +1,7 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useState, type CSSProperties } from "react";
 
 import * as api from "./api";
+import { FontSizeDialog } from "./components/FontSizeDialog";
 import { MenuBar } from "./components/MenuBar";
 import { SearchOverlay } from "./components/SearchOverlay";
 import { SessionDialog } from "./components/SessionDialog";
@@ -32,6 +33,10 @@ export default function App() {
   const panels = useStore((s) => s.panels);
   const togglePanel = useStore((s) => s.togglePanel);
   const loadProfiles = useStore((s) => s.loadProfiles);
+  const panelFontSize = useStore((s) => s.panelFontSize);
+  const bufferFontSize = useStore((s) => s.bufferFontSize);
+  const setPanelFontSize = useStore((s) => s.setPanelFontSize);
+  const setBufferFontSize = useStore((s) => s.setBufferFontSize);
   const setActive = useStore((s) => s.setActive);
   const activateAdjacentTab = useStore((s) => s.activateAdjacentTab);
   const closeTab = useStore((s) => s.closeTab);
@@ -43,9 +48,8 @@ export default function App() {
     null,
   );
   const [searchOpen, setSearchOpen] = useState(false);
-  const [gotoOpen, setGotoOpen] = useState(false);
   const [aboutOpen, setAboutOpen] = useState(false);
-  const [gotoValue, setGotoValue] = useState("");
+  const [fontSettingsOpen, setFontSettingsOpen] = useState(false);
 
   const [leftWidth, setLeftWidth] = useState(220);
   const [rightWidth, setRightWidth] = useState(220);
@@ -81,11 +85,6 @@ export default function App() {
   // --- actions --------------------------------------------------------------
 
   const newSession = useCallback(() => setDialog({ profile: null }), []);
-
-  const gotoLine = useCallback(() => {
-    setGotoValue("");
-    setGotoOpen(true);
-  }, []);
 
   // --- keyboard -------------------------------------------------------------
 
@@ -136,14 +135,6 @@ export default function App() {
       } else if (key === "k" && activeId && !ftpMode) {
         event.preventDefault();
         getController(activeId)?.clear();
-      } else if (
-        key === "g" &&
-        event.ctrlKey &&
-        !event.metaKey &&
-        !ftpMode
-      ) {
-        event.preventDefault();
-        gotoLine();
       } else if (/^[1-9]$/.test(event.key)) {
         const index = Number(event.key) - 1;
         const tab = useStore.getState().tabs[index];
@@ -159,7 +150,6 @@ export default function App() {
     activateAdjacentTab,
     activeId,
     closeTab,
-    gotoLine,
     ftpMode,
     newSession,
     setActive,
@@ -172,7 +162,15 @@ export default function App() {
   const showRight = panels.sessions;
 
   return (
-    <div className="app">
+    <div
+      className="app"
+      style={
+        {
+          "--panel-font-size": `${panelFontSize}px`,
+          "--buffer-font-size": `${bufferFontSize}px`,
+        } as CSSProperties
+      }
+    >
       <div className="titlebar" data-tauri-drag-region />
 
       <MenuBar
@@ -180,9 +178,7 @@ export default function App() {
         onFind={() => {
           if (!ftpMode) setSearchOpen(true);
         }}
-        onGotoLine={() => {
-          if (!ftpMode) gotoLine();
-        }}
+        onFontSettings={() => setFontSettingsOpen(true)}
         onCheckForUpdates={() => void updater.checkForUpdates()}
         onAbout={() => setAboutOpen(true)}
       />
@@ -263,32 +259,17 @@ export default function App() {
         />
       )}
 
-      {gotoOpen && (
-        <div className="dialog-backdrop" onMouseDown={() => setGotoOpen(false)}>
-          <div
-            className="dialog"
-            style={{ width: 320 }}
-            onMouseDown={(event) => event.stopPropagation()}
-          >
-            <div className="dialog-header">Go to Line</div>
-            <div className="dialog-body">
-              <input
-                autoFocus
-                value={gotoValue}
-                placeholder="Line number"
-                onChange={(event) => setGotoValue(event.target.value)}
-                onKeyDown={(event) => {
-                  if (event.key !== "Enter") return;
-                  const line = Number(gotoValue);
-                  if (activeId && Number.isFinite(line)) {
-                    getController(activeId)?.scrollToLine(line);
-                  }
-                  setGotoOpen(false);
-                }}
-              />
-            </div>
-          </div>
-        </div>
+      {fontSettingsOpen && (
+        <FontSizeDialog
+          panelFontSize={panelFontSize}
+          bufferFontSize={bufferFontSize}
+          onApply={(nextPanelFontSize, nextBufferFontSize) => {
+            setPanelFontSize(nextPanelFontSize);
+            setBufferFontSize(nextBufferFontSize);
+            setFontSettingsOpen(false);
+          }}
+          onClose={() => setFontSettingsOpen(false)}
+        />
       )}
 
       {aboutOpen && (

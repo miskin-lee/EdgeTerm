@@ -8,7 +8,8 @@ interface Entry {
   label: string;
   shortcut?: string;
   checked?: boolean;
-  action: () => void;
+  action?: () => void;
+  children?: Entry[];
 }
 
 interface Menu {
@@ -19,7 +20,7 @@ interface Menu {
 interface Props {
   onNewSession: () => void;
   onFind: () => void;
-  onGotoLine: () => void;
+  onFontSettings: () => void;
   onCheckForUpdates: () => void;
   onAbout: () => void;
 }
@@ -33,6 +34,7 @@ export function MenuBar(props: Props) {
   const togglePanel = useStore((s) => s.togglePanel);
   const gutterMode = useStore((s) => s.gutterMode);
   const setGutterMode = useStore((s) => s.setGutterMode);
+  const resetSettings = useStore((s) => s.resetSettings);
   const setStatus = useStore((s) => s.setStatus);
   const closeTab = useStore((s) => s.closeTab);
   const activateAdjacentTab = useStore((s) => s.activateAdjacentTab);
@@ -87,10 +89,15 @@ export function MenuBar(props: Props) {
           }),
         },
         "separator",
-        gutterEntry("Timestamp + Line Number", "both"),
-        gutterEntry("Line Number Only", "line"),
-        gutterEntry("Timestamp Only", "time"),
-        gutterEntry("No Gutter", "off"),
+        {
+          label: "Timestamp & Line",
+          children: [
+            gutterEntry("Timestamp + Line Number", "both"),
+            gutterEntry("Line Number Only", "line"),
+            gutterEntry("Timestamp Only", "time"),
+            gutterEntry("No Gutter", "off"),
+          ],
+        },
       ],
     },
     {
@@ -129,20 +136,6 @@ export function MenuBar(props: Props) {
       ],
     },
     {
-      title: "Goto",
-      entries: [
-        { label: "Go to Line…", shortcut: "⌃G", action: props.onGotoLine },
-        {
-          label: "Scroll to Top",
-          action: withActive((id) => getController(id)?.term.scrollToTop()),
-        },
-        {
-          label: "Scroll to Bottom",
-          action: withActive((id) => getController(id)?.term.scrollToBottom()),
-        },
-      ],
-    },
-    {
       title: "View",
       entries: [
         {
@@ -163,12 +156,29 @@ export function MenuBar(props: Props) {
           checked: panels.sender,
           action: () => togglePanel("sender"),
         },
+        "separator",
+        { label: "Font Size…", action: props.onFontSettings },
       ],
     },
     {
       title: "Help",
       entries: [
         { label: "Check for Updates…", action: props.onCheckForUpdates },
+        "separator",
+        {
+          label: "Restore Default Settings…",
+          action: () => {
+            if (
+              !window.confirm(
+                "Restore panel visibility, timestamp and line display, and font sizes to their defaults?",
+              )
+            ) {
+              return;
+            }
+            resetSettings();
+            setStatus("Default settings restored");
+          },
+        },
         "separator",
         { label: "About EdgeTerm", action: props.onAbout },
       ],
@@ -190,6 +200,37 @@ export function MenuBar(props: Props) {
               {menu.entries.map((entry, index) =>
                 entry === "separator" ? (
                   <div key={index} className="menu-separator" />
+                ) : entry.children ? (
+                  <div
+                    key={entry.label}
+                    className="menu-submenu-entry"
+                    onMouseDown={(event) => event.stopPropagation()}
+                  >
+                    <div className="menu-entry" role="menuitem">
+                      <span className="menu-entry-label">{entry.label}</span>
+                      <span className="menu-submenu-arrow" aria-hidden="true">
+                        ›
+                      </span>
+                    </div>
+                    <div className="menu-dropdown menu-submenu">
+                      {entry.children.map((child) => (
+                        <button
+                          key={child.label}
+                          className={`menu-entry${child.checked ? " is-checked" : ""}`}
+                          onMouseDown={(event) => {
+                            event.stopPropagation();
+                            setOpen(null);
+                            child.action?.();
+                          }}
+                        >
+                          <span className="menu-check" aria-hidden="true">
+                            {child.checked ? "✓" : ""}
+                          </span>
+                          <span className="menu-entry-label">{child.label}</span>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
                 ) : (
                   <button
                     key={entry.label}
@@ -197,7 +238,7 @@ export function MenuBar(props: Props) {
                     onMouseDown={(event) => {
                       event.stopPropagation();
                       setOpen(null);
-                      entry.action();
+                      entry.action?.();
                     }}
                   >
                     {entry.checked !== undefined && (

@@ -53,6 +53,7 @@ export function TerminalPane({ onNewSession }: Props) {
 function TerminalHost({ tab, active }: { tab: Tab; active: boolean }) {
   const ref = useRef<HTMLDivElement>(null);
   const gutterMode = useStore((s) => s.gutterMode);
+  const bufferFontSize = useStore((s) => s.bufferFontSize);
   const id = tab.info.id;
 
   useEffect(() => {
@@ -71,6 +72,10 @@ function TerminalHost({ tab, active }: { tab: Tab; active: boolean }) {
   useEffect(() => {
     getController(id)?.setGutterMode(gutterMode);
   }, [id, gutterMode]);
+
+  useEffect(() => {
+    getController(id)?.setFontSize(bufferFontSize);
+  }, [bufferFontSize, id]);
 
   useEffect(() => {
     if (!active) return;

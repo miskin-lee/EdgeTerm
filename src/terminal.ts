@@ -125,6 +125,7 @@ export class TerminalController {
   constructor(
     readonly sessionId: string,
     private readonly callbacks: Callbacks,
+    fontSize = 13,
   ) {
     this.term = new Terminal({
       allowProposedApi: true,
@@ -132,7 +133,7 @@ export class TerminalController {
       cursorStyle: "block",
       fontFamily:
         '"JetBrains Mono", "SF Mono", Menlo, Consolas, "DejaVu Sans Mono", monospace',
-      fontSize: 13,
+      fontSize,
       lineHeight: 1.25,
       letterSpacing: 0,
       scrollback: SCROLLBACK,
@@ -319,6 +320,13 @@ export class TerminalController {
     this.gutterMode = mode;
     this.applyGutterMode();
     this.syncGutter();
+  }
+
+  setFontSize(fontSize: number) {
+    if (this.term.options.fontSize === fontSize) return;
+    this.term.options.fontSize = fontSize;
+    this.cellHeight = 0;
+    this.fit();
   }
 
   search(query: string, forward = true) {
