@@ -130,7 +130,7 @@ jobs:
             bundle_args: --bundles nsis
           - name: macOS Apple Silicon
             platform: macos-15
-            bundle_args: --bundles dmg
+            bundle_args: --bundles app,dmg
 
     steps:
       - name: Check out repository
