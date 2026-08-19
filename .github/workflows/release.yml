@@ -121,12 +121,16 @@ jobs:
         include:
           - name: Linux x64
             platform: ubuntu-22.04
+            bundle_args: --bundles appimage,deb
           - name: Linux ARM64
             platform: ubuntu-22.04-arm
+            bundle_args: --bundles appimage,deb
           - name: Windows x64
             platform: windows-2022
+            bundle_args: --bundles nsis
           - name: macOS Apple Silicon
             platform: macos-15
+            bundle_args: --bundles dmg
 
     steps:
       - name: Check out repository
@@ -194,6 +198,11 @@ jobs:
       - name: Install frontend dependencies
         run: npm ci
 
+      - name: Remove stale bundle outputs
+        shell: bash
+        run: |
+          node -e "require('node:fs').rmSync('src-tauri/target/release/bundle', { recursive: true, force: true })"
+
       - name: Build and upload Tauri bundles
         uses: tauri-apps/tauri-action@v1
         env:
@@ -207,9 +216,10 @@ jobs:
           releaseBody: EdgeTerm ${{ needs.prepare.outputs.app_version }} signed update.
           releaseDraft: true
           prerelease: false
+          args: ${{ matrix.bundle_args }}
           uploadUpdaterJson: true
           updaterJsonPreferNsis: true
-          uploadUpdaterSignatures: true
+          uploadUpdaterSignatures: false
           uploadWorkflowArtifacts: true
           workflowArtifactNamePattern: "EdgeTerm-[version]-[platform]-[arch]-[bundle]"
 
@@ -222,29 +232,161 @@ jobs:
     timeout-minutes: 15
 
     steps:
-      - name: Verify updater manifest
+      - name: Normalize release assets and updater manifest
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
           TAG_NAME: ${{ needs.prepare.outputs.tag_name }}
+          RELEASE_ID: ${{ needs.prepare.outputs.release_id }}
+          APP_VERSION: ${{ needs.prepare.outputs.app_version }}
         shell: bash
         run: |
+          set -euo pipefail
+
           mkdir -p release-check
           gh release download "$TAG_NAME" --pattern latest.json --dir release-check
+
+          jq '
+            .platforms |= with_entries(
+              select(
+                .key == "darwin-aarch64" or
+                .key == "darwin-aarch64-app" or
+                .key == "windows-x86_64" or
+                .key == "windows-x86_64-nsis" or
+                .key == "linux-x86_64" or
+                .key == "linux-x86_64-appimage" or
+                .key == "linux-x86_64-deb" or
+                .key == "linux-aarch64" or
+                .key == "linux-aarch64-appimage" or
+                .key == "linux-aarch64-deb"
+              )
+            )
+          ' release-check/latest.json > release-check/latest.normalized.json
+          mv release-check/latest.normalized.json release-check/latest.json
+          gh release upload "$TAG_NAME" release-check/latest.json --clobber
+
+          expected_assets=(
+            "latest.json"
+            "EdgeTerm_${APP_VERSION}_aarch64.dmg"
+            "EdgeTerm_${APP_VERSION}_aarch64.app.tar.gz"
+            "EdgeTerm_${APP_VERSION}_x64-setup.exe"
+            "EdgeTerm_${APP_VERSION}_amd64.AppImage"
+            "EdgeTerm_${APP_VERSION}_aarch64.AppImage"
+            "EdgeTerm_${APP_VERSION}_amd64.deb"
+            "EdgeTerm_${APP_VERSION}_arm64.deb"
+          )
+
+          declare -A expected_asset_set=()
+          for asset_name in "${expected_assets[@]}"; do
+            expected_asset_set["$asset_name"]=1
+          done
+
+          gh api \
+            "repos/${GITHUB_REPOSITORY}/releases/${RELEASE_ID}/assets?per_page=100" \
+            --jq '.[] | [.id, .name] | @tsv' > release-check/assets.tsv
+
+          while IFS=$'\t' read -r asset_id asset_name; do
+            if [[ -z "${expected_asset_set[$asset_name]+present}" ]]; then
+              echo "Deleting unexpected release asset: ${asset_name}"
+              gh api --method DELETE \
+                "repos/${GITHUB_REPOSITORY}/releases/assets/${asset_id}"
+            fi
+          done < release-check/assets.tsv
+
+      - name: Verify release assets and updater manifest
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          TAG_NAME: ${{ needs.prepare.outputs.tag_name }}
+          RELEASE_ID: ${{ needs.prepare.outputs.release_id }}
+          APP_VERSION: ${{ needs.prepare.outputs.app_version }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          gh api \
+            "repos/${GITHUB_REPOSITORY}/releases/${RELEASE_ID}/assets?per_page=100" \
+            > release-check/assets.json
+
+          expected_assets=(
+            "latest.json"
+            "EdgeTerm_${APP_VERSION}_aarch64.dmg"
+            "EdgeTerm_${APP_VERSION}_aarch64.app.tar.gz"
+            "EdgeTerm_${APP_VERSION}_x64-setup.exe"
+            "EdgeTerm_${APP_VERSION}_amd64.AppImage"
+            "EdgeTerm_${APP_VERSION}_aarch64.AppImage"
+            "EdgeTerm_${APP_VERSION}_amd64.deb"
+            "EdgeTerm_${APP_VERSION}_arm64.deb"
+          )
+
+          if [[ "$(jq 'length' release-check/assets.json)" -ne "${#expected_assets[@]}" ]]; then
+            echo "Release does not contain exactly the expected assets:" >&2
+            jq -r '.[].name' release-check/assets.json >&2
+            exit 1
+          fi
+
+          for asset_name in "${expected_assets[@]}"; do
+            jq -e --arg asset_name "$asset_name" \
+              'any(.[]; .name == $asset_name)' \
+              release-check/assets.json >/dev/null
+          done
+
           expected_url_prefix="https://api.github.com/repos/${GITHUB_REPOSITORY}/releases/assets/"
 
-          for platform in \
-            linux-x86_64 \
-            linux-aarch64 \
-            windows-x86_64 \
-            darwin-aarch64; do
-            jq -e --arg platform "$platform" --arg prefix "$expected_url_prefix" \
-              '.platforms[$platform].url as $url | ($url | type == "string") and ($url | startswith($prefix))' \
-              release-check/latest.json >/dev/null
+          verify_update() {
+            local platform="$1"
+            local expected_asset="$2"
+            local url
+            local asset_id
+            local actual_asset
+
+            url="$(jq -er --arg platform "$platform" \
+              '.platforms[$platform].url | select(type == "string" and length > 0)' \
+              release-check/latest.json)"
             jq -e --arg platform "$platform" \
-              '.platforms[$platform].signature as $signature | ($signature | type == "string") and ($signature | length > 0)' \
+              '.platforms[$platform].signature | (type == "string") and (length > 0)' \
               release-check/latest.json >/dev/null
-          done
+
+            if [[ "$url" != "${expected_url_prefix}"* ]]; then
+              echo "Unexpected updater URL for ${platform}: ${url}" >&2
+              exit 1
+            fi
+
+            asset_id="${url#"$expected_url_prefix"}"
+            if [[ ! "$asset_id" =~ ^[0-9]+$ ]]; then
+              echo "Invalid updater asset ID for ${platform}: ${asset_id}" >&2
+              exit 1
+            fi
+
+            actual_asset="$(jq -er --argjson asset_id "$asset_id" \
+              '.[] | select(.id == $asset_id) | .name' \
+              release-check/assets.json)"
+            if [[ "$actual_asset" != "$expected_asset" ]]; then
+              echo "Updater target ${platform} points to ${actual_asset}, expected ${expected_asset}." >&2
+              exit 1
+            fi
+          }
+
+          verify_update darwin-aarch64 \
+            "EdgeTerm_${APP_VERSION}_aarch64.app.tar.gz"
+          verify_update darwin-aarch64-app \
+            "EdgeTerm_${APP_VERSION}_aarch64.app.tar.gz"
+          verify_update windows-x86_64 \
+            "EdgeTerm_${APP_VERSION}_x64-setup.exe"
+          verify_update windows-x86_64-nsis \
+            "EdgeTerm_${APP_VERSION}_x64-setup.exe"
+          verify_update linux-x86_64 \
+            "EdgeTerm_${APP_VERSION}_amd64.AppImage"
+          verify_update linux-x86_64-appimage \
+            "EdgeTerm_${APP_VERSION}_amd64.AppImage"
+          verify_update linux-x86_64-deb \
+            "EdgeTerm_${APP_VERSION}_amd64.deb"
+          verify_update linux-aarch64 \
+            "EdgeTerm_${APP_VERSION}_aarch64.AppImage"
+          verify_update linux-aarch64-appimage \
+            "EdgeTerm_${APP_VERSION}_aarch64.AppImage"
+          verify_update linux-aarch64-deb \
+            "EdgeTerm_${APP_VERSION}_arm64.deb"
 
       - name: Publish GitHub Release
         env:

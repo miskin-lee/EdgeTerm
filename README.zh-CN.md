@@ -50,7 +50,7 @@ SSH / FTP 密码和 SSH 私钥口令保存在应用配置目录下仅当前系�
 
 ## 自动更新
 
-正式构建启动后会自动检查 GitHub 上的 Latest Release；发现更高版本时可在应用内下载、校验签名、安装并重启。也可以随时使用 **Help → Check for Updates…** 手动检查。更新源固定为仓库 Release 中由发布工作流生成的 `latest.json`，支持 Windows x64、macOS Apple Silicon，以及 Linux x64 / ARM64（Linux 应用内更新使用 AppImage）。
+正式构建启动后会自动检查 GitHub 上的 Latest Release；发现更高版本时可在应用内下载、校验签名、安装并重启。也可以随时使用 **Help → Check for Updates…** 手动检查。更新源固定为仓库 Release 中由发布工作流生成的 `latest.json`，支持 Windows x64、macOS Apple Silicon，以及 Linux x64 / ARM64；Linux AppImage 和 DEB 安装会按原包格式更新。
 
 更新包使用 Tauri updater 密钥签名，签名校验不能关闭。公钥已经固定在 `src-tauri/tauri.conf.json`，对应私钥仅保存在发布环境中。首次使用新工作流前，仓库管理员必须把本机生成的私钥配置为 Actions Secret：
 
@@ -86,7 +86,7 @@ TAURI_SIGNING_PRIVATE_KEY_PASSWORD="$(security find-generic-password \
 
 ## 手动发布
 
-需要发布时，在仓库的 **Actions → Release → Run workflow** 中手动触发。工作流会校验版本和 updater 私钥，创建草稿 Release，构建所有支持的平台并生成签名更新包。只有当 `latest.json` 同时包含四个目标平台且签名完整时，Release 才会发布为 Latest。
+需要发布时，在仓库的 **Actions → Release → Run workflow** 中手动触发。工作流会校验版本和 updater 私钥，创建草稿 Release，构建所有支持的平台并生成签名更新包。发布前会删除意外产物，并逐项核对安装包、更新包及其 `latest.json` 映射。
 
 发布前使用以下命令设置版本并提交。它会同步 `package.json`、`package-lock.json`、`Cargo.toml` 和 `Cargo.lock`；Tauri 安装包也直接读取这个版本：
 
@@ -105,7 +105,7 @@ Release tag 和软件版本严格一一对应，例如软件 `0.1.1` 只会发�
 | Windows | x64 | `windows-2022` |
 | macOS | Apple Silicon ARM64 | `macos-15` |
 
-构建完成后，可从仓库的 **Releases** 页面下载 `.deb`、`.rpm`、`.AppImage`、`.msi`、`.exe`、`.dmg` 等产物；Release 还包含 updater 签名和 `latest.json`，Actions run 中也会保留构建 Artifacts。工作流支持命令行触发：
+每个 Release 只包含 Linux x64 / ARM64 的 `.AppImage` 和 `.deb`、Windows x64 NSIS `.exe`、macOS Apple Silicon `.dmg` 及其 `.app.tar.gz` 更新包，以及 `latest.json`。不发布独立 `.sig`、`.rpm` 或 `.msi`；自动更新签名嵌入在 `latest.json` 中。Actions run 中仍会保留构建 Artifacts。工作流支持命令行触发：
 
 ```bash
 gh workflow run release.yml
