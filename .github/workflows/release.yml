@@ -134,9 +134,42 @@ jobs:
 
       - name: Install Linux system dependencies
         if: startsWith(matrix.platform, 'ubuntu-')
+        shell: bash
         run: |
-          sudo apt-get update
-          sudo apt-get install -y \
+          set -euo pipefail
+
+          # The x64 hosted image prefers azure.archive.ubuntu.com through a
+          # mirror list. If that endpoint accepts a connection but stops
+          # responding, apt does not reliably move on to the fallback mirror.
+          if [[ -f /etc/apt/apt-mirrors.txt ]]; then
+            sudo sed -i '\|azure\.archive\.ubuntu\.com|d' /etc/apt/apt-mirrors.txt
+          fi
+
+          run_apt() {
+            local attempt
+            for attempt in 1 2 3; do
+              if sudo timeout --signal=TERM --kill-after=15s 10m \
+                apt-get \
+                  -o Acquire::Retries=3 \
+                  -o Acquire::http::Timeout=30 \
+                  -o Acquire::https::Timeout=30 \
+                  -o Acquire::ForceIPv4=true \
+                  "$@"; then
+                return 0
+              fi
+
+              if [[ "$attempt" -eq 3 ]]; then
+                echo "apt-get failed after ${attempt} attempts." >&2
+                return 1
+              fi
+
+              echo "apt-get attempt ${attempt} failed; retrying..." >&2
+              sleep $((attempt * 5))
+            done
+          }
+
+          run_apt update
+          run_apt install -y \
             libwebkit2gtk-4.1-dev \
             libappindicator3-dev \
             librsvg2-dev \
