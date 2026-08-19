@@ -18,7 +18,12 @@ export interface Tab {
 export type PanelName = "filer" | "sessions" | "sender";
 
 export const PANEL_FONT_SIZE = { min: 9, max: 18, default: 12 } as const;
-export const BUFFER_FONT_SIZE = { min: 8, max: 32, default: 13 } as const;
+export const BUFFER_FONT_SIZE = { min: 8, max: 32, default: 12 } as const;
+export const TERMINAL_SCROLLBACK = {
+  min: 0,
+  max: 1_000_000,
+  default: 20_000,
+} as const;
 const DEFAULT_PANELS: Record<PanelName, boolean> = {
   filer: true,
   sessions: true,
@@ -27,6 +32,7 @@ const DEFAULT_PANELS: Record<PanelName, boolean> = {
 
 const PANEL_FONT_SIZE_KEY = "edgeterm.panelFontSize";
 const BUFFER_FONT_SIZE_KEY = "edgeterm.bufferFontSize";
+const TERMINAL_SCROLLBACK_KEY = "edgeterm.terminalScrollback";
 const GUTTER_MODE_KEY = "edgeterm.gutterMode";
 const PANELS_KEY = "edgeterm.panels";
 
@@ -103,6 +109,33 @@ const saveFontSize = (key: string, value: number) => {
   }
 };
 
+const normalizeScrollback = (value: number) => {
+  if (!Number.isFinite(value)) return TERMINAL_SCROLLBACK.default;
+  return Math.min(
+    TERMINAL_SCROLLBACK.max,
+    Math.max(TERMINAL_SCROLLBACK.min, Math.round(value)),
+  );
+};
+
+const loadScrollback = () => {
+  try {
+    const stored = localStorage.getItem(TERMINAL_SCROLLBACK_KEY);
+    return stored === null
+      ? TERMINAL_SCROLLBACK.default
+      : normalizeScrollback(Number(stored));
+  } catch {
+    return TERMINAL_SCROLLBACK.default;
+  }
+};
+
+const saveScrollback = (value: number) => {
+  try {
+    localStorage.setItem(TERMINAL_SCROLLBACK_KEY, String(value));
+  } catch {
+    // The setting still works for this run when storage is unavailable.
+  }
+};
+
 interface AppStore {
   profiles: SessionProfile[];
   tabs: Tab[];
@@ -110,6 +143,7 @@ interface AppStore {
   gutterMode: GutterMode;
   panelFontSize: number;
   bufferFontSize: number;
+  terminalScrollback: number;
   panels: Record<PanelName, boolean>;
   status: string;
   error: string | null;
@@ -133,6 +167,7 @@ interface AppStore {
   setGutterMode: (mode: GutterMode) => void;
   setPanelFontSize: (size: number) => void;
   setBufferFontSize: (size: number) => void;
+  setTerminalScrollback: (rows: number) => void;
   resetSettings: () => void;
   setStatus: (status: string) => void;
   setError: (error: string | null, sessionId?: string) => void;
@@ -148,6 +183,7 @@ export const useStore = create<AppStore>((set, get) => ({
   gutterMode: loadGutterMode(),
   panelFontSize: loadFontSize(PANEL_FONT_SIZE_KEY, PANEL_FONT_SIZE),
   bufferFontSize: loadFontSize(BUFFER_FONT_SIZE_KEY, BUFFER_FONT_SIZE),
+  terminalScrollback: loadScrollback(),
   panels: loadPanels(),
   status: "Ready",
   error: null,
@@ -271,18 +307,26 @@ export const useStore = create<AppStore>((set, get) => ({
     saveFontSize(BUFFER_FONT_SIZE_KEY, bufferFontSize);
   },
 
+  setTerminalScrollback(rows) {
+    const terminalScrollback = normalizeScrollback(rows);
+    set({ terminalScrollback });
+    saveScrollback(terminalScrollback);
+  },
+
   resetSettings() {
     set({
       panels: { ...DEFAULT_PANELS },
       gutterMode: "both",
       panelFontSize: PANEL_FONT_SIZE.default,
       bufferFontSize: BUFFER_FONT_SIZE.default,
+      terminalScrollback: TERMINAL_SCROLLBACK.default,
     });
     try {
       localStorage.removeItem(PANELS_KEY);
       localStorage.removeItem(GUTTER_MODE_KEY);
       localStorage.removeItem(PANEL_FONT_SIZE_KEY);
       localStorage.removeItem(BUFFER_FONT_SIZE_KEY);
+      localStorage.removeItem(TERMINAL_SCROLLBACK_KEY);
     } catch {
       // The defaults still apply for this run when storage is unavailable.
     }

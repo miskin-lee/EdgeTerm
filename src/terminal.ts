@@ -20,8 +20,6 @@ import {
 
 export type GutterMode = "off" | "line" | "time" | "both";
 
-const SCROLLBACK = 5000;
-
 function openTerminalWebLink(event: MouseEvent, uri: string) {
   // Opening terminal output on an unmodified click makes accidental launches
   // too easy. Match native terminal behavior on macOS and other platforms.
@@ -104,6 +102,7 @@ export class TerminalController {
   private firstLineNumber = 1;
 
   private gutterMode: GutterMode = "both";
+  private scrollback: number;
   private pendingShellClear = false;
   /**
    * Semantic coloring is render-driven: only rows in and around the viewport
@@ -125,8 +124,10 @@ export class TerminalController {
   constructor(
     readonly sessionId: string,
     private readonly callbacks: Callbacks,
-    fontSize = 13,
+    fontSize: number,
+    scrollback: number,
   ) {
+    this.scrollback = scrollback;
     this.term = new Terminal({
       allowProposedApi: true,
       cursorBlink: true,
@@ -136,7 +137,7 @@ export class TerminalController {
       fontSize,
       lineHeight: 1.25,
       letterSpacing: 0,
-      scrollback: SCROLLBACK,
+      scrollback,
       theme: XTERM_256_THEME,
       drawBoldTextInBrightColors: true,
       macOptionIsMeta: true,
@@ -185,6 +186,7 @@ export class TerminalController {
 
     this.term.onResize(({ cols, rows }) => {
       this.callbacks.onResize(cols, rows);
+      this.trimLineMetadata();
       this.measureCell();
       this.syncGutter();
     });
@@ -329,6 +331,14 @@ export class TerminalController {
     this.fit();
   }
 
+  setScrollback(scrollback: number) {
+    if (this.scrollback === scrollback) return;
+    this.scrollback = scrollback;
+    this.term.options.scrollback = scrollback;
+    this.trimLineMetadata();
+    this.syncGutter();
+  }
+
   search(query: string, forward = true) {
     if (!query) return;
     if (forward) this.searchAddon.findNext(query);
@@ -398,7 +408,11 @@ export class TerminalController {
 
     // xterm drops the oldest lines once scrollback is full; keep the parallel
     // array aligned and carry the discarded count into the line numbering.
-    const max = this.term.rows + SCROLLBACK;
+    this.trimLineMetadata();
+  }
+
+  private trimLineMetadata() {
+    const max = this.term.rows + this.scrollback;
     if (this.lineTimes.length > max) {
       const dropped = this.lineTimes.length - max;
       this.lineTimes.splice(0, dropped);

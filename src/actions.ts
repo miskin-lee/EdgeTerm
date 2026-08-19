@@ -75,6 +75,7 @@ export function ensureController(id: string): TerminalController {
       },
     },
     useStore.getState().bufferFontSize,
+    useStore.getState().terminalScrollback,
   );
   setController(id, controller);
   return controller;

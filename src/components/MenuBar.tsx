@@ -157,7 +157,7 @@ export function MenuBar(props: Props) {
           action: () => togglePanel("sender"),
         },
         "separator",
-        { label: "Font Size…", action: props.onFontSettings },
+        { label: "Display Settings…", action: props.onFontSettings },
       ],
     },
     {
@@ -170,7 +170,7 @@ export function MenuBar(props: Props) {
           action: () => {
             if (
               !window.confirm(
-                "Restore panel visibility, timestamp and line display, and font sizes to their defaults?",
+                "Restore panel visibility, timestamp and line display, font sizes, and scrollback to their defaults?",
               )
             ) {
               return;

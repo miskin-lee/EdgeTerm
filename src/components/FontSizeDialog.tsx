@@ -1,11 +1,20 @@
 import { useEffect, useState } from "react";
 
-import { BUFFER_FONT_SIZE, PANEL_FONT_SIZE } from "../store";
+import {
+  BUFFER_FONT_SIZE,
+  PANEL_FONT_SIZE,
+  TERMINAL_SCROLLBACK,
+} from "../store";
 
 interface Props {
   panelFontSize: number;
   bufferFontSize: number;
-  onApply: (panelFontSize: number, bufferFontSize: number) => void;
+  terminalScrollback: number;
+  onApply: (
+    panelFontSize: number,
+    bufferFontSize: number,
+    terminalScrollback: number,
+  ) => void;
   onClose: () => void;
 }
 
@@ -15,11 +24,13 @@ const clamp = (value: number, min: number, max: number) =>
 export function FontSizeDialog({
   panelFontSize,
   bufferFontSize,
+  terminalScrollback,
   onApply,
   onClose,
 }: Props) {
   const [panelSize, setPanelSize] = useState(panelFontSize);
   const [bufferSize, setBufferSize] = useState(bufferFontSize);
+  const [scrollback, setScrollback] = useState(terminalScrollback);
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -45,10 +56,10 @@ export function FontSizeDialog({
         onMouseDown={(event) => event.stopPropagation()}
         onSubmit={(event) => {
           event.preventDefault();
-          onApply(panelSize, bufferSize);
+          onApply(panelSize, bufferSize, scrollback);
         }}
       >
-        <div className="dialog-header">Font Size</div>
+        <div className="dialog-header">Display Settings</div>
         <div className="dialog-body font-size-dialog-body">
           <label className="font-size-setting">
             <span>
@@ -111,6 +122,31 @@ export function FontSizeDialog({
             />
             <span className="font-size-unit">px</span>
           </label>
+
+          <label className="font-size-setting scrollback-setting">
+            <span>
+              <strong>Scrollback</strong>
+              <small>Terminal history retained per session</small>
+            </span>
+            <input
+              aria-label="Terminal scrollback lines"
+              className="scrollback-number"
+              type="number"
+              min={TERMINAL_SCROLLBACK.min}
+              max={TERMINAL_SCROLLBACK.max}
+              step={1000}
+              value={scrollback}
+              onChange={(event) =>
+                updateNumber(
+                  event.target.valueAsNumber,
+                  setScrollback,
+                  TERMINAL_SCROLLBACK.min,
+                  TERMINAL_SCROLLBACK.max,
+                )
+              }
+            />
+            <span className="font-size-unit">lines</span>
+          </label>
         </div>
         <div className="dialog-footer font-size-dialog-footer">
           <button
@@ -119,6 +155,7 @@ export function FontSizeDialog({
             onClick={() => {
               setPanelSize(PANEL_FONT_SIZE.default);
               setBufferSize(BUFFER_FONT_SIZE.default);
+              setScrollback(TERMINAL_SCROLLBACK.default);
             }}
           >
             Reset Defaults

@@ -20,7 +20,7 @@
 
   --row-h: 22px;
   --panel-font-size: 12px;
-  --buffer-font-size: 13px;
+  --buffer-font-size: 12px;
   --font-ui: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC",
     "Microsoft YaHei", Roboto, sans-serif;
   --font-mono: "JetBrains Mono", "SF Mono", Menlo, Consolas, "DejaVu Sans Mono",
@@ -1698,6 +1698,13 @@ textarea:focus {
   font-variant-numeric: tabular-nums;
 }
 
+.scrollback-number {
+  grid-column: 2 / 4;
+  width: 100%;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
 .font-size-unit {
   color: var(--fg-faint);
 }
@@ -1713,6 +1720,10 @@ textarea:focus {
 
   .font-size-setting > span:first-child {
     grid-column: 1 / -1;
+  }
+
+  .scrollback-number {
+    grid-column: 1 / 3;
   }
 }
 

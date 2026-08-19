@@ -35,8 +35,10 @@ export default function App() {
   const loadProfiles = useStore((s) => s.loadProfiles);
   const panelFontSize = useStore((s) => s.panelFontSize);
   const bufferFontSize = useStore((s) => s.bufferFontSize);
+  const terminalScrollback = useStore((s) => s.terminalScrollback);
   const setPanelFontSize = useStore((s) => s.setPanelFontSize);
   const setBufferFontSize = useStore((s) => s.setBufferFontSize);
+  const setTerminalScrollback = useStore((s) => s.setTerminalScrollback);
   const setActive = useStore((s) => s.setActive);
   const activateAdjacentTab = useStore((s) => s.activateAdjacentTab);
   const closeTab = useStore((s) => s.closeTab);
@@ -263,9 +265,15 @@ export default function App() {
         <FontSizeDialog
           panelFontSize={panelFontSize}
           bufferFontSize={bufferFontSize}
-          onApply={(nextPanelFontSize, nextBufferFontSize) => {
+          terminalScrollback={terminalScrollback}
+          onApply={(
+            nextPanelFontSize,
+            nextBufferFontSize,
+            nextTerminalScrollback,
+          ) => {
             setPanelFontSize(nextPanelFontSize);
             setBufferFontSize(nextBufferFontSize);
+            setTerminalScrollback(nextTerminalScrollback);
             setFontSettingsOpen(false);
           }}
           onClose={() => setFontSettingsOpen(false)}

@@ -54,6 +54,7 @@ function TerminalHost({ tab, active }: { tab: Tab; active: boolean }) {
   const ref = useRef<HTMLDivElement>(null);
   const gutterMode = useStore((s) => s.gutterMode);
   const bufferFontSize = useStore((s) => s.bufferFontSize);
+  const terminalScrollback = useStore((s) => s.terminalScrollback);
   const id = tab.info.id;
 
   useEffect(() => {
@@ -76,6 +77,10 @@ function TerminalHost({ tab, active }: { tab: Tab; active: boolean }) {
   useEffect(() => {
     getController(id)?.setFontSize(bufferFontSize);
   }, [bufferFontSize, id]);
+
+  useEffect(() => {
+    getController(id)?.setScrollback(terminalScrollback);
+  }, [id, terminalScrollback]);
 
   useEffect(() => {
     if (!active) return;
