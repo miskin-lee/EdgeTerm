@@ -1,8 +1,12 @@
 import { useEffect, useRef, useState } from "react";
+import { ask } from "@tauri-apps/plugin-dialog";
+import { openUrl } from "@tauri-apps/plugin-opener";
 
 import { useStore } from "../store";
 import type { GutterMode } from "../terminal";
 import { getController } from "../terminalRegistry";
+
+const TUTORIAL_URL = "https://miskin-lee.github.io/EdgeTerm/tutorial.html";
 
 interface Entry {
   label: string;
@@ -163,20 +167,33 @@ export function MenuBar(props: Props) {
     {
       title: "Help",
       entries: [
+        {
+          label: "Tutorial",
+          action: () => {
+            void openUrl(TUTORIAL_URL).catch((error) => {
+              setStatus(`Failed to open tutorial: ${error}`);
+            });
+          },
+        },
         { label: "Check for Updates…", action: props.onCheckForUpdates },
         "separator",
         {
           label: "Restore Default Settings…",
           action: () => {
-            if (
-              !window.confirm(
+            void (async () => {
+              const confirmed = await ask(
                 "Restore panel visibility, timestamp and line display, font sizes, and scrollback to their defaults?",
-              )
-            ) {
-              return;
-            }
-            resetSettings();
-            setStatus("Default settings restored");
+                {
+                  title: "Restore Default Settings",
+                  kind: "warning",
+                  okLabel: "Restore",
+                  cancelLabel: "Cancel",
+                },
+              );
+              if (!confirmed) return;
+              resetSettings();
+              setStatus("Default settings restored");
+            })();
           },
         },
         "separator",
