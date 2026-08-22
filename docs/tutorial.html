@@ -1,0 +1,402 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>EdgeTerm Tutorial — How to use every feature</title>
+<meta name="description" content="A hands-on guide to every EdgeTerm feature: local shell, SSH, FTP and serial sessions, the Filer, the Sender, ZMODEM transfers, display settings, shortcuts and more.">
+<link rel="icon" type="image/png" href="icon.png">
+<link rel="stylesheet" href="style.css">
+<style>
+  .doc-layout { display: flex; gap: 44px; align-items: flex-start; padding: 40px 0 80px; }
+
+  .toc {
+    position: sticky; top: 76px; flex: 0 0 220px;
+    background: var(--panel); border: 1px solid var(--panel-border); border-radius: 12px;
+    padding: 16px 0; font-size: 14px; max-height: calc(100vh - 100px); overflow-y: auto;
+  }
+  .toc-title { padding: 0 18px 8px; font-size: 12px; text-transform: uppercase; letter-spacing: 1px; color: var(--text-dim); }
+  .toc a { display: block; padding: 6px 18px; color: var(--text-dim); text-decoration: none; border-left: 2px solid transparent; }
+  .toc a:hover { color: var(--accent); }
+
+  .doc { flex: 1; min-width: 0; }
+  .doc h1 { font-size: clamp(28px, 4vw, 38px); font-weight: 800; letter-spacing: -0.5px; margin: 8px 0 10px; }
+  .doc .lede { color: var(--text-dim); font-size: 16px; margin-bottom: 8px; }
+  .doc section { padding: 0; margin-top: 52px; scroll-margin-top: 80px; }
+  .doc h2 {
+    text-align: left; font-size: 24px; margin-bottom: 14px; padding-bottom: 10px;
+    border-bottom: 1px solid var(--panel-border);
+  }
+  .doc h2 .sec-icon { margin-right: 8px; }
+  .doc h3 { font-size: 17px; margin: 26px 0 8px; color: var(--accent); }
+  .doc a { color: var(--accent); }
+  .doc p { margin: 10px 0; color: var(--text); font-size: 15px; }
+  .doc p.dim, .doc li.dim { color: var(--text-dim); }
+  .doc ul, .doc ol { margin: 10px 0 10px 22px; font-size: 15px; }
+  .doc li { margin: 6px 0; }
+  .doc code, .menu-path {
+    font-family: var(--mono); font-size: 0.9em; color: var(--accent);
+    background: rgba(34, 211, 238, 0.08); border-radius: 5px; padding: 1px 6px;
+  }
+  .menu-path { color: var(--yellow); background: rgba(251, 191, 36, 0.08); white-space: nowrap; }
+  kbd {
+    font-family: var(--mono); font-size: 0.85em; color: var(--text);
+    background: var(--bg-soft); border: 1px solid var(--panel-border); border-bottom-width: 2px;
+    border-radius: 5px; padding: 1px 7px; white-space: nowrap;
+  }
+
+  .callout {
+    border: 1px solid var(--panel-border); border-left: 3px solid var(--accent);
+    background: var(--panel); border-radius: 8px; padding: 12px 16px; margin: 14px 0; font-size: 14px;
+  }
+  .callout.warn { border-left-color: var(--yellow); }
+  .callout .callout-tag { font-weight: 700; margin-right: 6px; }
+  .callout.warn .callout-tag { color: var(--yellow); }
+  .callout:not(.warn) .callout-tag { color: var(--accent); }
+
+  .table-wrap { overflow-x: auto; margin: 14px 0; }
+  .doc table { border-collapse: collapse; width: 100%; font-size: 14px; min-width: 480px; }
+  .doc th, .doc td { border: 1px solid var(--panel-border); padding: 8px 12px; text-align: left; vertical-align: top; }
+  .doc th { background: var(--bg-soft); font-weight: 600; }
+  .doc td:first-child { white-space: nowrap; }
+
+  @media (max-width: 860px) {
+    .doc-layout { flex-direction: column; }
+    .toc { position: static; flex: none; width: 100%; max-height: none; }
+  }
+</style>
+</head>
+<body data-lang="en">
+
+<header>
+  <div class="container nav">
+    <a class="brand" href="./">
+      <img src="icon.png" alt="EdgeTerm logo">
+      EdgeTerm
+    </a>
+    <nav class="nav-links">
+      <a class="nav-item is-active" href="tutorial.html"><span data-i18n="en">Tutorial</span><span data-i18n="zh">使用教程</span></a>
+      <a class="nav-item" href="./#download"><span data-i18n="en">Download</span><span data-i18n="zh">下载</span></a>
+      <a class="nav-item" href="https://github.com/miskin-lee/EdgeTerm">GitHub</a>
+      <button class="lang-btn" id="langBtn" type="button">中文</button>
+    </nav>
+  </div>
+</header>
+
+<div class="container doc-layout">
+
+  <nav class="toc">
+    <div class="toc-title"><span data-i18n="en">Contents</span><span data-i18n="zh">目录</span></div>
+    <a href="#getting-started"><span data-i18n="en">Getting Started</span><span data-i18n="zh">快速上手</span></a>
+    <a href="#layout"><span data-i18n="en">Main Window</span><span data-i18n="zh">主窗口布局</span></a>
+    <a href="#sessions"><span data-i18n="en">Creating Sessions</span><span data-i18n="zh">创建会话</span></a>
+    <a href="#session-panel"><span data-i18n="en">Session Panel</span><span data-i18n="zh">Session 面板</span></a>
+    <a href="#terminal"><span data-i18n="en">Using the Terminal</span><span data-i18n="zh">终端使用</span></a>
+    <a href="#filer"><span data-i18n="en">Filer &amp; SFTP</span><span data-i18n="zh">Filer 与 SFTP</span></a>
+    <a href="#ftp"><span data-i18n="en">FTP Workspace</span><span data-i18n="zh">FTP 工作区</span></a>
+    <a href="#sender"><span data-i18n="en">Sender</span><span data-i18n="zh">Sender 发送器</span></a>
+    <a href="#zmodem"><span data-i18n="en">ZMODEM Transfers</span><span data-i18n="zh">ZMODEM 传输</span></a>
+    <a href="#display"><span data-i18n="en">Display Settings</span><span data-i18n="zh">显示设置</span></a>
+    <a href="#updates"><span data-i18n="en">Updates</span><span data-i18n="zh">自动更新</span></a>
+    <a href="#shortcuts"><span data-i18n="en">Keyboard Shortcuts</span><span data-i18n="zh">快捷键一览</span></a>
+    <a href="#faq"><span data-i18n="en">Limitations &amp; FAQ</span><span data-i18n="zh">限制与常见问题</span></a>
+  </nav>
+
+  <main class="doc">
+    <h1><span data-i18n="en">EdgeTerm Tutorial</span><span data-i18n="zh">EdgeTerm 使用教程</span></h1>
+    <p class="lede">
+      <span data-i18n="en">A hands-on guide to every feature — from your first connection to ZMODEM file transfers.</span>
+      <span data-i18n="zh">逐个功能的实操指南 —— 从第一次连接到 ZMODEM 文件传输。</span>
+    </p>
+    <p class="dim">
+      <span data-i18n="en">Shortcuts are written with <kbd>⌘</kbd> (macOS); on Windows and Linux use <kbd>Ctrl</kbd> instead.</span>
+      <span data-i18n="zh">本文快捷键以 macOS 的 <kbd>⌘</kbd> 表示；Windows / Linux 下请使用 <kbd>Ctrl</kbd>。</span>
+    </p>
+
+    <section id="getting-started">
+      <h2><span class="sec-icon">🚀</span><span data-i18n="en">Getting Started</span><span data-i18n="zh">快速上手</span></h2>
+      <p>
+        <span data-i18n="en">Download the installer for your platform from <a href="https://github.com/miskin-lee/EdgeTerm/releases/latest">GitHub Releases</a>:</span>
+        <span data-i18n="zh">从 <a href="https://github.com/miskin-lee/EdgeTerm/releases/latest">GitHub Releases</a> 下载对应平台的安装包：</span>
+      </p>
+      <ul>
+        <li><strong>Windows</strong> — <span data-i18n="en">run the NSIS <code>.exe</code> installer (x64).</span><span data-i18n="zh">运行 NSIS <code>.exe</code> 安装程序（x64）。</span></li>
+        <li><strong>macOS</strong> — <span data-i18n="en">open the <code>.dmg</code> and drag EdgeTerm into Applications (Apple Silicon).</span><span data-i18n="zh">打开 <code>.dmg</code>，把 EdgeTerm 拖入「应用程序」（Apple Silicon）。</span></li>
+        <li><strong>Linux</strong> — <span data-i18n="en">install the <code>.deb</code>, or <code>chmod +x</code> the <code>.AppImage</code> and run it directly (x64 / ARM64).</span><span data-i18n="zh">安装 <code>.deb</code>，或给 <code>.AppImage</code> 加执行权限（<code>chmod +x</code>）后直接运行（x64 / ARM64）。</span></li>
+      </ul>
+      <div class="callout warn">
+        <span class="callout-tag"><span data-i18n="en">Note</span><span data-i18n="zh">注意</span></span>
+        <span data-i18n="en">Releases are not yet notarized on macOS or Authenticode-signed on Windows, so the OS may warn on first launch. On macOS, right-click the app and choose <em>Open</em>; on Windows, click <em>More info → Run anyway</em>. Automatic updates are still cryptographically signed and verified.</span>
+        <span data-i18n="zh">当前版本尚未做 macOS 公证 / Windows 代码签名，首次启动系统可能弹出安全提示。macOS 下右键应用选择「打开」；Windows 下点击「更多信息 → 仍要运行」。应用内自动更新仍然经过签名校验，安全性不受影响。</span>
+      </div>
+    </section>
+
+    <section id="layout">
+      <h2><span class="sec-icon">🗺️</span><span data-i18n="en">Main Window</span><span data-i18n="zh">主窗口布局</span></h2>
+      <p>
+        <span data-i18n="en">The window is organized around the terminal, with three dockable panels:</span>
+        <span data-i18n="zh">窗口以终端为中心，外围有三个可显示 / 隐藏的面板：</span>
+      </p>
+      <div class="table-wrap"><table>
+        <tr><th><span data-i18n="en">Area</span><span data-i18n="zh">区域</span></th><th><span data-i18n="en">What it does</span><span data-i18n="zh">作用</span></th><th><span data-i18n="en">Toggle</span><span data-i18n="zh">开关</span></th></tr>
+        <tr><td><strong>Filer</strong> <span data-i18n="en">(left)</span><span data-i18n="zh">（左侧）</span></td><td><span data-i18n="en">File browser — local files, or SFTP for SSH sessions</span><span data-i18n="zh">文件浏览器 —— 本地文件；SSH 会话下自动切换为 SFTP</span></td><td><kbd>⌘⌥←</kbd></td></tr>
+        <tr><td><strong>Session</strong> <span data-i18n="en">(right)</span><span data-i18n="zh">（右侧）</span></td><td><span data-i18n="en">Saved connection profiles, double-click to connect</span><span data-i18n="zh">已保存的连接配置，双击连接</span></td><td><kbd>⌘⌥→</kbd></td></tr>
+        <tr><td><strong>Sender</strong> <span data-i18n="en">(bottom)</span><span data-i18n="zh">（底部）</span></td><td><span data-i18n="en">Send commands or hex bytes to one or all sessions</span><span data-i18n="zh">向当前或全部会话发送命令 / 十六进制数据</span></td><td><kbd>⌘⌥↓</kbd></td></tr>
+      </table></div>
+      <ul>
+        <li><span data-i18n="en"><strong>Tabs</strong> — each open session is a tab. Switch with <kbd>⌘←</kbd> / <kbd>⌘→</kbd> or jump directly with <kbd>⌘1</kbd>–<kbd>⌘9</kbd>.</span><span data-i18n="zh"><strong>标签页</strong> —— 每个打开的会话是一个标签。用 <kbd>⌘←</kbd> / <kbd>⌘→</kbd> 切换，或用 <kbd>⌘1</kbd>–<kbd>⌘9</kbd> 直接跳转。</span></li>
+        <li><span data-i18n="en"><strong>Address bar</strong> — shows the active session as <code>ssh › host:port</code>.</span><span data-i18n="zh"><strong>地址栏</strong> —— 以 <code>ssh › host:port</code> 形式显示当前会话。</span></li>
+        <li><span data-i18n="en"><strong>Status bar</strong> — terminal size (columns × rows), cursor position (Ln/Ch), and the session protocol.</span><span data-i18n="zh"><strong>状态栏</strong> —— 终端尺寸（列 × 行）、光标位置（Ln/Ch）和会话协议。</span></li>
+      </ul>
+    </section>
+
+    <section id="sessions">
+      <h2><span class="sec-icon">🔗</span><span data-i18n="en">Creating Sessions</span><span data-i18n="zh">创建会话</span></h2>
+      <p>
+        <span data-i18n="en">Press <kbd>⌘N</kbd> or use <span class="menu-path">Session → New Session…</span> to open the new-session dialog. Pick a <strong>Protocol</strong> at the top, give the session a <strong>Name</strong> and an optional <strong>Color</strong> (shown on the tab and in the Session panel), fill in the connection details, then either:</span>
+        <span data-i18n="zh">按 <kbd>⌘N</kbd> 或点击菜单 <span class="menu-path">Session → New Session…</span> 打开新建会话对话框。先在顶部选择 <strong>Protocol</strong>（协议），再填写 <strong>Name</strong>（名称）和可选的 <strong>Color</strong>（颜色，会显示在标签页和 Session 面板中），然后填写连接信息，最后：</span>
+      </p>
+      <ul>
+        <li><span data-i18n="en"><strong>Connect</strong> — saves the profile and opens the session immediately;</span><span data-i18n="zh"><strong>Connect</strong> —— 保存配置并立刻连接；</span></li>
+        <li><span data-i18n="en"><strong>Save</strong> — saves it to the Session panel for later.</span><span data-i18n="zh"><strong>Save</strong> —— 仅保存到 Session 面板，稍后使用。</span></li>
+      </ul>
+
+      <h3><span data-i18n="en">Local Shell</span><span data-i18n="zh">本地 Shell</span></h3>
+      <p>
+        <span data-i18n="en">A real pseudoterminal on your machine with synchronized window resizing. Optional fields: <strong>Shell</strong> (defaults to <code>$SHELL</code>) and <strong>Directory</strong> (the starting directory, defaults to your home).</span>
+        <span data-i18n="zh">本机上真正的伪终端，窗口尺寸自动同步。可选字段：<strong>Shell</strong>（默认使用 <code>$SHELL</code>）和 <strong>Directory</strong>（起始目录，默认为用户主目录）。</span>
+      </p>
+
+      <h3>SSH</h3>
+      <p>
+        <span data-i18n="en">Fill in <strong>Host</strong>, <strong>Port</strong> (default 22) and <strong>Username</strong>, then choose one of three <strong>Authentication</strong> methods:</span>
+        <span data-i18n="zh">填写 <strong>Host</strong>、<strong>Port</strong>（默认 22）和 <strong>Username</strong>，然后从三种 <strong>Authentication</strong>（认证方式）中选择：</span>
+      </p>
+      <ul>
+        <li><span data-i18n="en"><strong>Password</strong> — enter the account password;</span><span data-i18n="zh"><strong>Password</strong> —— 输入账户密码；</span></li>
+        <li><span data-i18n="en"><strong>Public key</strong> — point <strong>Private key</strong> to your key file (e.g. <code>~/.ssh/id_ed25519</code>) and enter the <strong>Passphrase</strong> if the key has one;</span><span data-i18n="zh"><strong>Public key</strong> —— 在 <strong>Private key</strong> 中填写私钥路径（如 <code>~/.ssh/id_ed25519</code>），如私钥有口令则填写 <strong>Passphrase</strong>；</span></li>
+        <li><span data-i18n="en"><strong>SSH agent</strong> — use the keys already loaded in your local ssh-agent, no secrets stored.</span><span data-i18n="zh"><strong>SSH agent</strong> —— 直接使用本机 ssh-agent 中已加载的密钥，不保存任何秘密。</span></li>
+      </ul>
+      <div class="callout">
+        <span class="callout-tag"><span data-i18n="en">Security</span><span data-i18n="zh">安全</span></span>
+        <span data-i18n="en">Passwords and passphrases are stored in <code>credentials.json</code> inside the app's config directory, readable only by your system user. They are never sent to the frontend or written into <code>sessions.json</code>, and saved sessions reconnect after a restart without triggering the macOS Keychain password dialog.</span>
+        <span data-i18n="zh">密码和私钥口令保存在应用配置目录下的 <code>credentials.json</code> 中，仅当前系统用户可读；不会返回给前端，也不会写入 <code>sessions.json</code>。重启后已保存会话可直接重连，不会触发 macOS 钥匙串的电脑密码授权框。</span>
+      </div>
+
+      <h3>FTP</h3>
+      <p>
+        <span data-i18n="en">Fill in <strong>Host</strong>, <strong>Port</strong> (default 21) and <strong>Username</strong> — use <code>anonymous</code> for anonymous FTP, in which case the password is optional. FTP sessions open the dedicated <a href="#ftp">dual-pane FTP workspace</a> instead of a terminal.</span>
+        <span data-i18n="zh">填写 <strong>Host</strong>、<strong>Port</strong>（默认 21）和 <strong>Username</strong> —— 匿名 FTP 请使用 <code>anonymous</code>，此时密码可留空。FTP 会话打开的是专用的<a href="#ftp">双栏 FTP 工作区</a>，而不是终端。</span>
+      </p>
+      <div class="callout warn">
+        <span class="callout-tag"><span data-i18n="en">Warning</span><span data-i18n="zh">警告</span></span>
+        <span data-i18n="en">Standard FTP encrypts neither credentials nor file contents. Use it only on trusted networks; prefer SSH/SFTP whenever transport security matters.</span>
+        <span data-i18n="zh">标准 FTP 不加密凭据和文件内容，只应在可信网络中使用；需要传输安全时请改用 SSH / SFTP。</span>
+      </div>
+
+      <h3><span data-i18n="en">Serial</span><span data-i18n="zh">串口</span></h3>
+      <p>
+        <span data-i18n="en">Select a <strong>Port</strong> from the drop-down (use the refresh button to rescan after plugging in a device), then configure <strong>Baud rate</strong> (e.g. 115200 — common rates are suggested, or type any value), <strong>Data bits</strong>, <strong>Stop bits</strong>, <strong>Parity</strong> and <strong>Flow control</strong> to match your device.</span>
+        <span data-i18n="zh">在 <strong>Port</strong> 下拉框中选择串口（插入设备后可点刷新按钮重新扫描），然后按设备要求配置 <strong>Baud rate</strong>（波特率，如 115200，提供常用值也可手动输入）、<strong>Data bits</strong>（数据位）、<strong>Stop bits</strong>（停止位）、<strong>Parity</strong>（校验位）和 <strong>Flow control</strong>（流控）。</span>
+      </p>
+    </section>
+
+    <section id="session-panel">
+      <h2><span class="sec-icon">📇</span><span data-i18n="en">Session Panel</span><span data-i18n="zh">Session 面板</span></h2>
+      <p>
+        <span data-i18n="en">The Session panel on the right (<kbd>⌘⌥→</kbd>) lists all saved profiles, grouped by type — Local, SSH, FTP and Serial — in collapsible groups. A built-in Local Shell entry is always available.</span>
+        <span data-i18n="zh">右侧的 Session 面板（<kbd>⌘⌥→</kbd>）按类型分组列出所有已保存的配置 —— Local、SSH、FTP、Serial，分组可折叠展开。内置的本地 Shell 项始终可用。</span>
+      </p>
+      <ul>
+        <li><span data-i18n="en"><strong>Connect</strong> — double-click a profile to open it in a new tab.</span><span data-i18n="zh"><strong>连接</strong> —— 双击配置即可在新标签中打开。</span></li>
+        <li><span data-i18n="en"><strong>Filter</strong> — type in the filter box at the top to search profiles by name.</span><span data-i18n="zh"><strong>过滤</strong> —— 在顶部的 Filter 输入框中按名称搜索。</span></li>
+        <li><span data-i18n="en"><strong>Edit / Delete</strong> — hover a profile row to reveal its edit and delete buttons. Editing reopens the session dialog with the saved values.</span><span data-i18n="zh"><strong>编辑 / 删除</strong> —— 鼠标悬停在条目上会出现编辑和删除按钮。编辑会带着已保存的配置重新打开会话对话框。</span></li>
+        <li><span data-i18n="en"><strong>New</strong> — the panel's ＋ button opens the new-session dialog, same as <kbd>⌘N</kbd>.</span><span data-i18n="zh"><strong>新建</strong> —— 面板上的 ＋ 按钮与 <kbd>⌘N</kbd> 相同，打开新建会话对话框。</span></li>
+      </ul>
+    </section>
+
+    <section id="terminal">
+      <h2><span class="sec-icon">⌨️</span><span data-i18n="en">Using the Terminal</span><span data-i18n="zh">终端使用</span></h2>
+
+      <h3><span data-i18n="en">Timestamp &amp; line-number gutter</span><span data-i18n="zh">时间戳与行号侧栏</span></h3>
+      <p>
+        <span data-i18n="en">Every output line carries a <code>[HH:MM:SS.SSS]</code> timestamp and a cumulative line number, with the cursor line highlighted — invaluable when reading logs or reporting when something happened. Switch modes under <span class="menu-path">Session → Timestamp &amp; Line</span>:</span>
+        <span data-i18n="zh">每行输出都带有 <code>[HH:MM:SS.SSS]</code> 时间戳和累计行号，光标行高亮 —— 查日志、复盘「什么时候发生了什么」时非常有用。在 <span class="menu-path">Session → Timestamp &amp; Line</span> 下切换四种模式：</span>
+      </p>
+      <ul>
+        <li><code>Timestamp + Line Number</code> — <span data-i18n="en">both columns (default);</span><span data-i18n="zh">时间戳和行号都显示（默认）；</span></li>
+        <li><code>Line Number Only</code> — <span data-i18n="en">line numbers only;</span><span data-i18n="zh">只显示行号；</span></li>
+        <li><code>Timestamp Only</code> — <span data-i18n="en">timestamps only;</span><span data-i18n="zh">只显示时间戳；</span></li>
+        <li><code>No Gutter</code> — <span data-i18n="en">a clean, classic terminal.</span><span data-i18n="zh">隐藏侧栏，回到传统终端外观。</span></li>
+      </ul>
+
+      <h3><span data-i18n="en">Colors &amp; semantic highlighting</span><span data-i18n="zh">色彩与语义高亮</span></h3>
+      <p>
+        <span data-i18n="en">The terminal renders ANSI 16-color, 256-color and 24-bit true color. On top of that, output with no ANSI styling gets semantic highlighting automatically: log levels, network addresses, file paths, Git diffs, HTTP requests, JSON and more are colorized so plain logs stay readable.</span>
+        <span data-i18n="zh">终端支持 ANSI 16 色、256 色和 24 位真彩渲染。对没有 ANSI 样式的输出还会自动补充语义高亮：日志级别、网络地址、文件路径、Git diff、HTTP、JSON 等都会着色，纯文本日志也一目了然。</span>
+      </p>
+
+      <h3><span data-i18n="en">Search, copy, paste, clear</span><span data-i18n="zh">查找、复制、粘贴、清屏</span></h3>
+      <ul>
+        <li><span data-i18n="en"><kbd>⌘F</kbd> opens search over the scrollback buffer; <kbd>⌘G</kbd> jumps to the next match (also under the <span class="menu-path">Search</span> menu).</span><span data-i18n="zh"><kbd>⌘F</kbd> 在回滚缓冲区中查找；<kbd>⌘G</kbd> 跳到下一个匹配（也可用 <span class="menu-path">Search</span> 菜单）。</span></li>
+        <li><span data-i18n="en"><kbd>⌘C</kbd> copies the selection, <kbd>⌘V</kbd> pastes — both work inside the terminal (see the <span class="menu-path">Edit</span> menu).</span><span data-i18n="zh"><kbd>⌘C</kbd> 复制选中内容，<kbd>⌘V</kbd> 粘贴 —— 终端内直接可用（对应 <span class="menu-path">Edit</span> 菜单）。</span></li>
+        <li><span data-i18n="en"><kbd>⌘K</kbd> (<span class="menu-path">Edit → Clear Buffer</span>) clears the screen and scrollback.</span><span data-i18n="zh"><kbd>⌘K</kbd>（<span class="menu-path">Edit → Clear Buffer</span>）清空屏幕和回滚缓冲区。</span></li>
+      </ul>
+    </section>
+
+    <section id="filer">
+      <h2><span class="sec-icon">🗂️</span><span data-i18n="en">Filer &amp; SFTP</span><span data-i18n="zh">Filer 与 SFTP</span></h2>
+      <p>
+        <span data-i18n="en">The Filer on the left (<kbd>⌘⌥←</kbd>) is a file browser that follows the active session: for SSH sessions it automatically switches to <strong>SFTP over the same connection</strong> (no separate login); for other sessions it browses the local filesystem.</span>
+        <span data-i18n="zh">左侧的 Filer（<kbd>⌘⌥←</kbd>）是跟随当前会话的文件浏览器：SSH 会话下自动切换为 <strong>SFTP（复用同一条连接，无需再次登录）</strong>；其他会话下浏览本地文件系统。</span>
+      </p>
+      <p><span data-i18n="en">Toolbar actions:</span><span data-i18n="zh">工具栏操作：</span></p>
+      <ul>
+        <li><span data-i18n="en"><strong>New folder</strong> — create a directory in the current path;</span><span data-i18n="zh"><strong>New folder</strong> —— 在当前路径新建目录；</span></li>
+        <li><span data-i18n="en"><strong>Upload</strong> — pick local files to upload to the current remote directory (SSH sessions);</span><span data-i18n="zh"><strong>Upload</strong> —— 选择本地文件上传到当前远程目录（SSH 会话）；</span></li>
+        <li><span data-i18n="en"><strong>Download</strong> — download the selected remote file to a local location;</span><span data-i18n="zh"><strong>Download</strong> —— 把选中的远程文件下载到本地；</span></li>
+        <li><span data-i18n="en"><strong>Delete</strong>, <strong>Refresh</strong>, <strong>Parent folder</strong> — manage and navigate the listing;</span><span data-i18n="zh"><strong>Delete</strong>、<strong>Refresh</strong>、<strong>Parent folder</strong> —— 删除、刷新、返回上级目录；</span></li>
+        <li><span data-i18n="en"><strong>Drag &amp; drop</strong> — drop files from your system file manager onto the Filer to upload them; a progress indicator tracks each transfer.</span><span data-i18n="zh"><strong>拖拽上传</strong> —— 直接把文件从系统文件管理器拖进 Filer 即可上传，每个传输都有进度显示。</span></li>
+      </ul>
+      <p class="dim">
+        <span data-i18n="en">Double-click a directory to enter it; double-click the path segments to jump back up.</span>
+        <span data-i18n="zh">双击目录进入；点击路径可快速返回上层。</span>
+      </p>
+    </section>
+
+    <section id="ftp">
+      <h2><span class="sec-icon">📁</span><span data-i18n="en">FTP Workspace</span><span data-i18n="zh">FTP 工作区</span></h2>
+      <p>
+        <span data-i18n="en">Opening an FTP session shows a dedicated dual-pane file manager instead of a terminal: the <strong>FTP server on the left</strong>, your <strong>local machine on the right</strong>.</span>
+        <span data-i18n="zh">打开 FTP 会话后显示的是专用的双栏文件管理器，而不是终端：<strong>左侧为 FTP 服务器</strong>，<strong>右侧为本机</strong>。</span>
+      </p>
+      <ul>
+        <li><span data-i18n="en"><strong>Two-way transfers</strong> — copy files in either direction; transfers stream, so large files don't need to fit in memory. Folders download recursively as streams.</span><span data-i18n="zh"><strong>双向传输</strong> —— 两个方向都可以复制文件，全部为流式传输，大文件不占内存；文件夹也支持流式下载。</span></li>
+        <li><span data-i18n="en"><strong>File management</strong> — create directories, rename, and delete (delete is non-recursive: empty a directory before deleting it).</span><span data-i18n="zh"><strong>文件管理</strong> —— 支持新建目录、重命名和删除（删除为非递归：目录需先清空再删除）。</span></li>
+        <li><span data-i18n="en"><strong>Encoding</strong> — server file names in UTF-8 or GBK are detected and decoded automatically.</span><span data-i18n="zh"><strong>编码</strong> —— 自动识别并解码服务器上 UTF-8 / GBK 编码的文件名。</span></li>
+        <li><span data-i18n="en"><strong>Passive mode</strong> — browsing uses passive mode, which works through most firewalls and NAT.</span><span data-i18n="zh"><strong>被动模式</strong> —— 浏览使用被动模式，能穿过大多数防火墙和 NAT。</span></li>
+      </ul>
+    </section>
+
+    <section id="sender">
+      <h2><span class="sec-icon">📤</span><span data-i18n="en">Sender</span><span data-i18n="zh">Sender 发送器</span></h2>
+      <p>
+        <span data-i18n="en">The Sender at the bottom (<kbd>⌘⌥↓</kbd>) sends a command or raw bytes to one or many sessions at once — handy for serial devices and for driving several servers in parallel.</span>
+        <span data-i18n="zh">底部的 Sender（<kbd>⌘⌥↓</kbd>）可以把命令或原始字节一次发送到一个或多个会话 —— 调串口设备、同时操作多台服务器时非常方便。</span>
+      </p>
+      <ol>
+        <li><span data-i18n="en">Choose the format: <strong>Text</strong>, or <strong>Hex</strong> for raw bytes written as hex pairs (e.g. <code>DE AD BE EF</code>);</span><span data-i18n="zh">选择格式：<strong>Text</strong> 文本，或 <strong>Hex</strong> 十六进制字节（如 <code>DE AD BE EF</code>）；</span></li>
+        <li><span data-i18n="en">Pick the line <strong>Ending</strong> appended after the payload: <code>None</code>, <code>LF (\n)</code> or <code>CRLF (\r\n)</code> — serial devices often require CRLF;</span><span data-i18n="zh">选择 <strong>Ending</strong>（发送后附加的行尾）：<code>None</code>、<code>LF (\n)</code> 或 <code>CRLF (\r\n)</code> —— 串口设备通常需要 CRLF；</span></li>
+        <li><span data-i18n="en">Pick the <strong>Targets</strong>: <code>Current Session</code> or <code>All Sessions</code>;</span><span data-i18n="zh">选择 <strong>Targets</strong>（目标）：<code>Current Session</code> 当前会话，或 <code>All Sessions</code> 全部会话；</span></li>
+        <li><span data-i18n="en">Type the command and press <strong>▶</strong> (or Enter) to send; <strong>✕</strong> clears the input.</span><span data-i18n="zh">输入命令后点 <strong>▶</strong>（或回车）发送；<strong>✕</strong> 清空输入。</span></li>
+      </ol>
+      <h3><span data-i18n="en">Saved commands</span><span data-i18n="zh">常用命令库</span></h3>
+      <p>
+        <span data-i18n="en">Frequently used commands can be saved with an optional tag name and re-sent with one click. Each saved command remembers its own line ending, and the list pages when it grows long. Sessions that are busy with a ZMODEM transfer are skipped automatically and reported in the status bar.</span>
+        <span data-i18n="zh">常用命令可以起一个标签名保存下来，之后一键重发。每条保存的命令都记住自己的行尾设置，数量多时自动分页。正在进行 ZMODEM 传输的会话会被自动跳过，并在状态栏提示。</span>
+      </p>
+    </section>
+
+    <section id="zmodem">
+      <h2><span class="sec-icon">⚡</span><span data-i18n="en">ZMODEM Transfers</span><span data-i18n="zh">ZMODEM 传输</span></h2>
+      <p>
+        <span data-i18n="en">Local shell, SSH and serial terminals detect ZMODEM automatically — transfer files right inside the terminal, no extra setup:</span>
+        <span data-i18n="zh">本地 Shell、SSH 和串口终端会自动检测 ZMODEM —— 直接在终端里传文件，无需任何额外配置：</span>
+      </p>
+      <ul>
+        <li><span data-i18n="en"><strong>Send to the remote</strong> — run <code>rz</code> on the remote side; EdgeTerm pops up a file picker where you can select one or more local files to send.</span><span data-i18n="zh"><strong>发送到远端</strong> —— 在远端执行 <code>rz</code>，EdgeTerm 会弹出文件选择框，可选择一个或多个本地文件发送。</span></li>
+        <li><span data-i18n="en"><strong>Receive from the remote</strong> — run <code>sz &lt;file&gt;</code> on the remote side; EdgeTerm asks where to save each incoming file.</span><span data-i18n="zh"><strong>从远端接收</strong> —— 在远端执行 <code>sz &lt;文件&gt;</code>，EdgeTerm 会为每个接收的文件询问保存位置。</span></li>
+        <li><span data-i18n="en"><strong>Cancel</strong> — use <span class="menu-path">Session → Cancel ZMODEM Transfer</span> to stop an active transfer.</span><span data-i18n="zh"><strong>取消</strong> —— 通过 <span class="menu-path">Session → Cancel ZMODEM Transfer</span> 中止正在进行的传输。</span></li>
+      </ul>
+      <div class="callout">
+        <span class="callout-tag"><span data-i18n="en">Tip</span><span data-i18n="zh">提示</span></span>
+        <span data-i18n="en">The remote side needs a compatible <code>rz</code>/<code>sz</code> implementation — install <code>lrzsz</code> (e.g. <code>apt install lrzsz</code>). Transfers are binary-safe and processed in fixed 1&nbsp;MiB chunks. Resume is not supported yet: restart an interrupted transfer from the beginning.</span>
+        <span data-i18n="zh">对端需要安装兼容的 <code>rz</code>/<code>sz</code> 实现 —— 例如 <code>lrzsz</code>（<code>apt install lrzsz</code>）。传输为二进制安全，按固定 1&nbsp;MiB 分块处理。暂不支持断点续传，中断后需从头重传。</span>
+      </div>
+    </section>
+
+    <section id="display">
+      <h2><span class="sec-icon">🖥️</span><span data-i18n="en">Display Settings</span><span data-i18n="zh">显示设置</span></h2>
+      <p>
+        <span data-i18n="en">Open <span class="menu-path">View → Display Settings…</span> to adjust:</span>
+        <span data-i18n="zh">打开 <span class="menu-path">View → Display Settings…</span> 可调整：</span>
+      </p>
+      <ul>
+        <li><span data-i18n="en"><strong>Panel font size</strong> — the UI panels (Filer, Session, Sender);</span><span data-i18n="zh"><strong>Panel font size</strong> —— 界面面板（Filer、Session、Sender）的字号；</span></li>
+        <li><span data-i18n="en"><strong>Buffer font size</strong> — the terminal text itself;</span><span data-i18n="zh"><strong>Buffer font size</strong> —— 终端文本字号；</span></li>
+        <li><span data-i18n="en"><strong>Scrollback</strong> — how many lines the terminal keeps in history.</span><span data-i18n="zh"><strong>Scrollback</strong> —— 终端保留的历史行数。</span></li>
+      </ul>
+      <p>
+        <span data-i18n="en">These settings persist across restarts. The <span class="menu-path">View</span> menu also toggles the three panels, and <span class="menu-path">Help → Restore Default Settings…</span> resets everything to defaults.</span>
+        <span data-i18n="zh">这些设置会持久保存。<span class="menu-path">View</span> 菜单还可以显示 / 隐藏三个面板；<span class="menu-path">Help → Restore Default Settings…</span> 可一键恢复默认设置。</span>
+      </p>
+    </section>
+
+    <section id="updates">
+      <h2><span class="sec-icon">🔄</span><span data-i18n="en">Updates</span><span data-i18n="zh">自动更新</span></h2>
+      <p>
+        <span data-i18n="en">EdgeTerm checks the latest GitHub Release on startup. When a newer version exists, it can download, verify, install and restart — all in-app. You can also check manually via <span class="menu-path">Help → Check for Updates…</span>.</span>
+        <span data-i18n="zh">EdgeTerm 启动时自动检查 GitHub 最新 Release。发现新版本后可在应用内完成下载、校验、安装并重启。也可以随时通过 <span class="menu-path">Help → Check for Updates…</span> 手动检查。</span>
+      </p>
+      <p class="dim">
+        <span data-i18n="en">Update bundles are signed with a Tauri updater key and verification cannot be disabled. Supported: Windows x64, macOS Apple Silicon, Linux x64 / ARM64; Linux AppImage and DEB installs update in their original package format.</span>
+        <span data-i18n="zh">更新包使用 Tauri updater 密钥签名，签名校验不可关闭。支持 Windows x64、macOS Apple Silicon、Linux x64 / ARM64；Linux AppImage 和 DEB 安装会按原包格式更新。</span>
+      </p>
+    </section>
+
+    <section id="shortcuts">
+      <h2><span class="sec-icon">⌘</span><span data-i18n="en">Keyboard Shortcuts</span><span data-i18n="zh">快捷键一览</span></h2>
+      <div class="table-wrap"><table>
+        <tr><th><span data-i18n="en">Shortcut</span><span data-i18n="zh">快捷键</span></th><th><span data-i18n="en">Action</span><span data-i18n="zh">动作</span></th></tr>
+        <tr><td><kbd>⌘N</kbd></td><td><span data-i18n="en">Open the new-session dialog</span><span data-i18n="zh">打开新建会话对话框</span></td></tr>
+        <tr><td><kbd>⌘W</kbd></td><td><span data-i18n="en">Close the current session</span><span data-i18n="zh">关闭当前会话</span></td></tr>
+        <tr><td><kbd>⌘F</kbd> / <kbd>⌘G</kbd></td><td><span data-i18n="en">Search the buffer / find next</span><span data-i18n="zh">缓冲区查找 / 下一个匹配</span></td></tr>
+        <tr><td><kbd>⌘K</kbd></td><td><span data-i18n="en">Clear the screen and scrollback</span><span data-i18n="zh">清屏并清空回滚缓冲区</span></td></tr>
+        <tr><td><kbd>⌘←</kbd> / <kbd>⌘→</kbd></td><td><span data-i18n="en">Previous / next open session</span><span data-i18n="zh">上一个 / 下一个已打开会话</span></td></tr>
+        <tr><td><kbd>⌘1</kbd>–<kbd>⌘9</kbd></td><td><span data-i18n="en">Jump to tab N</span><span data-i18n="zh">跳转到第 N 个标签</span></td></tr>
+        <tr><td><kbd>⌘⌥←</kbd> / <kbd>⌘⌥→</kbd> / <kbd>⌘⌥↓</kbd></td><td><span data-i18n="en">Toggle Filer / Session / Sender</span><span data-i18n="zh">显示或隐藏 Filer / Session / Sender</span></td></tr>
+        <tr><td><kbd>⌘C</kbd> / <kbd>⌘V</kbd></td><td><span data-i18n="en">Copy / paste inside the terminal</span><span data-i18n="zh">终端内复制 / 粘贴</span></td></tr>
+      </table></div>
+      <p class="dim">
+        <span data-i18n="en">On Windows and Linux, replace <kbd>⌘</kbd> with <kbd>Ctrl</kbd> and <kbd>⌥</kbd> with <kbd>Alt</kbd>.</span>
+        <span data-i18n="zh">Windows / Linux 下将 <kbd>⌘</kbd> 替换为 <kbd>Ctrl</kbd>，<kbd>⌥</kbd> 替换为 <kbd>Alt</kbd>。</span>
+      </p>
+    </section>
+
+    <section id="faq">
+      <h2><span class="sec-icon">❓</span><span data-i18n="en">Limitations &amp; FAQ</span><span data-i18n="zh">限制与常见问题</span></h2>
+      <ul>
+        <li><span data-i18n="en"><strong>Not yet implemented</strong> — port forwarding / tunneling, session recording and playback, split panes with multiple tabs.</span><span data-i18n="zh"><strong>尚未实现</strong> —— 端口转发 / 隧道、会话录制回放、多标签分屏。</span></li>
+        <li><span data-i18n="en"><strong>ZMODEM resume</strong> — not supported; restart interrupted transfers from the beginning.</span><span data-i18n="zh"><strong>ZMODEM 断点续传</strong> —— 暂不支持，中断后需从头重传。</span></li>
+        <li><span data-i18n="en"><strong>FTP delete is non-recursive</strong> — empty a directory before deleting it.</span><span data-i18n="zh"><strong>FTP 删除为非递归</strong> —— 删除目录前需先清空其内容。</span></li>
+        <li><span data-i18n="en"><strong>OS warning on first install</strong> — expected while releases are not notarized / Authenticode-signed; see <a href="#getting-started">Getting Started</a>.</span><span data-i18n="zh"><strong>首次安装的系统警告</strong> —— 由于版本暂未做公证 / 代码签名，属预期现象；见<a href="#getting-started">快速上手</a>。</span></li>
+      </ul>
+      <p>
+        <span data-i18n="en">Found a bug or want a feature? Open an issue on <a href="https://github.com/miskin-lee/EdgeTerm/issues">GitHub</a>.</span>
+        <span data-i18n="zh">发现问题或想要新功能？欢迎到 <a href="https://github.com/miskin-lee/EdgeTerm/issues">GitHub</a> 提 issue。</span>
+      </p>
+    </section>
+
+  </main>
+</div>
+
+<footer>
+  <div class="container">
+    <p>
+      EdgeTerm · MIT License ·
+      <a href="./"><span data-i18n="en">Home</span><span data-i18n="zh">首页</span></a> ·
+      <a href="https://github.com/miskin-lee/EdgeTerm">GitHub</a> ·
+      <a href="https://github.com/miskin-lee/EdgeTerm/blob/main/README.md">README</a> ·
+      <a href="https://github.com/miskin-lee/EdgeTerm/blob/main/README.zh-CN.md">简体中文文档</a>
+    </p>
+    <p style="margin-top: 6px;">
+      <span data-i18n="en">Built with Rust + Tauri.</span>
+      <span data-i18n="zh">使用 Rust + Tauri 构建。</span>
+    </p>
+  </div>
+</footer>
+
+<script src="lang.js"></script>
+
+</body>
+</html>

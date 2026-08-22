@@ -6,56 +6,8 @@
 <title>EdgeTerm — Terminal, SSH, FTP &amp; Serial Client</title>
 <meta name="description" content="EdgeTerm — a fast, native terminal, SSH, FTP and serial client built with Rust + Tauri. From cloud servers to edge devices: pure-Rust SSH stack, timestamp gutter, ZMODEM transfers, auto updates.">
 <link rel="icon" type="image/png" href="icon.png">
+<link rel="stylesheet" href="style.css">
 <style>
-  :root {
-    --bg: #0a0f1a;
-    --bg-soft: #0e1626;
-    --panel: #101b30;
-    --panel-border: #1d2c47;
-    --text: #d7e2f2;
-    --text-dim: #8aa0bf;
-    --accent: #22d3ee;
-    --accent-2: #3b82f6;
-    --green: #34d399;
-    --yellow: #fbbf24;
-    --mono: "SF Mono", "Cascadia Code", Menlo, Consolas, "Liberation Mono", monospace;
-  }
-  * { margin: 0; padding: 0; box-sizing: border-box; }
-  html { scroll-behavior: smooth; }
-  body {
-    background: var(--bg);
-    color: var(--text);
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", "PingFang SC", "Microsoft YaHei", sans-serif;
-    line-height: 1.6;
-  }
-  .container { max-width: 1080px; margin: 0 auto; padding: 0 24px; }
-
-  /* language toggle: body[data-lang=en] hides .zh, and vice versa */
-  body[data-lang="en"] [data-i18n="zh"] { display: none; }
-  body[data-lang="zh"] [data-i18n="en"] { display: none; }
-
-  header {
-    position: sticky; top: 0; z-index: 10;
-    background: rgba(10, 15, 26, 0.85);
-    backdrop-filter: blur(10px);
-    border-bottom: 1px solid var(--panel-border);
-  }
-  .nav {
-    display: flex; align-items: center; gap: 20px;
-    padding: 14px 0;
-  }
-  .brand { display: flex; align-items: center; gap: 10px; font-weight: 700; font-size: 18px; color: var(--text); text-decoration: none; }
-  .brand img { width: 28px; height: 28px; border-radius: 6px; }
-  .nav-links { margin-left: auto; display: flex; align-items: center; gap: 22px; }
-  .nav-links a { color: var(--text-dim); text-decoration: none; font-size: 14px; }
-  .nav-links a:hover { color: var(--accent); }
-  .lang-btn {
-    background: var(--panel); color: var(--text-dim);
-    border: 1px solid var(--panel-border); border-radius: 6px;
-    padding: 4px 12px; font-size: 13px; cursor: pointer; font-family: inherit;
-  }
-  .lang-btn:hover { color: var(--accent); border-color: var(--accent); }
-
   .hero { padding: 84px 0 40px; text-align: center; }
   .hero h1 {
     font-size: clamp(36px, 6vw, 56px); font-weight: 800; letter-spacing: -1px;
@@ -71,18 +23,6 @@
     border-radius: 999px; padding: 4px 14px;
   }
   .cta { display: flex; flex-wrap: wrap; gap: 14px; justify-content: center; margin-top: 32px; }
-  .btn {
-    display: inline-flex; align-items: center; gap: 8px;
-    padding: 12px 26px; border-radius: 8px; font-size: 15px; font-weight: 600;
-    text-decoration: none; transition: transform 0.15s, box-shadow 0.15s;
-  }
-  .btn:hover { transform: translateY(-2px); }
-  .btn-primary {
-    background: linear-gradient(90deg, var(--accent), var(--accent-2)); color: #051018;
-    box-shadow: 0 4px 24px rgba(34, 211, 238, 0.35);
-  }
-  .btn-ghost { background: var(--panel); color: var(--text); border: 1px solid var(--panel-border); }
-  .btn-ghost:hover { border-color: var(--accent); }
   .platforms-line { margin-top: 18px; color: var(--text-dim); font-size: 13px; font-family: var(--mono); }
 
   /* terminal mockup */
@@ -110,21 +50,6 @@
   .p-blue { color: #60a5fa; }
   .cursor-line { background: rgba(34, 211, 238, 0.07); display: inline-block; width: 100%; }
 
-  section { padding: 64px 0; }
-  h2 { font-size: 30px; font-weight: 700; text-align: center; margin-bottom: 8px; }
-  .section-sub { text-align: center; color: var(--text-dim); margin-bottom: 44px; font-size: 15px; }
-
-  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 18px; }
-  .card {
-    background: var(--panel); border: 1px solid var(--panel-border); border-radius: 12px;
-    padding: 24px; transition: border-color 0.2s, transform 0.2s;
-  }
-  .card:hover { border-color: rgba(34, 211, 238, 0.45); transform: translateY(-3px); }
-  .card .icon { font-size: 26px; margin-bottom: 12px; }
-  .card h3 { font-size: 17px; margin-bottom: 8px; }
-  .card p { color: var(--text-dim); font-size: 14px; }
-  .card .backend { display: inline-block; font-family: var(--mono); font-size: 11px; color: var(--accent); background: rgba(34,211,238,0.08); border-radius: 5px; padding: 2px 8px; margin-bottom: 10px; }
-
   .dl-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 18px; max-width: 940px; margin: 0 auto; }
   .dl-card {
     background: var(--panel); border: 1px solid var(--panel-border); border-radius: 12px;
@@ -138,14 +63,7 @@
   .dl-note { text-align: center; color: var(--text-dim); font-size: 13px; margin-top: 26px; }
   .dl-note a { color: var(--accent); text-decoration: none; }
 
-  footer {
-    border-top: 1px solid var(--panel-border); padding: 34px 0; text-align: center;
-    color: var(--text-dim); font-size: 13px;
-  }
-  footer a { color: var(--accent); text-decoration: none; }
-
   @media (max-width: 640px) {
-    .nav-links a.nav-item { display: none; }
     .hero { padding-top: 56px; }
   }
 </style>
@@ -154,12 +72,12 @@
 
 <header>
   <div class="container nav">
-    <a class="brand" href="#">
+    <a class="brand" href="./">
       <img src="icon.png" alt="EdgeTerm logo">
       EdgeTerm
     </a>
     <nav class="nav-links">
-      <a class="nav-item" href="#features"><span data-i18n="en">Features</span><span data-i18n="zh">功能特性</span></a>
+      <a class="nav-item" href="tutorial.html"><span data-i18n="en">Tutorial</span><span data-i18n="zh">使用教程</span></a>
       <a class="nav-item" href="#download"><span data-i18n="en">Download</span><span data-i18n="zh">下载</span></a>
       <a class="nav-item" href="https://github.com/miskin-lee/EdgeTerm">GitHub</a>
       <button class="lang-btn" id="langBtn" type="button">中文</button>
@@ -188,6 +106,9 @@
     <a class="btn btn-primary" href="https://github.com/miskin-lee/EdgeTerm/releases/latest">
       <span data-i18n="en">⬇ Download</span><span data-i18n="zh">⬇ 立即下载</span>
     </a>
+    <a class="btn btn-ghost" href="tutorial.html">
+      <span data-i18n="en">📖 Tutorial</span><span data-i18n="zh">📖 使用教程</span>
+    </a>
     <a class="btn btn-ghost" href="https://github.com/miskin-lee/EdgeTerm">
       <span data-i18n="en">★ Star on GitHub</span><span data-i18n="zh">★ GitHub 源码</span>
     </a>
@@ -212,111 +133,7 @@
   </div>
 </div>
 
-<section id="features" class="container">
-  <h2><span data-i18n="en">One client, four session types</span><span data-i18n="zh">一个客户端，四种会话</span></h2>
-  <p class="section-sub">
-    <span data-i18n="en">Local shell, SSH, FTP and serial — each backed by a native Rust implementation.</span>
-    <span data-i18n="zh">本地 Shell、SSH、FTP 与串口 —— 全部由原生 Rust 后端驱动。</span>
-  </p>
-  <div class="grid">
-    <div class="card">
-      <div class="icon">🖥️</div>
-      <div><span class="backend">portable-pty</span></div>
-      <h3><span data-i18n="en">Local Shell</span><span data-i18n="zh">本地 Shell</span></h3>
-      <p>
-        <span data-i18n="en">A real pseudoterminal with synchronized window resizing.</span>
-        <span data-i18n="zh">真实伪终端，窗口尺寸同步调整。</span>
-      </p>
-    </div>
-    <div class="card">
-      <div class="icon">🔐</div>
-      <div><span class="backend">russh + russh-sftp</span></div>
-      <h3>SSH</h3>
-      <p>
-        <span data-i18n="en">Password, public-key and ssh-agent authentication; SFTP reuses the same connection.</span>
-        <span data-i18n="zh">支持密码、公钥与 ssh-agent 认证；SFTP 复用同一连接。</span>
-      </p>
-    </div>
-    <div class="card">
-      <div class="icon">📁</div>
-      <div><span class="backend">suppaftp</span></div>
-      <h3>FTP</h3>
-      <p>
-        <span data-i18n="en">Dual-pane file manager with passive-mode browsing, UTF-8/GBK filename decoding and streaming transfers.</span>
-        <span data-i18n="zh">双栏文件管理器，被动模式浏览、UTF-8/GBK 文件名解码、流式传输。</span>
-      </p>
-    </div>
-    <div class="card">
-      <div class="icon">🔌</div>
-      <div><span class="backend">serialport</span></div>
-      <h3><span data-i18n="en">Serial</span><span data-i18n="zh">串口</span></h3>
-      <p>
-        <span data-i18n="en">Configurable baud rate, data bits, stop bits, parity and flow control.</span>
-        <span data-i18n="zh">波特率、数据位、停止位、校验位与流控均可配置。</span>
-      </p>
-    </div>
-  </div>
-</section>
-
-<section class="container" style="padding-top: 0;">
-  <h2><span data-i18n="en">Built for real work</span><span data-i18n="zh">为实际工作而生</span></h2>
-  <p class="section-sub">
-    <span data-i18n="en">A power-user layout where everything is within reach.</span>
-    <span data-i18n="zh">为高效工作打造的专业布局，一切触手可及。</span>
-  </p>
-  <div class="grid">
-    <div class="card">
-      <div class="icon">🕐</div>
-      <h3><span data-i18n="en">Timestamp &amp; Line Gutter</span><span data-i18n="zh">时间戳与行号侧边栏</span></h3>
-      <p>
-        <span data-i18n="en">Every output line carries [HH:MM:SS.SSS] and a cumulative line number, with the cursor line highlighted. Four display modes.</span>
-        <span data-i18n="zh">每行输出附带 [HH:MM:SS.SSS] 时间戳与累计行号，高亮光标行，提供四种显示模式。</span>
-      </p>
-    </div>
-    <div class="card">
-      <div class="icon">🎨</div>
-      <h3><span data-i18n="en">Rich Color Rendering</span><span data-i18n="zh">丰富的色彩渲染</span></h3>
-      <p>
-        <span data-i18n="en">ANSI 16/256/24-bit true color, plus semantic highlighting for plain logs, network addresses, paths, Git diffs, HTTP and JSON.</span>
-        <span data-i18n="zh">支持 ANSI 16 色 / 256 色 / 24 位真彩色，并为普通日志、网络地址、路径、Git diff、HTTP、JSON 等提供语义高亮。</span>
-      </p>
-    </div>
-    <div class="card">
-      <div class="icon">🗂️</div>
-      <h3><span data-i18n="en">Filer &amp; Sessions</span><span data-i18n="zh">文件浏览与会话管理</span></h3>
-      <p>
-        <span data-i18n="en">A file browser that switches to SFTP for SSH sessions, plus saved connection profiles in collapsible groups — double-click to connect.</span>
-        <span data-i18n="zh">文件浏览器在 SSH 会话下自动切换为 SFTP；已保存连接按分组折叠管理，双击即可连接。</span>
-      </p>
-    </div>
-    <div class="card">
-      <div class="icon">📤</div>
-      <h3><span data-i18n="en">Batch Sender</span><span data-i18n="zh">批量发送器</span></h3>
-      <p>
-        <span data-i18n="en">Text or hex input, line-by-line or char-by-char, repeat counts, configurable intervals, targeting one or all sessions.</span>
-        <span data-i18n="zh">文本或十六进制输入、逐行或逐字符发送、重复次数与间隔可配置，可发送到当前或全部会话。</span>
-      </p>
-    </div>
-    <div class="card">
-      <div class="icon">⚡</div>
-      <h3><span data-i18n="en">ZMODEM Transfers</span><span data-i18n="zh">ZMODEM 传输</span></h3>
-      <p>
-        <span data-i18n="en">Local, SSH and serial terminals auto-detect ZMODEM. Run rz / sz to move files, binary-safe, in 1 MiB chunks.</span>
-        <span data-i18n="zh">本地、SSH 与串口终端自动检测 ZMODEM，运行 rz / sz 即可收发文件，二进制安全，按 1 MiB 分块处理。</span>
-      </p>
-    </div>
-    <div class="card">
-      <div class="icon">🔄</div>
-      <h3><span data-i18n="en">Signed Auto Updates</span><span data-i18n="zh">签名自动更新</span></h3>
-      <p>
-        <span data-i18n="en">Checks GitHub Releases on startup, then downloads, verifies the signature, installs and restarts — verification can't be disabled.</span>
-        <span data-i18n="zh">启动时检查 GitHub Release，可在应用内下载、验签、安装并重启；签名校验不可关闭。</span>
-      </p>
-    </div>
-  </div>
-</section>
-
-<section id="download" class="container" style="padding-top: 0;">
+<section id="download" class="container">
   <h2><span data-i18n="en">Download</span><span data-i18n="zh">下载</span></h2>
   <p class="section-sub">
     <span data-i18n="en">Native installers for every supported platform, signed for automatic updates.</span>
@@ -340,8 +157,8 @@
     </a>
   </div>
   <p class="dl-note">
-    <span data-i18n="en">All builds on the <a href="https://github.com/miskin-lee/EdgeTerm/releases">GitHub Releases</a> page.</span>
-    <span data-i18n="zh">全部版本见 <a href="https://github.com/miskin-lee/EdgeTerm/releases">GitHub Releases</a> 页面。</span>
+    <span data-i18n="en">All builds on the <a href="https://github.com/miskin-lee/EdgeTerm/releases">GitHub Releases</a> page. New to EdgeTerm? Start with the <a href="tutorial.html">tutorial</a>.</span>
+    <span data-i18n="zh">全部版本见 <a href="https://github.com/miskin-lee/EdgeTerm/releases">GitHub Releases</a> 页面。第一次使用？请从<a href="tutorial.html">使用教程</a>开始。</span>
   </p>
 </section>
 
@@ -349,6 +166,7 @@
   <div class="container">
     <p>
       EdgeTerm · MIT License ·
+      <a href="tutorial.html"><span data-i18n="en">Tutorial</span><span data-i18n="zh">使用教程</span></a> ·
       <a href="https://github.com/miskin-lee/EdgeTerm">GitHub</a> ·
       <a href="https://github.com/miskin-lee/EdgeTerm/blob/main/README.md">README</a> ·
       <a href="https://github.com/miskin-lee/EdgeTerm/blob/main/README.zh-CN.md">简体中文文档</a>
@@ -360,23 +178,7 @@
   </div>
 </footer>
 
-<script>
-  (function () {
-    var btn = document.getElementById('langBtn');
-    function apply(lang) {
-      document.body.setAttribute('data-lang', lang);
-      document.documentElement.lang = lang === 'zh' ? 'zh-CN' : 'en';
-      btn.textContent = lang === 'zh' ? 'EN' : '中文';
-      try { localStorage.setItem('edgeterm-lang', lang); } catch (e) {}
-    }
-    var saved = null;
-    try { saved = localStorage.getItem('edgeterm-lang'); } catch (e) {}
-    apply(saved || (/^zh/i.test(navigator.language || '') ? 'zh' : 'en'));
-    btn.addEventListener('click', function () {
-      apply(document.body.getAttribute('data-lang') === 'zh' ? 'en' : 'zh');
-    });
-  })();
-</script>
+<script src="lang.js"></script>
 
 </body>
 </html>
