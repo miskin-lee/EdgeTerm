@@ -3,7 +3,8 @@ import { open as openDialog, save as saveDialog } from "@tauri-apps/plugin-dialo
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import * as api from "../../api";
-import { useActiveTab } from "../../store";
+import { fileIconUrl } from "../../fileIcons";
+import { useActiveTab, useStore } from "../../store";
 import type { FileEntry } from "../../types";
 
 interface TransferState {
@@ -22,6 +23,7 @@ interface TransferRateSample {
 
 export function FilerPanel() {
   const tab = useActiveTab();
+  const theme = useStore((s) => s.theme);
   const remote = Boolean(
     tab?.info.kind === "ssh" &&
       tab.info.supportsRemoteFiles &&
@@ -499,9 +501,7 @@ export function FilerPanel() {
         {error && <div className="panel-empty">{error}</div>}
         {newFolder !== null && (
           <div className="row filer-new-folder">
-            <span className="filer-icon is-directory">
-              <FilerEntryIcon kind="directory" />
-            </span>
+            <FilerEntryIcon src={fileIconUrl(newFolder, true, theme)} />
             <input
               autoFocus
               value={newFolder}
@@ -525,22 +525,10 @@ export function FilerPanel() {
               onDoubleClick={() => activate(entry)}
               title={entryTitle(entry)}
             >
-              <span className={`filer-icon is-${kind}`}>
-                <FilerEntryIcon kind={kind} />
-              </span>
-              <span className="filer-entry-main">
-                <span className="row-label">{entry.name}</span>
-                <span className="filer-entry-details">
-                  <span className="filer-entry-kind">
-                    {entryKindLabel(kind)}
-                  </span>
-                  {!entry.isDir && (
-                    <span className="filer-entry-size">
-                      {formatBytes(entry.size)}
-                    </span>
-                  )}
-                </span>
-              </span>
+              <FilerEntryIcon
+                src={fileIconUrl(entry.name, entry.isDir, theme)}
+              />
+              <span className="row-label">{entry.name}</span>
               <span className="filer-col-date row-meta">
                 {formatDate(entry.modified)}
               </span>
@@ -615,32 +603,11 @@ export function FilerPanel() {
 
 type FilerEntryKind = "directory" | "file" | "symlink";
 
-function FilerEntryIcon({ kind }: { kind: FilerEntryKind }) {
+function FilerEntryIcon({ src }: { src: string }) {
   return (
-    <svg
-      viewBox="0 0 20 20"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.5"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden="true"
-    >
-      {kind === "directory" ? (
-        <path d="M2.25 5.25h5l1.6 1.8h8.9v8.7a1.5 1.5 0 0 1-1.5 1.5H3.75a1.5 1.5 0 0 1-1.5-1.5V5.25Z" />
-      ) : kind === "symlink" ? (
-        <>
-          <path d="M6.9 12.7 5.6 14a2.55 2.55 0 1 1-3.6-3.6l2.65-2.65a2.55 2.55 0 0 1 3.6 0" />
-          <path d="m13.1 7.3 1.3-1.3a2.55 2.55 0 1 1 3.6 3.6l-2.65 2.65a2.55 2.55 0 0 1-3.6 0" />
-          <path d="m7.25 12.75 5.5-5.5" />
-        </>
-      ) : (
-        <>
-          <path d="M4 2.25h7.25L16 7v10.75H4V2.25Z" />
-          <path d="M11.25 2.25V7H16M7 10.25h6M7 13.25h6" />
-        </>
-      )}
-    </svg>
+    <span className="filer-icon">
+      <img src={src} alt="" draggable={false} />
+    </span>
   );
 }
 

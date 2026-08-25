@@ -8,6 +8,13 @@ const host = process.env.TAURI_DEV_HOST;
 export default defineConfig(async () => ({
   plugins: [react()],
 
+  build: {
+    // The Material file icons are ~1000 small SVGs; emit them as files instead of
+    // inlining a megabyte of base64 into the main bundle.
+    assetsInlineLimit: (filePath: string) =>
+      filePath.includes("material-icon-theme") ? false : undefined,
+  },
+
   // Vite options tailored for Tauri development and only applied in `tauri dev` or `tauri build`
   //
   // 1. prevent Vite from obscuring rust errors
