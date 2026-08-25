@@ -202,8 +202,6 @@ export default function App() {
         } as CSSProperties
       }
     >
-      <div className="titlebar" data-tauri-drag-region />
-
       <MenuBar
         onNewSession={newSession}
         onFind={() => {

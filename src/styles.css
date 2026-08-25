@@ -227,18 +227,6 @@ textarea:focus {
   height: 100%;
 }
 
-.titlebar {
-  height: 30px;
-  flex: 0 0 30px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: var(--bg-app);
-  border-bottom: 1px solid var(--border);
-  font-size: 12px;
-  color: var(--fg-dim);
-}
-
 .menubar {
   height: 28px;
   flex: 0 0 28px;
@@ -248,6 +236,12 @@ textarea:focus {
   padding: 0 8px;
   background: var(--bg-app);
   border-bottom: 1px solid var(--border);
+}
+
+/* Leave room for the macOS traffic lights drawn over the overlay title bar
+   (the class is dropped in native fullscreen, where macOS hides them). */
+.menubar.is-mac {
+  padding-left: 78px;
 }
 
 .menu-item {

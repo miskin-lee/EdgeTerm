@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { getCurrentWindow } from "@tauri-apps/api/window";
 import { ask } from "@tauri-apps/plugin-dialog";
 import { openUrl } from "@tauri-apps/plugin-opener";
 
@@ -8,6 +9,42 @@ import { getController } from "../terminalRegistry";
 import type { ThemeMode } from "../types";
 
 const TUTORIAL_URL = "https://miskin-lee.github.io/EdgeTerm/tutorial.html";
+
+// With `titleBarStyle: "Overlay"` macOS paints the traffic lights over our
+// content, so the menubar doubles as the drag region and leaves room for them
+// (except in native fullscreen, where macOS hides the traffic lights).
+const IS_MAC = /Mac/i.test(navigator.platform || navigator.userAgent);
+
+function useMacFullscreen(): boolean {
+  const [fullscreen, setFullscreen] = useState(false);
+  useEffect(() => {
+    if (!IS_MAC) return;
+    const win = getCurrentWindow();
+    let disposed = false;
+    let unlisten: (() => void) | undefined;
+    const sync = () => {
+      win
+        .isFullscreen()
+        .then((value) => {
+          if (!disposed) setFullscreen(value);
+        })
+        .catch(() => {});
+    };
+    sync();
+    win
+      .onResized(sync)
+      .then((fn) => {
+        if (disposed) fn();
+        else unlisten = fn;
+      })
+      .catch(() => {});
+    return () => {
+      disposed = true;
+      unlisten?.();
+    };
+  }, []);
+  return fullscreen;
+}
 
 interface Entry {
   label: string;
@@ -33,6 +70,7 @@ interface Props {
 export function MenuBar(props: Props) {
   const [open, setOpen] = useState<string | null>(null);
   const barRef = useRef<HTMLDivElement>(null);
+  const macFullscreen = useMacFullscreen();
 
   const activeId = useStore((s) => s.activeId);
   const panels = useStore((s) => s.panels);
@@ -49,7 +87,11 @@ export function MenuBar(props: Props) {
   useEffect(() => {
     if (!open) return;
     const dismiss = (event: MouseEvent) => {
-      if (!barRef.current?.contains(event.target as Node)) setOpen(null);
+      const target = event.target as Node;
+      // Outside the bar, or on the bar's blank drag area (window drag start).
+      if (!barRef.current?.contains(target) || target === barRef.current) {
+        setOpen(null);
+      }
     };
     document.addEventListener("mousedown", dismiss);
     return () => document.removeEventListener("mousedown", dismiss);
@@ -220,7 +262,11 @@ export function MenuBar(props: Props) {
   ];
 
   return (
-    <div className="menubar" ref={barRef}>
+    <div
+      className={`menubar${IS_MAC && !macFullscreen ? " is-mac" : ""}`}
+      ref={barRef}
+      data-tauri-drag-region
+    >
       {menus.map((menu) => (
         <div
           key={menu.title}
