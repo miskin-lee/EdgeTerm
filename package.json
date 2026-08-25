@@ -1,7 +1,7 @@
 {
   "name": "edgeterm",
   "private": true,
-  "version": "0.3.2",
+  "version": "0.3.3",
   "type": "module",
   "description": "A WindTerm-inspired terminal, SSH, FTP and serial client built with Rust + Tauri",
   "scripts": {
