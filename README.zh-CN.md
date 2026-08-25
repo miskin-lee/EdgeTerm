@@ -47,6 +47,7 @@ SSH / FTP 密码和 SSH 私钥口令保存在应用配置目录下仅当前系�
 | `⌘1`–`⌘9` | `Ctrl+1`–`Ctrl+9` | 切换到第 N 个标签 |
 | `⌘⌥←` / `⌘⌥→` / `⌘⌥↓` | `Ctrl+Alt+←` / `Ctrl+Alt+→` / `Ctrl+Alt+↓` | 显示或隐藏 Filer / Session / Sender |
 | `⌘C` / `⌘V` | `Alt+C` / `Alt+V` | 复制 / 粘贴（终端内） |
+| `⌘A` | `Alt+A` | 全选终端缓冲区 |
 
 ## 自动更新
 

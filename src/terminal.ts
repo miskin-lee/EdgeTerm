@@ -270,11 +270,18 @@ export class TerminalController {
         return true;
       }
 
-      // Windows / Linux: Alt+C / Alt+V copy and paste. Plain Ctrl+C/V must
-      // keep reaching the shell (SIGINT, ^V), and xterm would otherwise turn
-      // Alt+key into ESC-prefixed input, so these are taken over here.
+      // Windows / Linux: Alt+A / Alt+C / Alt+V select all, copy and paste.
+      // Plain Ctrl+A/C/V must keep reaching the shell (^A is readline
+      // beginning-of-line, ^C is SIGINT, ^V is quoted-insert), and xterm
+      // would otherwise turn Alt+key into ESC-prefixed input, so these are
+      // taken over here. (xterm itself maps ⌘A to select-all on macOS.)
       const altOnly =
         event.altKey && !event.ctrlKey && !event.metaKey && !event.shiftKey;
+      if (altOnly && key === "a") {
+        event.preventDefault();
+        this.term.selectAll();
+        return false;
+      }
       if (altOnly && key === "c" && this.term.hasSelection()) {
         event.preventDefault();
         void navigator.clipboard.writeText(this.term.getSelection());

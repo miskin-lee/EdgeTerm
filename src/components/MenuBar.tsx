@@ -176,6 +176,11 @@ export function MenuBar(props: Props) {
             if (text) getController(id)?.term.paste(text);
           }),
         },
+        {
+          label: "Select All",
+          shortcut: sc("⌘A", "Alt+A"),
+          action: withActive((id) => getController(id)?.term.selectAll()),
+        },
         "separator",
         {
           label: "Clear Buffer",
