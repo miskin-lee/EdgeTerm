@@ -3,6 +3,7 @@ mod error;
 mod fs_local;
 mod model;
 mod session;
+mod ssh_config;
 mod store;
 
 #[cfg(test)]
@@ -60,6 +61,10 @@ pub fn run() {
             commands::local_rename,
             commands::local_remove,
             commands::list_serial_ports,
+            commands::list_ssh_config_hosts,
+            commands::get_ssh_config,
+            commands::resolve_ssh_host,
+            commands::import_ssh_config_hosts,
         ])
         .run(tauri::generate_context!())
         .expect("error while running EdgeTerm");

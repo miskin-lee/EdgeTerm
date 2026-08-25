@@ -7,6 +7,7 @@ import type {
   SerialPortDesc,
   SessionInfo,
   SessionProfile,
+  SshConfigEntry,
 } from "./types";
 
 export interface OutputEvent {
@@ -190,6 +191,17 @@ export const localRemove = (path: string, isDir: boolean) =>
 
 export const listSerialPorts = () =>
   invoke<SerialPortDesc[]>("list_serial_ports");
+
+// --- ssh config ---------------------------------------------------------------
+
+export const listSshConfigHosts = () =>
+  invoke<SshConfigEntry[]>("list_ssh_config_hosts");
+
+export const resolveSshHost = (alias: string) =>
+  invoke<SshConfigEntry>("resolve_ssh_host", { alias });
+
+export const importSshConfigHosts = () =>
+  invoke<SessionProfile[]>("import_ssh_config_hosts");
 
 // --- events -----------------------------------------------------------------
 

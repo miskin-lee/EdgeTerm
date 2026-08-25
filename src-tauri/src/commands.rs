@@ -15,6 +15,7 @@ use crate::session::{
     self, SessionCommand, SessionHandle, SessionManager, SftpRequest, SftpResponse,
     TransferProgress,
 };
+use crate::ssh_config::{SshConfig, SshConfigEntry, entry_to_profile};
 use crate::store::Store;
 
 pub struct AppState {
@@ -415,6 +416,53 @@ pub fn local_remove(path: String, is_dir: bool) -> Result<()> {
 #[tauri::command]
 pub fn list_serial_ports() -> Result<Vec<SerialPortDesc>> {
     session::serial::list_ports()
+}
+
+// --- ssh config -------------------------------------------------------------
+
+/// Reads `~/.ssh/config` and returns all concrete host entries with resolved
+/// ProxyJump chains. Wildcard-only blocks are excluded.
+#[tauri::command]
+pub fn list_ssh_config_hosts() -> Result<Vec<SshConfigEntry>> {
+    let config = SshConfig::load_default()?;
+    Ok(config.to_entries())
+}
+
+/// Returns the raw parsed `Host` blocks from `~/.ssh/config`, including
+/// wildcard patterns. Useful for the UI to show what was parsed.
+#[tauri::command]
+pub fn get_ssh_config() -> Result<SshConfig> {
+    SshConfig::load_default()
+}
+
+/// Resolves a single host alias into a fully-resolved entry with hops.
+#[tauri::command]
+pub fn resolve_ssh_host(alias: String) -> Result<SshConfigEntry> {
+    let config = SshConfig::load_default()?;
+    config.resolve(&alias)
+}
+
+/// Imports all concrete SSH config hosts as saved session profiles.
+/// Returns the number of profiles imported. Existing profiles with the
+/// same name are NOT duplicated — they are skipped.
+#[tauri::command]
+pub fn import_ssh_config_hosts(state: State<'_, AppState>) -> Result<Vec<SessionProfile>> {
+    let config = SshConfig::load_default()?;
+    let entries = config.to_entries();
+    let existing = state.store.list();
+    let existing_names: std::collections::HashSet<&str> =
+        existing.iter().map(|p| p.name.as_str()).collect();
+
+    let mut imported = Vec::new();
+    for entry in &entries {
+        if existing_names.contains(entry.alias.as_str()) {
+            continue;
+        }
+        let profile = entry_to_profile(entry);
+        let saved = state.store.save(profile)?;
+        imported.push(saved);
+    }
+    Ok(imported)
 }
 
 // --- helpers ----------------------------------------------------------------
