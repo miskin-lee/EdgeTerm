@@ -3,6 +3,7 @@ import { ask } from "@tauri-apps/plugin-dialog";
 import { openUrl } from "@tauri-apps/plugin-opener";
 
 import { useStore } from "../store";
+import * as api from "../api";
 import type { GutterMode } from "../terminal";
 import { getController } from "../terminalRegistry";
 
@@ -67,6 +68,24 @@ export function MenuBar(props: Props) {
       title: "Session",
       entries: [
         { label: "New Session…", shortcut: "⌘N", action: props.onNewSession },
+        {
+          label: "Import from SSH Config…",
+          action: () => {
+            void (async () => {
+              try {
+                const imported = await api.importSshConfigHosts();
+                if (imported.length > 0) {
+                  useStore.getState().setStatus(`Imported ${imported.length} SSH config host${imported.length > 1 ? "s" : ""}`);
+                  await useStore.getState().loadProfiles();
+                } else {
+                  useStore.getState().setStatus("SSH config hosts already exist");
+                }
+              } catch (e) {
+                useStore.getState().setStatus(`SSH config import failed: ${e}`);
+              }
+            })();
+          },
+        },
         "separator",
         {
           label: "Previous Session",
