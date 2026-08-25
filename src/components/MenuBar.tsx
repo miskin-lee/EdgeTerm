@@ -5,6 +5,7 @@ import { openUrl } from "@tauri-apps/plugin-opener";
 import { useStore } from "../store";
 import type { GutterMode } from "../terminal";
 import { getController } from "../terminalRegistry";
+import type { ThemeMode } from "../types";
 
 const TUTORIAL_URL = "https://miskin-lee.github.io/EdgeTerm/tutorial.html";
 
@@ -38,6 +39,8 @@ export function MenuBar(props: Props) {
   const togglePanel = useStore((s) => s.togglePanel);
   const gutterMode = useStore((s) => s.gutterMode);
   const setGutterMode = useStore((s) => s.setGutterMode);
+  const theme = useStore((s) => s.theme);
+  const setTheme = useStore((s) => s.setTheme);
   const resetSettings = useStore((s) => s.resetSettings);
   const setStatus = useStore((s) => s.setStatus);
   const closeTab = useStore((s) => s.closeTab);
@@ -60,6 +63,12 @@ export function MenuBar(props: Props) {
     label,
     checked: gutterMode === mode,
     action: () => setGutterMode(mode),
+  });
+
+  const themeEntry = (label: string, mode: ThemeMode): Entry => ({
+    label,
+    checked: theme === mode,
+    action: () => setTheme(mode),
   });
 
   const menus: Menu[] = [
@@ -161,6 +170,14 @@ export function MenuBar(props: Props) {
           action: () => togglePanel("sender"),
         },
         "separator",
+        {
+          label: "Theme",
+          children: [
+            themeEntry("Dark", "dark"),
+            themeEntry("Light", "light"),
+          ],
+        },
+        "separator",
         { label: "Display Settings…", action: props.onFontSettings },
       ],
     },
@@ -182,7 +199,7 @@ export function MenuBar(props: Props) {
           action: () => {
             void (async () => {
               const confirmed = await ask(
-                "Restore panel visibility, timestamp and line display, font sizes, and scrollback to their defaults?",
+                "Restore panel visibility, timestamp and line display, theme, font sizes, and scrollback to their defaults?",
                 {
                   title: "Restore Default Settings",
                   kind: "warning",

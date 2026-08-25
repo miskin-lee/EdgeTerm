@@ -13,8 +13,9 @@ import { UpdateDialog } from "./components/UpdateDialog";
 import { FilerPanel } from "./components/panels/FilerPanel";
 import { SenderPanel } from "./components/panels/SenderPanel";
 import { SessionPanel } from "./components/panels/SessionPanel";
+import { setSemanticColorTheme } from "./semanticColors";
 import { useActiveTab, useStore, type PanelName } from "./store";
-import { getController } from "./terminalRegistry";
+import { allControllers, getController } from "./terminalRegistry";
 import type { SessionProfile, SessionState } from "./types";
 import { useUpdater } from "./updater";
 
@@ -43,6 +44,7 @@ export default function App() {
   const activateAdjacentTab = useStore((s) => s.activateAdjacentTab);
   const closeTab = useStore((s) => s.closeTab);
   const applyState = useStore((s) => s.applyState);
+  const theme = useStore((s) => s.theme);
   const activeTab = useActiveTab();
   const ftpMode = activeTab?.info.kind === "ftp";
 
@@ -62,6 +64,15 @@ export default function App() {
   useEffect(() => {
     void loadProfiles();
   }, [loadProfiles]);
+
+  // Theme is applied in three places: the CSS variable palette keys off the
+  // root data-theme attribute, semantic decorations read a module-level
+  // palette, and each live terminal owns its own xterm theme object.
+  useEffect(() => {
+    document.documentElement.dataset.theme = theme;
+    setSemanticColorTheme(theme);
+    for (const controller of allControllers()) controller.setTheme(theme);
+  }, [theme]);
 
   useEffect(() => {
     const unlisten = api.onSessionOutput(({ id, data }) => {

@@ -10,9 +10,11 @@ import {
   type IBufferLine,
   type IDecoration,
   type IMarker,
+  type ITheme,
 } from "@xterm/xterm";
 
 import { semanticRanges } from "./semanticColors";
+import type { ThemeMode } from "./types";
 import {
   ZmodemController,
   type ZmodemNoticeKind,
@@ -32,33 +34,61 @@ function openTerminalWebLink(event: MouseEvent, uri: string) {
 }
 
 /**
- * A vivid, dark-background 16-color palette. xterm.js supplies the remaining
- * 240 entries of the xterm-256color cube and grayscale ramp automatically.
+ * VS Code's terminal palettes, one per theme, on the matching editor
+ * backgrounds (kept in sync with --bg-terminal in styles.css). xterm.js
+ * supplies the remaining 240 entries of the xterm-256color cube and grayscale
+ * ramp automatically, and the enforced minimum contrast ratio keeps
+ * low-contrast entries legible, as VS Code does.
  */
-const XTERM_256_THEME = {
-  background: "#16181d",
-  foreground: "#d8dee9",
-  cursor: "#7fc4ff",
-  cursorAccent: "#16181d",
-  selectionBackground: "#31567a",
-  selectionInactiveBackground: "#25384d",
-  selectionForeground: "#ffffff",
-  black: "#1e222a",
-  red: "#ff5f6d",
-  green: "#8bd450",
-  yellow: "#f0c674",
-  blue: "#5aa9fa",
-  magenta: "#c678dd",
-  cyan: "#56d4dd",
-  white: "#d8dee9",
-  brightBlack: "#6b7280",
-  brightRed: "#ff7a85",
-  brightGreen: "#a6e75f",
-  brightYellow: "#ffe082",
-  brightBlue: "#7fc4ff",
-  brightMagenta: "#dd8ceb",
-  brightCyan: "#78e5ec",
-  brightWhite: "#ffffff",
+const XTERM_THEMES: Record<ThemeMode, ITheme> = {
+  dark: {
+    background: "#1f1f1f",
+    foreground: "#cccccc",
+    cursor: "#aeafad",
+    cursorAccent: "#1f1f1f",
+    selectionBackground: "#264f78",
+    selectionInactiveBackground: "#22374c",
+    black: "#000000",
+    red: "#cd3131",
+    green: "#0dbc79",
+    yellow: "#e5e510",
+    blue: "#2472c8",
+    magenta: "#bc3fbc",
+    cyan: "#11a8cd",
+    white: "#e5e5e5",
+    brightBlack: "#666666",
+    brightRed: "#f14c4c",
+    brightGreen: "#23d18b",
+    brightYellow: "#f5f543",
+    brightBlue: "#3b8eea",
+    brightMagenta: "#d670d6",
+    brightCyan: "#29b8db",
+    brightWhite: "#e5e5e5",
+  },
+  light: {
+    background: "#ffffff",
+    foreground: "#3b3b3b",
+    cursor: "#005fb8",
+    cursorAccent: "#ffffff",
+    selectionBackground: "#add6ff",
+    selectionInactiveBackground: "#e5ebf1",
+    black: "#000000",
+    red: "#cd3131",
+    green: "#107c10",
+    yellow: "#949800",
+    blue: "#0451a5",
+    magenta: "#bc05bc",
+    cyan: "#0598bc",
+    white: "#555555",
+    brightBlack: "#666666",
+    brightRed: "#cd3131",
+    brightGreen: "#14ce14",
+    brightYellow: "#b5ba00",
+    brightBlue: "#0451a5",
+    brightMagenta: "#bc05bc",
+    brightCyan: "#0598bc",
+    brightWhite: "#a5a5a5",
+  },
 };
 
 interface Callbacks {
@@ -102,6 +132,7 @@ export class TerminalController {
   private firstLineNumber = 1;
 
   private gutterMode: GutterMode = "both";
+  private themeMode: ThemeMode;
   private scrollback: number;
   private pendingShellClear = false;
   /**
@@ -126,8 +157,10 @@ export class TerminalController {
     private readonly callbacks: Callbacks,
     fontSize: number,
     scrollback: number,
+    theme: ThemeMode = "dark",
   ) {
     this.scrollback = scrollback;
+    this.themeMode = theme;
     this.term = new Terminal({
       allowProposedApi: true,
       cursorBlink: true,
@@ -138,7 +171,11 @@ export class TerminalController {
       lineHeight: 1.25,
       letterSpacing: 0,
       scrollback,
-      theme: XTERM_256_THEME,
+      theme: XTERM_THEMES[theme],
+      // VS Code's approach to palette legibility: rather than hand-tuning
+      // every ANSI entry per background, let the renderer nudge foregrounds
+      // that fall below 4.5:1 against the current background.
+      minimumContrastRatio: 4.5,
       drawBoldTextInBrightColors: true,
       macOptionIsMeta: true,
       rightClickSelectsWord: true,
@@ -329,6 +366,16 @@ export class TerminalController {
     this.term.options.fontSize = fontSize;
     this.cellHeight = 0;
     this.fit();
+  }
+
+  setTheme(theme: ThemeMode) {
+    if (this.themeMode === theme) return;
+    this.themeMode = theme;
+    this.term.options.theme = XTERM_THEMES[theme];
+    // Decorations baked the previous palette's colors; drop them so the next
+    // render recolors the viewport with the palette matching the new theme.
+    this.disposeAllSemanticColors();
+    if (this.term.rows > 0) this.term.refresh(0, this.term.rows - 1);
   }
 
   setScrollback(scrollback: number) {

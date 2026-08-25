@@ -1,6 +1,8 @@
 export type SessionKind = "local" | "ssh" | "ftp" | "serial";
 export type AuthKind = "password" | "publicKey" | "agent";
 
+export type ThemeMode = "dark" | "light";
+
 export interface SessionProfile {
   id: string;
   name: string;

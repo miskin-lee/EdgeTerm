@@ -21,7 +21,7 @@
         "fullscreen": false,
         "titleBarStyle": "Overlay",
         "hiddenTitle": true,
-        "backgroundColor": "#1b1d23"
+        "backgroundColor": "#181818"
       }
     ],
     "security": {

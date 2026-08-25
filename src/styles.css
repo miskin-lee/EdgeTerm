@@ -1,22 +1,58 @@
 @import "@xterm/xterm/css/xterm.css";
 
+/* The dark palette follows VS Code Dark Modern: the editor surface (#1f1f1f)
+   inside one neutral chrome gray (#181818) with #2b2b2b borders, #313131
+   input fields, a single blue accent (#0078d4) with white-on-blue primaries,
+   the classic blue list selection (#04395e), and quiet gray hover states. */
 :root {
-  --bg-app: #1b1d23;
-  --bg-panel: #1f2229;
-  --bg-panel-alt: #23262e;
-  --bg-terminal: #16181d;
-  --bg-active: #272b33;
-  --bg-hover: #2c313a;
-  --border: #2f343d;
-  --border-strong: #3a404b;
-  --fg: #c8ccd4;
-  --fg-dim: #767d8c;
-  --fg-faint: #545b68;
-  --accent: #4ea1f3;
-  --accent-soft: #2c4a6b;
-  --green: #3fb950;
-  --yellow: #e3b341;
+  color-scheme: dark;
+
+  --bg-app: #181818;
+  --bg-panel: #181818;
+  --bg-panel-alt: #1f1f1f;
+  --bg-terminal: #1f1f1f;
+  --bg-field: #313131;
+  --bg-active: #04395e;
+  --bg-hover: #2a2d2e;
+  --border: #2b2b2b;
+  --border-strong: #3c3c3c;
+  --fg: #cccccc;
+  --fg-dim: #9d9d9d;
+  --fg-faint: #6e7681;
+  --accent: #0078d4;
+  --accent-soft: #04395e;
+  --accent-contrast: #ffffff;
+  --green: #89d185;
+  --yellow: #cca700;
   --red: #f85149;
+
+  --scrollbar-thumb: #424242;
+  --scrollbar-thumb-hover: #4f4f4f;
+  --row-separator: rgba(255, 255, 255, 0.07);
+  --swatch-ring: rgba(255, 255, 255, 0.1);
+
+  --dir-label: #9cdcfe;
+  --dir-icon: #75beff;
+  --dir-kind: #6e97b8;
+  --symlink-label: #c586c0;
+  --symlink-icon: #b180d7;
+  --symlink-kind: #9678b6;
+
+  --gutter-border: #2b2b2b;
+  --gutter-time-fg: #5a5d63;
+  --gutter-line-fg: #6e7681;
+
+  --notice-info-bg: rgba(24, 33, 44, 0.95);
+  --notice-info-fg: #85b6ff;
+  --notice-success-bg: rgba(23, 36, 26, 0.96);
+  --notice-success-fg: #89d185;
+  --notice-error-bg: rgba(45, 25, 25, 0.96);
+  --notice-error-fg: #f88070;
+
+  --shadow-menu: 0 8px 24px rgba(0, 0, 0, 0.36);
+  --shadow-pop: 0 6px 18px rgba(0, 0, 0, 0.36);
+  --shadow-notice: 0 5px 18px rgba(0, 0, 0, 0.36);
+  --shadow-dialog: 0 20px 60px rgba(0, 0, 0, 0.5);
 
   --row-h: 22px;
   --panel-font-size: 12px;
@@ -25,6 +61,62 @@
     "Microsoft YaHei", Roboto, sans-serif;
   --font-mono: "JetBrains Mono", "SF Mono", Menlo, Consolas, "DejaVu Sans Mono",
     monospace;
+}
+
+/* The light palette follows VS Code Light Modern's strategy: a white editor
+   surface inside one neutral chrome gray (#f8f8f8) with #e5e5e5 borders,
+   white input fields, a single blue accent (#005fb8) with white-on-blue
+   primaries, and quiet gray hover/selection states. The xterm and semantic
+   palettes in terminal.ts / semanticColors.ts switch alongside it. */
+:root[data-theme="light"] {
+  color-scheme: light;
+
+  --bg-app: #f8f8f8;
+  --bg-panel: #f8f8f8;
+  --bg-panel-alt: #ffffff;
+  --bg-terminal: #ffffff;
+  --bg-field: #ffffff;
+  --bg-active: #e8e8e8;
+  --bg-hover: #f2f2f2;
+  --border: #e5e5e5;
+  --border-strong: #cecece;
+  --fg: #3b3b3b;
+  --fg-dim: #616161;
+  --fg-faint: #868686;
+  --accent: #005fb8;
+  --accent-soft: #bed6ed;
+  --accent-contrast: #ffffff;
+  --green: #107c10;
+  --yellow: #bf8803;
+  --red: #cd3131;
+
+  --scrollbar-thumb: #c1c1c1;
+  --scrollbar-thumb-hover: #9a9a9a;
+  --row-separator: rgba(0, 0, 0, 0.08);
+  --swatch-ring: rgba(0, 0, 0, 0.15);
+
+  --dir-label: #26569e;
+  --dir-icon: #4e79b6;
+  --dir-kind: #6d87a8;
+  --symlink-label: #652d90;
+  --symlink-icon: #8250df;
+  --symlink-kind: #8a67ae;
+
+  --gutter-border: #e5e5e5;
+  --gutter-time-fg: #a3a8ae;
+  --gutter-line-fg: #6e7681;
+
+  --notice-info-bg: rgba(238, 246, 255, 0.96);
+  --notice-info-fg: #005fb8;
+  --notice-success-bg: rgba(233, 248, 236, 0.96);
+  --notice-success-fg: #107c10;
+  --notice-error-bg: rgba(255, 235, 233, 0.96);
+  --notice-error-fg: #a1260d;
+
+  --shadow-menu: 0 8px 24px rgba(0, 0, 0, 0.16);
+  --shadow-pop: 0 6px 18px rgba(0, 0, 0, 0.14);
+  --shadow-notice: 0 5px 18px rgba(0, 0, 0, 0.14);
+  --shadow-dialog: 0 20px 60px rgba(0, 0, 0, 0.22);
 }
 
 * {
@@ -61,7 +153,7 @@ select,
 textarea {
   font: inherit;
   color: var(--fg);
-  background: var(--bg-terminal);
+  background: var(--bg-field);
   border: 1px solid var(--border);
   border-radius: 3px;
   padding: 3px 6px;
@@ -80,14 +172,14 @@ textarea:focus {
 }
 
 ::-webkit-scrollbar-thumb {
-  background: #3a404b;
+  background: var(--scrollbar-thumb);
   border-radius: 5px;
   border: 2px solid transparent;
   background-clip: content-box;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: #4a515f;
+  background: var(--scrollbar-thumb-hover);
   background-clip: content-box;
 }
 
@@ -145,7 +237,7 @@ textarea:focus {
   background: var(--bg-panel-alt);
   border: 1px solid var(--border-strong);
   border-radius: 5px;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+  box-shadow: var(--shadow-menu);
 }
 
 .menu-entry {
@@ -499,7 +591,7 @@ textarea:focus {
   border: 1px solid var(--border-strong);
   border-radius: 5px;
   background: var(--bg-panel);
-  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.4);
+  box-shadow: var(--shadow-pop);
 }
 
 .terminal-search input {
@@ -641,7 +733,7 @@ textarea:focus {
 }
 
 .ftp-tool-button.is-danger:hover:not(:disabled) {
-  background: rgba(248, 81, 73, 0.12);
+  background: color-mix(in srgb, var(--red) 12%, transparent);
   color: var(--red);
 }
 
@@ -661,7 +753,7 @@ textarea:focus {
 .ftp-browser-path input {
   width: 100%;
   min-width: 0;
-  background: var(--bg-terminal);
+  background: var(--bg-field);
   font-family: var(--font-mono);
   font-size: 11px;
 }
@@ -696,7 +788,7 @@ textarea:focus {
   min-height: 29px;
   align-items: center;
   padding: 3px 9px;
-  border-bottom: 1px solid rgba(42, 47, 56, 0.45);
+  border-bottom: 1px solid var(--row-separator);
   color: var(--fg-dim);
   font-size: 11px;
   cursor: default;
@@ -713,7 +805,7 @@ textarea:focus {
 }
 
 .ftp-file-row.is-directory .ftp-file-name {
-  color: #91a6ba;
+  color: var(--dir-label);
   font-weight: 600;
 }
 
@@ -733,7 +825,7 @@ textarea:focus {
 
 .ftp-file-icon {
   flex: 0 0 12px;
-  color: #6886a3;
+  color: var(--dir-icon);
   text-align: center;
 }
 
@@ -913,7 +1005,7 @@ textarea:focus {
   flex: 0 0 auto;
   padding: 0 8px 0 6px;
   background: var(--bg-terminal);
-  border-right: 1px solid #23262d;
+  border-right: 1px solid var(--gutter-border);
   font-family: var(--font-mono);
   font-size: max(8px, calc(var(--buffer-font-size) - 1px));
   color: var(--fg-faint);
@@ -934,18 +1026,18 @@ textarea:focus {
 }
 
 .gutter-row.is-cursor {
-  background: rgba(78, 161, 243, 0.1);
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
   color: var(--accent);
 }
 
 .gutter-time {
-  color: #5a6270;
+  color: var(--gutter-time-fg);
 }
 
 .gutter-line {
   min-width: 32px;
   text-align: right;
-  color: #6d7684;
+  color: var(--gutter-line-fg);
 }
 
 .term-gutter.no-time .gutter-time {
@@ -974,11 +1066,11 @@ textarea:focus {
   max-width: min(520px, calc(100% - 32px));
   overflow: hidden;
   padding: 7px 11px;
-  border: 1px solid rgba(78, 161, 243, 0.55);
+  border: 1px solid color-mix(in srgb, var(--accent) 55%, transparent);
   border-radius: 5px;
-  background: rgba(24, 35, 48, 0.95);
-  box-shadow: 0 5px 18px rgba(0, 0, 0, 0.38);
-  color: #b9dcff;
+  background: var(--notice-info-bg);
+  box-shadow: var(--shadow-notice);
+  color: var(--notice-info-fg);
   font-family: var(--font-mono);
   font-size: 11px;
   line-height: 1.4;
@@ -992,15 +1084,15 @@ textarea:focus {
 }
 
 .zmodem-notice.is-success {
-  border-color: rgba(63, 185, 80, 0.6);
-  background: rgba(24, 48, 31, 0.96);
-  color: #9ee6aa;
+  border-color: color-mix(in srgb, var(--green) 60%, transparent);
+  background: var(--notice-success-bg);
+  color: var(--notice-success-fg);
 }
 
 .zmodem-notice.is-error {
-  border-color: rgba(248, 81, 73, 0.65);
-  background: rgba(55, 27, 29, 0.96);
-  color: #ffaaa5;
+  border-color: color-mix(in srgb, var(--red) 65%, transparent);
+  background: var(--notice-error-bg);
+  color: var(--notice-error-fg);
 }
 
 .term-empty {
@@ -1122,7 +1214,7 @@ textarea:focus {
   flex: 1;
   height: 30px;
   font-family: var(--font-mono);
-  background: var(--bg-terminal);
+  background: var(--bg-field);
   user-select: text;
 }
 
@@ -1261,7 +1353,7 @@ textarea:focus {
   border-radius: 4px;
   color: var(--fg);
   background: var(--bg-app);
-  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.4);
+  box-shadow: var(--shadow-pop);
   font-family: var(--font-mono);
   font-size: calc(var(--panel-font-size) - 1px);
   pointer-events: none;
@@ -1288,7 +1380,7 @@ textarea:focus {
   border: 1px solid var(--border-strong);
   border-radius: 5px;
   background: var(--bg-panel-alt);
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+  box-shadow: var(--shadow-menu);
 }
 
 .sender-context-title {
@@ -1389,7 +1481,7 @@ textarea:focus {
   background: var(--bg-panel);
   border: 1px solid var(--border-strong);
   border-radius: 8px;
-  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.55);
+  box-shadow: var(--shadow-dialog);
 }
 
 .dialog-header {
@@ -1519,7 +1611,7 @@ textarea:focus {
 }
 
 .session-field select {
-  color-scheme: dark;
+  color-scheme: inherit;
 }
 
 .session-field-hint {
@@ -1549,7 +1641,7 @@ textarea:focus {
   padding: 0;
   border: 2px solid transparent;
   border-radius: 4px;
-  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.1);
+  box-shadow: 0 0 0 1px var(--swatch-ring);
 }
 
 .session-color-option:hover {
@@ -1558,7 +1650,7 @@ textarea:focus {
 
 .session-color-option.is-selected {
   border-color: var(--fg);
-  box-shadow: 0 0 0 1px var(--bg-terminal);
+  box-shadow: 0 0 0 1px var(--bg-field);
 }
 
 .session-color-option:focus-visible {
@@ -1635,7 +1727,7 @@ textarea:focus {
 .btn.is-primary {
   background: var(--accent);
   border-color: var(--accent);
-  color: #0d1117;
+  color: var(--accent-contrast);
   font-weight: 600;
 }
 
@@ -1646,8 +1738,8 @@ textarea:focus {
 .dialog-error {
   padding: 8px 10px;
   border-radius: 4px;
-  background: rgba(248, 81, 73, 0.12);
-  border: 1px solid rgba(248, 81, 73, 0.35);
+  background: color-mix(in srgb, var(--red) 12%, transparent);
+  border: 1px solid color-mix(in srgb, var(--red) 35%, transparent);
   color: var(--red);
   user-select: text;
 }
@@ -1787,7 +1879,7 @@ textarea:focus {
   overflow: hidden;
   border: 1px solid var(--border);
   border-radius: 3px;
-  background: var(--bg-terminal);
+  background: var(--bg-field);
 }
 
 .kind-option {
@@ -1889,7 +1981,7 @@ textarea:focus {
 
 .filer-action-danger:hover:not(:disabled) {
   color: var(--red);
-  background: rgba(248, 81, 73, 0.12);
+  background: color-mix(in srgb, var(--red) 12%, transparent);
 }
 
 .filer-path {
@@ -1925,7 +2017,7 @@ textarea:focus {
 }
 
 .filer-list.is-drag-over {
-  background: rgba(78, 161, 243, 0.08);
+  background: color-mix(in srgb, var(--accent) 8%, transparent);
   box-shadow: inset 0 0 0 2px var(--accent);
 }
 
@@ -1960,11 +2052,11 @@ textarea:focus {
 }
 
 .filer-icon.is-directory {
-  color: #6886a3;
+  color: var(--dir-icon);
 }
 
 .filer-icon.is-symlink {
-  color: #bc8cff;
+  color: var(--symlink-icon);
 }
 
 .filer-new-folder {
@@ -2001,12 +2093,12 @@ textarea:focus {
 }
 
 .filer-entry.is-directory .row-label {
-  color: #91a6ba;
+  color: var(--dir-label);
   font-weight: 600;
 }
 
 .filer-entry.is-symlink .row-label {
-  color: #c8a7ff;
+  color: var(--symlink-label);
 }
 
 .filer-entry-details {
@@ -2028,11 +2120,11 @@ textarea:focus {
 }
 
 .filer-entry.is-directory .filer-entry-kind {
-  color: #60778d;
+  color: var(--dir-kind);
 }
 
 .filer-entry.is-symlink .filer-entry-kind {
-  color: #896eb5;
+  color: var(--symlink-kind);
 }
 
 .filer-entry .filer-col-date {

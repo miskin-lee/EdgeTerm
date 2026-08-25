@@ -1,29 +1,89 @@
+import type { ThemeMode } from "./types";
+
 export interface SemanticRange {
   start: number;
   end: number;
   color: string;
 }
 
-// A broad, high-contrast palette sampled from the xterm 256-color cube. Using
-// cube entries keeps semantic decorations visually consistent with ANSI output.
-export const SEMANTIC_COLORS = {
-  rose: "#ff5f87",
-  red: "#ff5f5f",
-  orange: "#ff875f",
-  amber: "#ffaf5f",
-  yellow: "#ffd75f",
-  lime: "#afff5f",
-  green: "#87d787",
-  teal: "#5fd7af",
-  cyan: "#5fd7ff",
-  sky: "#5fafff",
-  blue: "#5f87ff",
-  violet: "#af87ff",
-  magenta: "#ff87ff",
-  pink: "#ff5faf",
-  slate: "#87afaf",
-  gray: "#a8a8a8",
-} as const;
+type SemanticPalette = Record<
+  | "rose"
+  | "red"
+  | "orange"
+  | "amber"
+  | "yellow"
+  | "lime"
+  | "green"
+  | "teal"
+  | "cyan"
+  | "sky"
+  | "blue"
+  | "violet"
+  | "magenta"
+  | "pink"
+  | "slate"
+  | "gray",
+  string
+>;
+
+// One palette per background, both drawn from VS Code's colors so semantic
+// decorations read like VS Code syntax highlighting.
+export const SEMANTIC_PALETTES: Record<ThemeMode, SemanticPalette> = {
+  // The dark set uses VS Code's dark syntax colors (keyword blue #569cd6,
+  // variable blue #9cdcfe, type teal #4ec9b0, string salmon #ce9178, number
+  // green #b5cea8, function khaki #dcdcaa, control purple, charts purple),
+  // its dark terminal ANSI colors, and its dark UI colors (warning #cca700,
+  // muted gray #9d9d9d).
+  dark: {
+    rose: "#f0648c",
+    red: "#f14c4c",
+    orange: "#ce9178",
+    amber: "#cca700",
+    yellow: "#dcdcaa",
+    lime: "#b5cea8",
+    green: "#0dbc79",
+    teal: "#4ec9b0",
+    cyan: "#29b8db",
+    sky: "#9cdcfe",
+    blue: "#569cd6",
+    violet: "#b180d7",
+    magenta: "#d670d6",
+    pink: "#d670b0",
+    slate: "#85a0b5",
+    gray: "#9d9d9d",
+  },
+  // The light set draws on VS Code's light palette: its terminal ANSI colors
+  // (red/green/yellow/blue/magenta/cyan), its light syntax colors (teal types
+  // #267f99, constant blue #0070c1, purple #652d90), and its light UI colors
+  // (warning #bf8803, git-added #587c0c, muted gray #616161).
+  light: {
+    rose: "#ad1457",
+    red: "#cd3131",
+    orange: "#bc4c00",
+    amber: "#bf8803",
+    yellow: "#949800",
+    lime: "#587c0c",
+    green: "#107c10",
+    teal: "#267f99",
+    cyan: "#0598bc",
+    sky: "#0070c1",
+    blue: "#0451a5",
+    violet: "#652d90",
+    magenta: "#bc05bc",
+    pink: "#c41d7f",
+    slate: "#546e7a",
+    gray: "#616161",
+  },
+};
+
+// Mutable binding so semanticRanges picks up the active theme without every
+// call site threading it through. Decorations bake the color they were created
+// with, so TerminalController rebuilds them on a theme switch.
+export let SEMANTIC_COLORS: SemanticPalette = SEMANTIC_PALETTES.dark;
+
+export function setSemanticColorTheme(mode: ThemeMode) {
+  SEMANTIC_COLORS = SEMANTIC_PALETTES[mode];
+}
 
 function gitStatusColor(status: string): string {
   if (status.includes("D")) return SEMANTIC_COLORS.red;

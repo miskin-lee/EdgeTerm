@@ -3,7 +3,12 @@ import { create } from "zustand";
 import * as api from "./api";
 import type { GutterMode } from "./terminal";
 import { disposeController } from "./terminalRegistry";
-import type { SessionInfo, SessionProfile, SessionState } from "./types";
+import type {
+  SessionInfo,
+  SessionProfile,
+  SessionState,
+  ThemeMode,
+} from "./types";
 
 export interface Tab {
   info: SessionInfo;
@@ -35,6 +40,17 @@ const BUFFER_FONT_SIZE_KEY = "edgeterm.bufferFontSize";
 const TERMINAL_SCROLLBACK_KEY = "edgeterm.terminalScrollback";
 const GUTTER_MODE_KEY = "edgeterm.gutterMode";
 const PANELS_KEY = "edgeterm.panels";
+const THEME_KEY = "edgeterm.theme";
+
+export const loadTheme = (): ThemeMode => {
+  try {
+    const stored = localStorage.getItem(THEME_KEY);
+    if (stored === "dark" || stored === "light") return stored;
+  } catch {
+    // Use the default when storage is unavailable.
+  }
+  return "dark";
+};
 
 const loadPanels = (): Record<PanelName, boolean> => {
   try {
@@ -141,6 +157,7 @@ interface AppStore {
   tabs: Tab[];
   activeId: string | null;
   gutterMode: GutterMode;
+  theme: ThemeMode;
   panelFontSize: number;
   bufferFontSize: number;
   terminalScrollback: number;
@@ -165,6 +182,7 @@ interface AppStore {
 
   togglePanel: (panel: PanelName) => void;
   setGutterMode: (mode: GutterMode) => void;
+  setTheme: (theme: ThemeMode) => void;
   setPanelFontSize: (size: number) => void;
   setBufferFontSize: (size: number) => void;
   setTerminalScrollback: (rows: number) => void;
@@ -181,6 +199,7 @@ export const useStore = create<AppStore>((set, get) => ({
   tabs: [],
   activeId: null,
   gutterMode: loadGutterMode(),
+  theme: loadTheme(),
   panelFontSize: loadFontSize(PANEL_FONT_SIZE_KEY, PANEL_FONT_SIZE),
   bufferFontSize: loadFontSize(BUFFER_FONT_SIZE_KEY, BUFFER_FONT_SIZE),
   terminalScrollback: loadScrollback(),
@@ -295,6 +314,15 @@ export const useStore = create<AppStore>((set, get) => ({
     }
   },
 
+  setTheme(theme) {
+    set({ theme });
+    try {
+      localStorage.setItem(THEME_KEY, theme);
+    } catch {
+      // The setting still applies for this run when storage is unavailable.
+    }
+  },
+
   setPanelFontSize(size) {
     const panelFontSize = normalizeFontSize(size, PANEL_FONT_SIZE);
     set({ panelFontSize });
@@ -317,6 +345,7 @@ export const useStore = create<AppStore>((set, get) => ({
     set({
       panels: { ...DEFAULT_PANELS },
       gutterMode: "both",
+      theme: "dark",
       panelFontSize: PANEL_FONT_SIZE.default,
       bufferFontSize: BUFFER_FONT_SIZE.default,
       terminalScrollback: TERMINAL_SCROLLBACK.default,
@@ -324,6 +353,7 @@ export const useStore = create<AppStore>((set, get) => ({
     try {
       localStorage.removeItem(PANELS_KEY);
       localStorage.removeItem(GUTTER_MODE_KEY);
+      localStorage.removeItem(THEME_KEY);
       localStorage.removeItem(PANEL_FONT_SIZE_KEY);
       localStorage.removeItem(BUFFER_FONT_SIZE_KEY);
       localStorage.removeItem(TERMINAL_SCROLLBACK_KEY);
