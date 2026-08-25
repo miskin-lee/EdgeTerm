@@ -86,7 +86,7 @@ Requirements: Rust 1.80.1+ and Node 20.19+ (Node 22 LTS recommended). macOS also
 
 ## Manual releases
 
-To publish a release, manually trigger **Actions → Release → Run workflow** in the repository. The workflow validates the version and updater private key, creates a draft Release, builds every supported platform, and generates signed update bundles. Before publishing, it removes unexpected assets and verifies every supported installer and updater target against `latest.json`.
+To publish a release, manually trigger **Actions → Release → Run workflow** in the repository. The workflow validates the version and updater private key, creates a draft Release, builds every supported platform, and generates signed update bundles. Each build job uploads only its own bundles and `.sig` files; a final job assembles `latest.json` from those signatures, removes unexpected assets (including the standalone `.sig` files), and verifies every supported installer and updater target against `latest.json` before publishing.
 
 Before releasing, use the following command to set and commit the version. It synchronizes `package.json`, `package-lock.json`, `Cargo.toml`, and `Cargo.lock`; Tauri installers also read this version directly:
 

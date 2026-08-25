@@ -217,9 +217,8 @@ jobs:
           releaseDraft: true
           prerelease: false
           args: ${{ matrix.bundle_args }}
-          uploadUpdaterJson: true
-          updaterJsonPreferNsis: true
-          uploadUpdaterSignatures: false
+          uploadUpdaterJson: false
+          uploadUpdaterSignatures: true
           uploadWorkflowArtifacts: true
           workflowArtifactNamePattern: "EdgeTerm-[version]-[platform]-[arch]-[bundle]"
 
@@ -232,7 +231,7 @@ jobs:
     timeout-minutes: 15
 
     steps:
-      - name: Normalize release assets and updater manifest
+      - name: Generate updater manifest
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
@@ -243,27 +242,78 @@ jobs:
         run: |
           set -euo pipefail
 
-          mkdir -p release-check
-          gh release download "$TAG_NAME" --pattern latest.json --dir release-check
+          # Every build job uploads only its own bundles and .sig files, so the
+          # updater manifest is assembled here, in a single job, instead of
+          # letting parallel jobs race over one shared latest.json asset.
+          mkdir -p release-check/signatures
 
-          jq '
-            .platforms |= with_entries(
-              select(
-                .key == "darwin-aarch64" or
-                .key == "darwin-aarch64-app" or
-                .key == "windows-x86_64" or
-                .key == "windows-x86_64-nsis" or
-                .key == "linux-x86_64" or
-                .key == "linux-x86_64-appimage" or
-                .key == "linux-x86_64-deb" or
-                .key == "linux-aarch64" or
-                .key == "linux-aarch64-appimage" or
-                .key == "linux-aarch64-deb"
-              )
-            )
-          ' release-check/latest.json > release-check/latest.normalized.json
-          mv release-check/latest.normalized.json release-check/latest.json
+          gh api \
+            "repos/${GITHUB_REPOSITORY}/releases/${RELEASE_ID}/assets?per_page=100" \
+            > release-check/assets.json
+
+          gh release download "$TAG_NAME" \
+            --pattern '*.sig' \
+            --dir release-check/signatures \
+            --clobber
+
+          updater_targets=(
+            "darwin-aarch64=EdgeTerm_${APP_VERSION}_aarch64.app.tar.gz"
+            "darwin-aarch64-app=EdgeTerm_${APP_VERSION}_aarch64.app.tar.gz"
+            "windows-x86_64=EdgeTerm_${APP_VERSION}_x64-setup.exe"
+            "windows-x86_64-nsis=EdgeTerm_${APP_VERSION}_x64-setup.exe"
+            "linux-x86_64=EdgeTerm_${APP_VERSION}_amd64.AppImage"
+            "linux-x86_64-appimage=EdgeTerm_${APP_VERSION}_amd64.AppImage"
+            "linux-x86_64-deb=EdgeTerm_${APP_VERSION}_amd64.deb"
+            "linux-aarch64=EdgeTerm_${APP_VERSION}_aarch64.AppImage"
+            "linux-aarch64-appimage=EdgeTerm_${APP_VERSION}_aarch64.AppImage"
+            "linux-aarch64-deb=EdgeTerm_${APP_VERSION}_arm64.deb"
+          )
+
+          platforms='{}'
+          for target in "${updater_targets[@]}"; do
+            platform="${target%%=*}"
+            asset_name="${target#*=}"
+            signature_file="release-check/signatures/${asset_name}.sig"
+
+            if ! asset_id="$(jq -er --arg name "$asset_name" \
+              '.[] | select(.name == $name) | .id' \
+              release-check/assets.json)"; then
+              echo "Missing release asset for ${platform}: ${asset_name}" >&2
+              exit 1
+            fi
+
+            if [[ ! -s "$signature_file" ]]; then
+              echo "Missing updater signature for ${platform}: ${asset_name}.sig" >&2
+              exit 1
+            fi
+
+            platforms="$(jq -c \
+              --arg platform "$platform" \
+              --arg url "https://api.github.com/repos/${GITHUB_REPOSITORY}/releases/assets/${asset_id}" \
+              --rawfile signature "$signature_file" \
+              '.[$platform] = { url: $url, signature: $signature }' \
+              <<< "$platforms")"
+          done
+
+          jq -n \
+            --arg version "$APP_VERSION" \
+            --arg notes "EdgeTerm ${APP_VERSION} signed update." \
+            --arg pub_date "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+            --argjson platforms "$platforms" \
+            '{ version: $version, notes: $notes, pub_date: $pub_date, platforms: $platforms }' \
+            > release-check/latest.json
+
           gh release upload "$TAG_NAME" release-check/latest.json --clobber
+
+      - name: Remove unexpected release assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_ID: ${{ needs.prepare.outputs.release_id }}
+          APP_VERSION: ${{ needs.prepare.outputs.app_version }}
+        shell: bash
+        run: |
+          set -euo pipefail
 
           expected_assets=(
             "latest.json"
@@ -276,17 +326,24 @@ jobs:
             "EdgeTerm_${APP_VERSION}_arm64.deb"
           )
 
-          declare -A expected_asset_set=()
-          for asset_name in "${expected_assets[@]}"; do
-            expected_asset_set["$asset_name"]=1
-          done
+          is_expected_asset() {
+            local expected
+            for expected in "${expected_assets[@]}"; do
+              if [[ "$1" == "$expected" ]]; then
+                return 0
+              fi
+            done
+            return 1
+          }
 
+          # Standalone .sig files are only needed to build latest.json above;
+          # the published release embeds the signatures in the manifest.
           gh api \
             "repos/${GITHUB_REPOSITORY}/releases/${RELEASE_ID}/assets?per_page=100" \
             --jq '.[] | [.id, .name] | @tsv' > release-check/assets.tsv
 
           while IFS=$'\t' read -r asset_id asset_name; do
-            if [[ -z "${expected_asset_set[$asset_name]+present}" ]]; then
+            if ! is_expected_asset "$asset_name"; then
               echo "Deleting unexpected release asset: ${asset_name}"
               gh api --method DELETE \
                 "repos/${GITHUB_REPOSITORY}/releases/assets/${asset_id}"
@@ -308,6 +365,13 @@ jobs:
             "repos/${GITHUB_REPOSITORY}/releases/${RELEASE_ID}/assets?per_page=100" \
             > release-check/assets.json
 
+          # Verify the manifest that is actually attached to the release, not
+          # the local copy generated above.
+          gh release download "$TAG_NAME" \
+            --pattern latest.json \
+            --dir release-check \
+            --clobber
+
           expected_assets=(
             "latest.json"
             "EdgeTerm_${APP_VERSION}_aarch64.dmg"
@@ -326,10 +390,18 @@ jobs:
           fi
 
           for asset_name in "${expected_assets[@]}"; do
-            jq -e --arg asset_name "$asset_name" \
+            if ! jq -e --arg asset_name "$asset_name" \
               'any(.[]; .name == $asset_name)' \
-              release-check/assets.json >/dev/null
+              release-check/assets.json >/dev/null; then
+              echo "Missing release asset: ${asset_name}" >&2
+              exit 1
+            fi
           done
+
+          if [[ "$(jq -r '.version' release-check/latest.json)" != "$APP_VERSION" ]]; then
+            echo "latest.json version does not match ${APP_VERSION}." >&2
+            exit 1
+          fi
 
           expected_url_prefix="https://api.github.com/repos/${GITHUB_REPOSITORY}/releases/assets/"
 
@@ -340,12 +412,18 @@ jobs:
             local asset_id
             local actual_asset
 
-            url="$(jq -er --arg platform "$platform" \
+            if ! url="$(jq -er --arg platform "$platform" \
               '.platforms[$platform].url | select(type == "string" and length > 0)' \
-              release-check/latest.json)"
-            jq -e --arg platform "$platform" \
+              release-check/latest.json)"; then
+              echo "latest.json is missing the updater URL for ${platform}." >&2
+              exit 1
+            fi
+            if ! jq -e --arg platform "$platform" \
               '.platforms[$platform].signature | (type == "string") and (length > 0)' \
-              release-check/latest.json >/dev/null
+              release-check/latest.json >/dev/null; then
+              echo "latest.json is missing the updater signature for ${platform}." >&2
+              exit 1
+            fi
 
             if [[ "$url" != "${expected_url_prefix}"* ]]; then
               echo "Unexpected updater URL for ${platform}: ${url}" >&2
@@ -358,9 +436,12 @@ jobs:
               exit 1
             fi
 
-            actual_asset="$(jq -er --argjson asset_id "$asset_id" \
+            if ! actual_asset="$(jq -er --argjson asset_id "$asset_id" \
               '.[] | select(.id == $asset_id) | .name' \
-              release-check/assets.json)"
+              release-check/assets.json)"; then
+              echo "Updater target ${platform} points to asset ${asset_id}, which is not on the release." >&2
+              exit 1
+            fi
             if [[ "$actual_asset" != "$expected_asset" ]]; then
               echo "Updater target ${platform} points to ${actual_asset}, expected ${expected_asset}." >&2
               exit 1
