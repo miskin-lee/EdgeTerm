@@ -142,31 +142,54 @@ export function FtpPane({ tab, active }: Props) {
   };
 
   const upload = async () => {
-    if (!selectedLocal || selectedLocal.isDir || !remotePath || transferring) {
-      return;
-    }
-    if (
-      remoteEntries.some((entry) => entry.name === selectedLocal.name) &&
-      !window.confirm(`Replace remote file “${selectedLocal.name}”?`)
-    ) {
+    if (!selectedLocal || !remotePath || transferring) {
       return;
     }
 
+    const existingRemote = remoteEntries.find(
+      (entry) => entry.name === selectedLocal.name,
+    );
+    if (existingRemote && existingRemote.isDir !== selectedLocal.isDir) {
+      setRemoteError(
+        selectedLocal.isDir
+          ? `A remote file named “${selectedLocal.name}” already exists.`
+          : `A remote folder named “${selectedLocal.name}” already exists.`,
+      );
+      return;
+    }
+    if (existingRemote) {
+      const prompt = selectedLocal.isDir
+        ? `Merge into remote folder “${selectedLocal.name}”? Existing files with the same names will be replaced.`
+        : `Replace remote file “${selectedLocal.name}”?`;
+      if (!window.confirm(prompt)) return;
+    }
+
+    setRemoteError(null);
     setTransferring(true);
     setTransfer({
       direction: "upload",
       name: selectedLocal.name,
       transferred: 0,
-      total: selectedLocal.size,
+      total: selectedLocal.isDir ? 0 : selectedLocal.size,
       status: "running",
     });
     try {
-      await api.sftpUpload(
-        sessionId,
-        selectedLocal.path,
-        joinRemote(remotePath, selectedLocal.name),
-        updateProgress,
-      );
+      const destination = joinRemote(remotePath, selectedLocal.name);
+      if (selectedLocal.isDir) {
+        await api.sftpUploadDirectory(
+          sessionId,
+          selectedLocal.path,
+          destination,
+          updateProgress,
+        );
+      } else {
+        await api.sftpUpload(
+          sessionId,
+          selectedLocal.path,
+          destination,
+          updateProgress,
+        );
+      }
       setTransfer((current) =>
         current ? { ...current, status: "complete" } : current,
       );
@@ -221,7 +244,7 @@ export function FtpPane({ tab, active }: Props) {
     try {
       const destination = joinLocal(localPath, selectedRemote.name);
       if (selectedRemote.isDir) {
-        await api.ftpDownloadDirectory(
+        await api.sftpDownloadDirectory(
           sessionId,
           selectedRemote.path,
           destination,
@@ -409,8 +432,8 @@ export function FtpPane({ tab, active }: Props) {
               <button
                 className="ftp-transfer-button"
                 onClick={() => void upload()}
-                disabled={!selectedLocal || selectedLocal.isDir || transferring}
-                title="Upload selected local file"
+                disabled={!selectedLocal || transferring}
+                title="Upload selected local file or folder"
               >
                 <span>←</span>
                 Upload
@@ -509,7 +532,7 @@ export function FtpPane({ tab, active }: Props) {
                 )}
               </>
             ) : (
-              <span>Select a file to upload, or an FTP file/folder to download.</span>
+              <span>Select a local file or folder to upload, or an FTP file or folder to download.</span>
             )}
           </div>
         </>

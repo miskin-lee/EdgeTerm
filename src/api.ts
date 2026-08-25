@@ -135,7 +135,7 @@ export const sftpDownload = (
   });
 };
 
-export const ftpDownloadDirectory = (
+export const sftpDownloadDirectory = (
   id: string,
   remote: string,
   local: string,
@@ -143,7 +143,7 @@ export const ftpDownloadDirectory = (
 ) => {
   const progress = new Channel<TransferProgress>();
   progress.onmessage = onProgress;
-  return invoke<void>("ftp_download_directory", {
+  return invoke<void>("sftp_download_directory", {
     id,
     remote,
     local,
@@ -167,6 +167,22 @@ export const sftpUpload = (
   });
 };
 
+export const sftpUploadDirectory = (
+  id: string,
+  local: string,
+  remote: string,
+  onProgress: (progress: TransferProgress) => void,
+) => {
+  const progress = new Channel<TransferProgress>();
+  progress.onmessage = onProgress;
+  return invoke<void>("sftp_upload_directory", {
+    id,
+    local,
+    remote,
+    onProgress: progress,
+  });
+};
+
 // --- local filesystem -------------------------------------------------------
 
 export const localHome = () => invoke<string>("local_home");
@@ -176,6 +192,9 @@ export const localList = (path: string) =>
 
 export const localParent = (path: string) =>
   invoke<string>("local_parent", { path });
+
+export const localIsDirectory = (path: string) =>
+  invoke<boolean>("local_is_directory", { path });
 
 export const localMkdir = (path: string) =>
   invoke<void>("local_mkdir", { path });

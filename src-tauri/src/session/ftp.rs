@@ -1,7 +1,7 @@
 use std::convert::TryFrom;
 use std::io::{BufRead, BufReader, Read, Write};
 use std::net::{Shutdown, SocketAddr, TcpListener, TcpStream, ToSocketAddrs};
-use std::path::{Component, Path, PathBuf};
+use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, AtomicU8, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant, SystemTime};
@@ -12,6 +12,10 @@ use suppaftp::{FtpError, FtpStream, Mode};
 use tauri::AppHandle;
 use tokio::sync::mpsc::UnboundedReceiver;
 
+use super::transfer::{
+    ensure_local_directory, plan_local_upload, safe_local_child, validate_local_file_target,
+    ProgressReporter,
+};
 use super::{
     emit_state, join_remote, sort_entries, SessionCommand, SftpRequest, SftpResponse,
     TransferProgress,
@@ -389,6 +393,14 @@ fn run_ftp(connection: &mut FtpConnection, request: SftpRequest) -> Result<SftpR
             upload_file(&mut connection.stream, &local, &remote, &progress)?;
             Ok(SftpResponse::Done)
         }
+        SftpRequest::UploadDirectory {
+            local,
+            remote,
+            progress,
+        } => {
+            upload_directory(connection, &local, &remote, &progress)?;
+            Ok(SftpResponse::Done)
+        }
     }
 }
 
@@ -578,15 +590,22 @@ fn download_directory(
             if entry.is_dir && !entry.is_symlink {
                 directories.push(local_child.clone());
                 pending.push((entry.path, local_child));
-            } else {
-                total = total.checked_add(entry.size).ok_or_else(|| {
-                    AppError::new("FTP folder is too large to report transfer progress")
-                })?;
-                files.push(FtpDownloadJob {
-                    remote: entry.path,
-                    local: local_child,
-                });
+                continue;
             }
+            // LIST/MLSD report a symlink without the type of its target. RETR
+            // on a linked directory would abort the whole download, so probe
+            // with CWD and skip directory links; following them could loop
+            // back into an ancestor forever.
+            if entry.is_symlink && is_remote_directory(&mut connection.stream, &entry.path) {
+                continue;
+            }
+            total = total.checked_add(entry.size).ok_or_else(|| {
+                AppError::new("FTP folder is too large to report transfer progress")
+            })?;
+            files.push(FtpDownloadJob {
+                remote: entry.path,
+                local: local_child,
+            });
         }
     }
 
@@ -597,9 +616,8 @@ fn download_directory(
         validate_local_file_target(&file.local)?;
     }
 
-    report_transfer_progress(progress, 0, total);
+    let mut reporter = ProgressReporter::begin(progress, total);
     let mut transferred = 0_u64;
-    let mut last_report = Instant::now();
     for file in files {
         let completed_before_file = transferred;
         let copied = copy_remote_file(
@@ -607,75 +625,24 @@ fn download_directory(
             &file.remote,
             &file.local,
             |file_transferred| {
-                if last_report.elapsed() >= TRANSFER_PROGRESS_INTERVAL {
-                    report_transfer_progress(
-                        progress,
-                        completed_before_file.saturating_add(file_transferred),
-                        total,
-                    );
-                    last_report = Instant::now();
-                }
+                reporter.update(completed_before_file.saturating_add(file_transferred));
             },
         )?;
         transferred = transferred.saturating_add(copied);
     }
-    report_transfer_progress(progress, transferred, total);
+    reporter.finish(transferred);
     Ok(())
 }
 
-fn safe_local_child(parent: &Path, name: &str) -> Result<PathBuf> {
-    if name.is_empty()
-        || name
-            .chars()
-            .any(|character| matches!(character, '/' | '\\' | '\0'))
-    {
-        return Err(AppError::new(format!(
-            "FTP item has an unsafe local filename: {name:?}"
-        )));
+fn is_remote_directory(ftp: &mut FtpStream, path: &str) -> bool {
+    let Ok(original) = ftp.pwd() else {
+        return false;
+    };
+    if ftp.cwd(path).is_err() {
+        return false;
     }
-
-    let mut components = Path::new(name).components();
-    match (components.next(), components.next()) {
-        (Some(Component::Normal(_)), None) => Ok(parent.join(name)),
-        _ => Err(AppError::new(format!(
-            "FTP item has an unsafe local filename: {name:?}"
-        ))),
-    }
-}
-
-fn ensure_local_directory(path: &Path) -> Result<()> {
-    match std::fs::symlink_metadata(path) {
-        Ok(metadata) if metadata.file_type().is_symlink() => Err(AppError::new(format!(
-            "refusing to download through local symlink: {}",
-            path.display()
-        ))),
-        Ok(metadata) if !metadata.is_dir() => Err(AppError::new(format!(
-            "local path is not a folder: {}",
-            path.display()
-        ))),
-        Ok(_) => Ok(()),
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
-            std::fs::create_dir(path)?;
-            Ok(())
-        }
-        Err(error) => Err(error.into()),
-    }
-}
-
-fn validate_local_file_target(path: &Path) -> Result<()> {
-    match std::fs::symlink_metadata(path) {
-        Ok(metadata) if metadata.file_type().is_symlink() => Err(AppError::new(format!(
-            "refusing to replace local symlink: {}",
-            path.display()
-        ))),
-        Ok(metadata) if !metadata.is_file() => Err(AppError::new(format!(
-            "local path is not a regular file: {}",
-            path.display()
-        ))),
-        Ok(_) => Ok(()),
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
-        Err(error) => Err(error.into()),
-    }
+    let _ = ftp.cwd(&original);
+    true
 }
 
 fn copy_remote_file<F>(ftp: &mut FtpStream, remote: &str, local: &Path, on_chunk: F) -> Result<u64>
@@ -705,25 +672,76 @@ fn upload_file(
         return Err(AppError::new("only regular files can be uploaded"));
     }
     let total = metadata.len();
-    let mut source = std::fs::File::open(local)?;
-    let mut target = ftp.put_with_stream(remote)?;
     let mut last_report = Instant::now();
 
     report_transfer_progress(progress, 0, total);
-    let copied = copy_in_chunks(&mut source, &mut target, |transferred| {
+    let transferred = copy_local_file(ftp, Path::new(local), remote, |transferred| {
         if last_report.elapsed() >= TRANSFER_PROGRESS_INTERVAL {
             report_transfer_progress(progress, transferred, total);
             last_report = Instant::now();
         }
-    });
+    })?;
+    report_transfer_progress(progress, transferred, total);
+    Ok(())
+}
+
+fn upload_directory(
+    connection: &mut FtpConnection,
+    local: &str,
+    remote: &str,
+    progress: &tauri::ipc::Channel<TransferProgress>,
+) -> Result<()> {
+    // Same shape as the download: a metadata-only plan first so progress
+    // covers the whole tree, then one file at a time through the fixed buffer.
+    let plan = plan_local_upload(Path::new(local), remote)?;
+    for directory in &plan.directories {
+        ensure_remote_directory(&mut connection.stream, directory)?;
+    }
+
+    let mut reporter = ProgressReporter::begin(progress, plan.total);
+    let mut transferred = 0_u64;
+    for file in plan.files {
+        let completed_before_file = transferred;
+        let copied = copy_local_file(
+            &mut connection.stream,
+            &file.local,
+            &file.remote,
+            |file_transferred| {
+                reporter.update(completed_before_file.saturating_add(file_transferred));
+            },
+        )?;
+        transferred = transferred.saturating_add(copied);
+    }
+    reporter.finish(transferred);
+    Ok(())
+}
+
+/// MKD fails when the folder already exists, which is expected when merging
+/// into a remote tree, so an existing directory is accepted after a CWD probe.
+fn ensure_remote_directory(ftp: &mut FtpStream, path: &str) -> Result<()> {
+    match ftp.mkdir(path) {
+        Ok(()) => Ok(()),
+        Err(_) if is_remote_directory(ftp, path) => Ok(()),
+        Err(error) => Err(AppError::new(format!(
+            "cannot create remote folder {path}: {error}"
+        ))),
+    }
+}
+
+fn copy_local_file<F>(ftp: &mut FtpStream, local: &Path, remote: &str, on_chunk: F) -> Result<u64>
+where
+    F: FnMut(u64),
+{
+    let mut source = std::fs::File::open(local)?;
+    let mut target = ftp.put_with_stream(remote)?;
+    let copied = copy_in_chunks(&mut source, &mut target, on_chunk);
     let flushed = target.flush();
     let finalized = ftp.finalize_put_stream(target);
 
     let transferred = copied?;
     flushed?;
     finalized?;
-    report_transfer_progress(progress, transferred, total);
-    Ok(())
+    Ok(transferred)
 }
 
 fn copy_in_chunks<R, W, F>(source: &mut R, target: &mut W, mut on_chunk: F) -> std::io::Result<u64>
@@ -757,8 +775,8 @@ fn report_transfer_progress(
 mod tests {
     use super::{
         control_encoding_proxy, copy_in_chunks, decode_protocol_bytes, encode_control_bytes,
-        entry_from_file, parse_listing, passive_data_address, safe_local_child, ENCODING_GBK,
-        ENCODING_UNKNOWN, TRANSFER_CHUNK_SIZE,
+        entry_from_file, parse_listing, passive_data_address, ENCODING_GBK, ENCODING_UNKNOWN,
+        TRANSFER_CHUNK_SIZE,
     };
     use std::sync::atomic::{AtomicU8, Ordering};
     use std::sync::Arc;
@@ -856,21 +874,6 @@ mod tests {
             passive_data_address(control_peer, proxy_peer),
             "203.0.113.9:49152".parse().unwrap()
         );
-    }
-
-    #[test]
-    fn folder_download_keeps_remote_names_inside_the_local_root() {
-        let root = std::path::Path::new("download-root");
-        assert_eq!(
-            safe_local_child(root, "中文目录").unwrap(),
-            root.join("中文目录")
-        );
-        for unsafe_name in ["", ".", "..", "../escape", "/absolute", "a/b", "a\\b"] {
-            assert!(
-                safe_local_child(root, unsafe_name).is_err(),
-                "{unsafe_name:?} must not escape the selected download folder"
-            );
-        }
     }
 
     #[test]

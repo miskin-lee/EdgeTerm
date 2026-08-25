@@ -174,6 +174,14 @@ pub fn parent_of(path: &str) -> String {
         .unwrap_or_else(|| path.to_string())
 }
 
+/// Follows symlinks, matching how the local listing classifies entries, so a
+/// dropped link to a folder is uploaded as that folder.
+pub fn is_directory(path: &str) -> bool {
+    std::fs::metadata(expand_tilde(path))
+        .map(|metadata| metadata.is_dir())
+        .unwrap_or(false)
+}
+
 pub fn mkdir(path: &str) -> Result<()> {
     std::fs::create_dir(path)?;
     Ok(())

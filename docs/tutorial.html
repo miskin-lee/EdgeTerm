@@ -253,10 +253,10 @@
       <p><span data-i18n="en">Toolbar actions:</span><span data-i18n="zh">工具栏操作：</span></p>
       <ul>
         <li><span data-i18n="en"><strong>New folder</strong> — create a directory in the current path;</span><span data-i18n="zh"><strong>New folder</strong> —— 在当前路径新建目录；</span></li>
-        <li><span data-i18n="en"><strong>Upload</strong> — pick local files to upload to the current remote directory (SSH sessions);</span><span data-i18n="zh"><strong>Upload</strong> —— 选择本地文件上传到当前远程目录（SSH 会话）；</span></li>
-        <li><span data-i18n="en"><strong>Download</strong> — download the selected remote file to a local location;</span><span data-i18n="zh"><strong>Download</strong> —— 把选中的远程文件下载到本地；</span></li>
+        <li><span data-i18n="en"><strong>Upload files</strong> / <strong>Upload folder</strong> — pick local files or whole folders to upload to the current remote directory (SSH sessions); folders are recreated recursively;</span><span data-i18n="zh"><strong>Upload files</strong> / <strong>Upload folder</strong> —— 选择本地文件或整个文件夹上传到当前远程目录（SSH 会话），文件夹会递归重建；</span></li>
+        <li><span data-i18n="en"><strong>Download</strong> — download the selected remote file to a local location, or a remote folder (with everything inside it) into a local directory you choose;</span><span data-i18n="zh"><strong>Download</strong> —— 把选中的远程文件下载到本地，或把远程文件夹（含全部内容）下载到你选择的本地目录中；</span></li>
         <li><span data-i18n="en"><strong>Delete</strong>, <strong>Refresh</strong>, <strong>Parent folder</strong> — manage and navigate the listing;</span><span data-i18n="zh"><strong>Delete</strong>、<strong>Refresh</strong>、<strong>Parent folder</strong> —— 删除、刷新、返回上级目录；</span></li>
-        <li><span data-i18n="en"><strong>Drag &amp; drop</strong> — drop files from your system file manager onto the Filer to upload them; a progress indicator tracks each transfer.</span><span data-i18n="zh"><strong>拖拽上传</strong> —— 直接把文件从系统文件管理器拖进 Filer 即可上传，每个传输都有进度显示。</span></li>
+        <li><span data-i18n="en"><strong>Drag &amp; drop</strong> — drop files or folders from your system file manager onto the Filer to upload them; a progress indicator tracks each transfer.</span><span data-i18n="zh"><strong>拖拽上传</strong> —— 直接把文件或文件夹从系统文件管理器拖进 Filer 即可上传，每个传输都有进度显示。</span></li>
       </ul>
       <p class="dim">
         <span data-i18n="en">Double-click a directory to enter it; double-click the path segments to jump back up.</span>
@@ -271,7 +271,7 @@
         <span data-i18n="zh">打开 FTP 会话后显示的是专用的双栏文件管理器，而不是终端：<strong>左侧为 FTP 服务器</strong>，<strong>右侧为本机</strong>。</span>
       </p>
       <ul>
-        <li><span data-i18n="en"><strong>Two-way transfers</strong> — copy files in either direction; transfers stream, so large files don't need to fit in memory. Folders download recursively as streams.</span><span data-i18n="zh"><strong>双向传输</strong> —— 两个方向都可以复制文件，全部为流式传输，大文件不占内存；文件夹也支持流式下载。</span></li>
+        <li><span data-i18n="en"><strong>Two-way transfers</strong> — copy files or whole folders in either direction; transfers stream, so large files don't need to fit in memory. Folders are recreated recursively, and an existing folder with the same name is merged into (files with the same names are replaced).</span><span data-i18n="zh"><strong>双向传输</strong> —— 两个方向都可以复制文件或整个文件夹，全部为流式传输，大文件不占内存；文件夹会递归重建，目标已存在同名文件夹时会合并（同名文件被替换）。</span></li>
         <li><span data-i18n="en"><strong>File management</strong> — create directories, rename, and delete (delete is non-recursive: empty a directory before deleting it).</span><span data-i18n="zh"><strong>文件管理</strong> —— 支持新建目录、重命名和删除（删除为非递归：目录需先清空再删除）。</span></li>
         <li><span data-i18n="en"><strong>Encoding</strong> — server file names in UTF-8 or GBK are detected and decoded automatically.</span><span data-i18n="zh"><strong>编码</strong> —— 自动识别并解码服务器上 UTF-8 / GBK 编码的文件名。</span></li>
         <li><span data-i18n="en"><strong>Passive mode</strong> — browsing uses passive mode, which works through most firewalls and NAT.</span><span data-i18n="zh"><strong>被动模式</strong> —— 浏览使用被动模式，能穿过大多数防火墙和 NAT。</span></li>

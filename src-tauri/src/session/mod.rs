@@ -2,6 +2,7 @@ pub mod ftp;
 pub mod local;
 pub mod serial;
 pub mod ssh;
+pub mod transfer;
 
 use std::collections::HashMap;
 
@@ -47,6 +48,11 @@ pub enum SftpRequest {
         progress: Channel<TransferProgress>,
     },
     Upload {
+        local: String,
+        remote: String,
+        progress: Channel<TransferProgress>,
+    },
+    UploadDirectory {
         local: String,
         remote: String,
         progress: Channel<TransferProgress>,

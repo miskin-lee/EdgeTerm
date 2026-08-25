@@ -1,3 +1,4 @@
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
@@ -5,11 +6,17 @@ use russh::client::{self, Handle, Msg};
 use russh::keys::agent::client::{AgentClient, AgentStream};
 use russh::keys::{PrivateKeyWithHashAlg, PublicKey};
 use russh::{Channel, ChannelMsg};
+use russh_sftp::client::error::Error as SftpError;
 use russh_sftp::client::SftpSession;
+use russh_sftp::protocol::StatusCode;
 use tauri::AppHandle;
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 use tokio::sync::mpsc::UnboundedReceiver;
 
+use super::transfer::{
+    ensure_local_directory, plan_local_upload, safe_local_child, validate_local_file_target,
+    ProgressReporter,
+};
 use super::{
     emit_state, join_remote, sort_entries, OutputPump, SessionCommand, SftpRequest, SftpResponse,
     TransferProgress,
@@ -380,15 +387,28 @@ async fn run_sftp(sftp: Arc<SftpSession>, request: SftpRequest) -> Result<SftpRe
             download_file(&sftp, &remote, &local, &progress).await?;
             Ok(SftpResponse::Done)
         }
-        SftpRequest::DownloadDirectory { .. } => Err(AppError::new(
-            "recursive folder download is only available for FTP sessions",
-        )),
+        SftpRequest::DownloadDirectory {
+            remote,
+            local,
+            progress,
+        } => {
+            download_directory(&sftp, &remote, &local, &progress).await?;
+            Ok(SftpResponse::Done)
+        }
         SftpRequest::Upload {
             local,
             remote,
             progress,
         } => {
             upload_file(&sftp, &local, &remote, &progress).await?;
+            Ok(SftpResponse::Done)
+        }
+        SftpRequest::UploadDirectory {
+            local,
+            remote,
+            progress,
+        } => {
+            upload_directory(&sftp, &local, &remote, &progress).await?;
             Ok(SftpResponse::Done)
         }
     }
@@ -401,23 +421,125 @@ async fn download_file(
     progress: &tauri::ipc::Channel<TransferProgress>,
 ) -> Result<()> {
     let total = sftp.metadata(remote).await?.size.unwrap_or(0);
-    let mut source = sftp.open(remote).await?;
-    let mut target = tokio::fs::File::create(local).await?;
     let mut last_report = Instant::now();
 
     report_transfer_progress(progress, 0, total);
-    let transferred = copy_in_chunks(&mut source, &mut target, |transferred| {
+    let transferred = copy_remote_file(sftp, remote, Path::new(local), |transferred| {
         if last_report.elapsed() >= TRANSFER_PROGRESS_INTERVAL {
             report_transfer_progress(progress, transferred, total);
             last_report = Instant::now();
         }
     })
     .await?;
-
-    target.flush().await?;
-    source.close().await?;
     report_transfer_progress(progress, transferred, total);
     Ok(())
+}
+
+struct SftpDownloadJob {
+    remote: String,
+    local: PathBuf,
+}
+
+async fn download_directory(
+    sftp: &SftpSession,
+    remote: &str,
+    local: &str,
+    progress: &tauri::ipc::Channel<TransferProgress>,
+) -> Result<()> {
+    let local_root = PathBuf::from(local);
+    let mut pending = vec![(remote.to_string(), local_root.clone())];
+    let mut directories = vec![local_root];
+    let mut files = Vec::new();
+    let mut total = 0_u64;
+
+    // Metadata-only plan first so progress covers the whole tree. Contents
+    // are still copied one file at a time through the fixed 1 MiB buffer.
+    while let Some((remote_dir, local_dir)) = pending.pop() {
+        for entry in sftp.read_dir(remote_dir.clone()).await? {
+            let name = entry.file_name();
+            if matches!(name.as_str(), "." | "..") {
+                continue;
+            }
+            let local_child = safe_local_child(&local_dir, &name)?;
+            let remote_child = join_remote(&remote_dir, &name);
+            let mut file_type = entry.file_type();
+            let mut size = entry.metadata().size.unwrap_or(0);
+            if file_type.is_symlink() {
+                // Follow links to files; skip dangling links and links to
+                // directories, which could loop back into an ancestor.
+                match sftp.metadata(remote_child.clone()).await {
+                    Ok(target) => {
+                        file_type = target.file_type();
+                        size = target.size.unwrap_or(0);
+                    }
+                    Err(SftpError::Status(status))
+                        if status.status_code == StatusCode::NoSuchFile =>
+                    {
+                        continue
+                    }
+                    Err(error) => return Err(error.into()),
+                }
+                if file_type.is_dir() {
+                    continue;
+                }
+            }
+
+            if file_type.is_dir() {
+                directories.push(local_child.clone());
+                pending.push((remote_child, local_child));
+            } else {
+                total = total.checked_add(size).ok_or_else(|| {
+                    AppError::new("remote folder is too large to report transfer progress")
+                })?;
+                files.push(SftpDownloadJob {
+                    remote: remote_child,
+                    local: local_child,
+                });
+            }
+        }
+    }
+
+    let files = tokio::task::spawn_blocking(move || -> Result<Vec<SftpDownloadJob>> {
+        for directory in &directories {
+            ensure_local_directory(directory)?;
+        }
+        for file in &files {
+            validate_local_file_target(&file.local)?;
+        }
+        Ok(files)
+    })
+    .await
+    .map_err(|error| AppError::new(format!("local folder preparation failed: {error}")))??;
+
+    let mut reporter = ProgressReporter::begin(progress, total);
+    let mut transferred = 0_u64;
+    for file in files {
+        let completed_before_file = transferred;
+        let copied = copy_remote_file(sftp, &file.remote, &file.local, |file_transferred| {
+            reporter.update(completed_before_file.saturating_add(file_transferred));
+        })
+        .await?;
+        transferred = transferred.saturating_add(copied);
+    }
+    reporter.finish(transferred);
+    Ok(())
+}
+
+async fn copy_remote_file<F>(
+    sftp: &SftpSession,
+    remote: &str,
+    local: &Path,
+    on_chunk: F,
+) -> Result<u64>
+where
+    F: FnMut(u64),
+{
+    let mut source = sftp.open(remote).await?;
+    let mut target = tokio::fs::File::create(local).await?;
+    let transferred = copy_in_chunks(&mut source, &mut target, on_chunk).await?;
+    target.flush().await?;
+    source.close().await?;
+    Ok(transferred)
 }
 
 async fn upload_file(
@@ -431,22 +553,80 @@ async fn upload_file(
         return Err(AppError::new("only regular files can be uploaded"));
     }
     let total = metadata.len();
-    let mut source = tokio::fs::File::open(local).await?;
-    let mut target = sftp.create(remote).await?;
     let mut last_report = Instant::now();
 
     report_transfer_progress(progress, 0, total);
-    let transferred = copy_in_chunks(&mut source, &mut target, |transferred| {
+    let transferred = copy_local_file(sftp, Path::new(local), remote, |transferred| {
         if last_report.elapsed() >= TRANSFER_PROGRESS_INTERVAL {
             report_transfer_progress(progress, transferred, total);
             last_report = Instant::now();
         }
     })
     .await?;
-
-    target.shutdown().await?;
     report_transfer_progress(progress, transferred, total);
     Ok(())
+}
+
+async fn upload_directory(
+    sftp: &SftpSession,
+    local: &str,
+    remote: &str,
+    progress: &tauri::ipc::Channel<TransferProgress>,
+) -> Result<()> {
+    let local_root = PathBuf::from(local);
+    let remote_root = remote.to_string();
+    let plan = tokio::task::spawn_blocking(move || plan_local_upload(&local_root, &remote_root))
+        .await
+        .map_err(|error| AppError::new(format!("local folder scan failed: {error}")))??;
+
+    for directory in &plan.directories {
+        ensure_remote_directory(sftp, directory).await?;
+    }
+
+    let mut reporter = ProgressReporter::begin(progress, plan.total);
+    let mut transferred = 0_u64;
+    for file in plan.files {
+        let completed_before_file = transferred;
+        let copied = copy_local_file(sftp, &file.local, &file.remote, |file_transferred| {
+            reporter.update(completed_before_file.saturating_add(file_transferred));
+        })
+        .await?;
+        transferred = transferred.saturating_add(copied);
+    }
+    reporter.finish(transferred);
+    Ok(())
+}
+
+/// Accepts an existing remote directory so an upload can merge into it, and
+/// refuses to write a tree through anything that is not a directory.
+async fn ensure_remote_directory(sftp: &SftpSession, path: &str) -> Result<()> {
+    match sftp.metadata(path.to_string()).await {
+        Ok(metadata) if metadata.file_type().is_dir() => Ok(()),
+        Ok(_) => Err(AppError::new(format!(
+            "remote path is not a folder: {path}"
+        ))),
+        Err(SftpError::Status(status)) if status.status_code == StatusCode::NoSuchFile => {
+            sftp.create_dir(path.to_string()).await?;
+            Ok(())
+        }
+        Err(error) => Err(error.into()),
+    }
+}
+
+async fn copy_local_file<F>(
+    sftp: &SftpSession,
+    local: &Path,
+    remote: &str,
+    on_chunk: F,
+) -> Result<u64>
+where
+    F: FnMut(u64),
+{
+    let mut source = tokio::fs::File::open(local).await?;
+    let mut target = sftp.create(remote).await?;
+    let transferred = copy_in_chunks(&mut source, &mut target, on_chunk).await?;
+    target.shutdown().await?;
+    Ok(transferred)
 }
 
 /// Streams bytes through a fixed-size buffer so transfer memory usage is

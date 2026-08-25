@@ -333,7 +333,7 @@ pub async fn sftp_download(
 }
 
 #[tauri::command]
-pub async fn ftp_download_directory(
+pub async fn sftp_download_directory(
     state: State<'_, AppState>,
     id: String,
     remote: String,
@@ -376,6 +376,28 @@ pub async fn sftp_upload(
     Ok(())
 }
 
+#[tauri::command]
+pub async fn sftp_upload_directory(
+    state: State<'_, AppState>,
+    id: String,
+    local: String,
+    remote: String,
+    on_progress: Channel<TransferProgress>,
+) -> Result<()> {
+    state
+        .sessions
+        .sftp(
+            &id,
+            SftpRequest::UploadDirectory {
+                local,
+                remote,
+                progress: on_progress,
+            },
+        )
+        .await?;
+    Ok(())
+}
+
 // --- local filesystem -------------------------------------------------------
 
 #[tauri::command]
@@ -398,6 +420,11 @@ pub fn local_parent(path: String) -> String {
 #[tauri::command]
 pub fn local_mkdir(path: String) -> Result<()> {
     fs_local::mkdir(&path)
+}
+
+#[tauri::command]
+pub fn local_is_directory(path: String) -> bool {
+    fs_local::is_directory(&path)
 }
 
 #[tauri::command]

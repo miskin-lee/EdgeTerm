@@ -195,18 +195,39 @@ export function FilerPanel() {
   const download = async () => {
     const entry = entries.find((e) => e.path === selected);
     if (!entry || !remoteId) return;
-    const target = await saveDialog({ defaultPath: entry.name });
+    let target: string | null = null;
+    if (entry.isDir) {
+      // A folder lands inside the chosen directory under its own name, so an
+      // existing folder of that name is merged into rather than replaced.
+      const parent = await openDialog({
+        directory: true,
+        multiple: false,
+        title: `Save folder “${entry.name}” into…`,
+      });
+      if (typeof parent === "string") target = joinLocal(parent, entry.name);
+    } else {
+      target = await saveDialog({ defaultPath: entry.name });
+    }
     if (!target) return;
     setBusy(true);
     setError(null);
     beginTransfer("download", entry.name);
     try {
-      await api.sftpDownload(
-        remoteId,
-        entry.path,
-        target,
-        updateTransferProgress,
-      );
+      if (entry.isDir) {
+        await api.sftpDownloadDirectory(
+          remoteId,
+          entry.path,
+          target,
+          updateTransferProgress,
+        );
+      } else {
+        await api.sftpDownload(
+          remoteId,
+          entry.path,
+          target,
+          updateTransferProgress,
+        );
+      }
       finishTransfer("complete");
     } catch (e) {
       setError(String(e));
@@ -216,7 +237,7 @@ export function FilerPanel() {
     }
   };
 
-  const uploadFiles = async (localPaths: string[]) => {
+  const uploadPaths = async (localPaths: string[]) => {
     if (!remoteId || !path || busyRef.current || localPaths.length === 0) {
       return;
     }
@@ -227,13 +248,23 @@ export function FilerPanel() {
     try {
       for (const localPath of localPaths) {
         const name = localFileName(localPath);
+        const isDirectory = await api.localIsDirectory(localPath);
         beginTransfer("upload", name);
-        await api.sftpUpload(
-          remoteId,
-          localPath,
-          joinRemote(destination, name),
-          updateTransferProgress,
-        );
+        if (isDirectory) {
+          await api.sftpUploadDirectory(
+            remoteId,
+            localPath,
+            joinRemote(destination, name),
+            updateTransferProgress,
+          );
+        } else {
+          await api.sftpUpload(
+            remoteId,
+            localPath,
+            joinRemote(destination, name),
+            updateTransferProgress,
+          );
+        }
         finishTransfer("complete");
       }
       await load(destination);
@@ -248,7 +279,7 @@ export function FilerPanel() {
   };
 
   uploadDroppedFilesRef.current = (paths) => {
-    void uploadFiles(paths);
+    void uploadPaths(paths);
   };
 
   useEffect(() => {
@@ -296,9 +327,14 @@ export function FilerPanel() {
 
   const upload = async () => {
     if (!remoteId) return;
-    const picked = await openDialog({ multiple: false });
-    if (typeof picked !== "string") return;
-    await uploadFiles([picked]);
+    const picked = await openDialog({ multiple: true });
+    await uploadPaths(pickedPaths(picked));
+  };
+
+  const uploadFolder = async () => {
+    if (!remoteId) return;
+    const picked = await openDialog({ directory: true, multiple: true });
+    await uploadPaths(pickedPaths(picked));
   };
 
   const removeSelected = async () => {
@@ -378,17 +414,26 @@ export function FilerPanel() {
             <button
               className="panel-action filer-action"
               onClick={upload}
-              title="Upload"
-              aria-label="Upload"
+              title="Upload files"
+              aria-label="Upload files"
               disabled={busy || !path}
             >
               <FilerActionIcon name="upload" />
             </button>
             <button
               className="panel-action filer-action"
+              onClick={uploadFolder}
+              title="Upload folder"
+              aria-label="Upload folder"
+              disabled={busy || !path}
+            >
+              <FilerActionIcon name="upload-folder" />
+            </button>
+            <button
+              className="panel-action filer-action"
               onClick={download}
-              title="Download"
-              aria-label="Download"
+              title="Download file or folder"
+              aria-label="Download file or folder"
               disabled={!selected || busy}
             >
               <FilerActionIcon name="download" />
@@ -447,7 +492,7 @@ export function FilerPanel() {
         className={`panel-body filer-list${dragOverList ? " is-drag-over" : ""}`}
         aria-label={
           remote
-            ? `${tab?.info.protocol.toUpperCase()} file list. Drop files here to upload.`
+            ? `${tab?.info.protocol.toUpperCase()} file list. Drop files or folders here to upload.`
             : "Local file list"
         }
       >
@@ -556,7 +601,7 @@ export function FilerPanel() {
             </div>
           </div>
         ) : dragOverList ? (
-          <span className="filer-drop-message">Drop files to upload</span>
+          <span className="filer-drop-message">Drop files or folders to upload</span>
         ) : (
           <>
             <span>{formatEntrySummary(entries)}</span>
@@ -602,6 +647,7 @@ function FilerEntryIcon({ kind }: { kind: FilerEntryKind }) {
 type FilerActionIconName =
   | "new-folder"
   | "upload"
+  | "upload-folder"
   | "download"
   | "delete"
   | "refresh"
@@ -619,6 +665,12 @@ function FilerActionIcon({ name }: { name: FilerActionIconName }) {
       <>
         <path d="M12 15V4.5M8 8.5l4-4 4 4" />
         <path d="M5 14.5v3.75A1.75 1.75 0 0 0 6.75 20h10.5A1.75 1.75 0 0 0 19 18.25V14.5" />
+      </>
+    ),
+    "upload-folder": (
+      <>
+        <path d="M3.5 6.5h6l2 2h9v9.75a1.75 1.75 0 0 1-1.75 1.75H5.25a1.75 1.75 0 0 1-1.75-1.75V6.5Z" />
+        <path d="M12 17.25v-6M9.25 14l2.75-2.75L14.75 14" />
       </>
     ),
     download: (
@@ -672,6 +724,16 @@ function joinRemote(base: string, name: string): string {
 
 function localFileName(path: string): string {
   return path.split(/[\\/]/).filter(Boolean).pop() ?? "upload.bin";
+}
+
+function joinLocal(base: string, name: string): string {
+  const separator = base.includes("\\") && !base.includes("/") ? "\\" : "/";
+  return `${base.replace(/[\\/]+$/, "")}${separator}${name}`;
+}
+
+function pickedPaths(picked: string | string[] | null): string[] {
+  if (Array.isArray(picked)) return picked;
+  return typeof picked === "string" ? [picked] : [];
 }
 
 function entryKind(entry: FileEntry): FilerEntryKind {
