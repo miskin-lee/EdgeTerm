@@ -183,6 +183,47 @@ function gitStatusColor(status: string): string {
 
 const PERMISSION_TOKEN = /[bcdlps-][rwxStTs-]{9}[+@.]?/;
 const PERMISSION_LINE = new RegExp(`^${PERMISSION_TOKEN.source}(?:\\s|$)`);
+/** PowerShell's Mode column: directory, archive, read-only, hidden, system, link. */
+const POWERSHELL_MODE = /(?:^|\s)(?!-{6})([dl-][a-][r-][h-][s-][l-])(?=\s)/g;
+const POWERSHELL_MODE_LINE = /^(?!-{6})[dl-][a-][r-][h-][s-][l-]\s/;
+
+function powershellModeColor(ch: string): string {
+  const C = SEMANTIC_COLORS;
+  switch (ch) {
+    case "d":
+      return C.purple;
+    case "a":
+      return C.sky;
+    case "r":
+      return C.amber;
+    case "h":
+      return C.slate;
+    case "s":
+      return C.red;
+    case "l":
+      return C.mint;
+    default:
+      return C.gray;
+  }
+}
+
+/** Adds one range per run of same-colored characters in `token`. */
+function addColorRuns(
+  add: (start: number, end: number, color: string) => void,
+  base: number,
+  token: string,
+  colorAt: (index: number, ch: string) => string,
+) {
+  let runStart = 0;
+  let runColor = colorAt(0, token[0]);
+  for (let i = 1; i <= token.length; i += 1) {
+    const color = i < token.length ? colorAt(i, token[i]) : "";
+    if (color === runColor) continue;
+    add(base + runStart, base + i, runColor);
+    runStart = i;
+    runColor = color;
+  }
+}
 
 /** Colors an `ls -l` mode string bit by bit, WindTerm style. */
 function permissionBitColor(index: number, ch: string): string {
@@ -313,6 +354,7 @@ export function semanticLine(text: string): SemanticLine {
   // table headers. ANSI-colored git output is left untouched by the
   // controller's cell-style guard.
   const startsWithUnixPermissions = PERMISSION_LINE.test(text);
+  const startsWithPowershellMode = POWERSHELL_MODE_LINE.test(text);
   let wholeLine = true;
   if (/^@@(?:\s|$)/.test(text)) {
     add(0, text.length, C.cyan);
@@ -322,6 +364,7 @@ export function semanticLine(text: string): SemanticLine {
   } else if (
     /^-(?!--)/.test(text) &&
     !startsWithUnixPermissions &&
+    !startsWithPowershellMode &&
     // `- item` with a single space is a YAML or Markdown list, not a removal.
     !/^- \S/.test(text)
   ) {
@@ -363,16 +406,14 @@ export function semanticLine(text: string): SemanticLine {
   )) {
     if (match.index === undefined) continue;
     const token = match[1];
-    const base = match.index + match[0].indexOf(token);
-    let runStart = 0;
-    let runColor = permissionBitColor(0, token[0]);
-    for (let i = 1; i <= token.length; i += 1) {
-      const color = i < token.length ? permissionBitColor(i, token[i]) : "";
-      if (color === runColor) continue;
-      add(base + runStart, base + i, runColor);
-      runStart = i;
-      runColor = color;
-    }
+    addColorRuns(add, match.index + match[0].indexOf(token), token, permissionBitColor);
+  }
+  for (const match of text.matchAll(POWERSHELL_MODE)) {
+    if (match.index === undefined) continue;
+    const token = match[1];
+    addColorRuns(add, match.index + match[0].indexOf(token), token, (_, ch) =>
+      powershellModeColor(ch),
+    );
   }
   if (startsWithUnixPermissions) {
     const columns = /^\S+\s+\d+\s+([\w.$-]+)\s+([\w.$-]+)\s/.exec(text);
@@ -605,7 +646,8 @@ export function semanticLine(text: string): SemanticLine {
       [match[2], C.green],
     ]);
   }
-  addMatches(/\b\d{4}[-/]\d{2}[-/]\d{2}\b/g, C.orchid);
+  addMatches(/\b\d{4}[-/]\d{1,2}[-/]\d{1,2}\b/g, C.orchid);
+  addMatches(/\b\d{1,2}\/\d{1,2}\/\d{4}\b/g, C.orchid);
   // `file.rs:42:17` positions are numbers, not a clock time.
   for (const match of text.matchAll(/\.\w{1,5}:(\d+)(?::(\d+))?\b/g)) {
     addParts(match, [
@@ -619,7 +661,7 @@ export function semanticLine(text: string): SemanticLine {
   );
   addMatches(/\b(?:Mon|Tue|Wed|Thu|Fri|Sat|Sun)\b/g, C.orchid);
   addMatches(
-    /\b\d{1,2}:\d{2}(?::\d{2}(?:\.\d+)?)?(?:Z|[+-]\d{2}:?\d{2})?\b/g,
+    /\b\d{1,2}:\d{2}(?::\d{2}(?:\.\d+)?)?(?:Z|[+-]\d{2}:?\d{2}|\s?[AP]M)?\b/g,
     C.green,
   );
   addMatches(
