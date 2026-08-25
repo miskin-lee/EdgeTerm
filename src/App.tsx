@@ -1,10 +1,19 @@
-import { useCallback, useEffect, useState, type CSSProperties } from "react";
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type CSSProperties,
+} from "react";
 
 import * as api from "./api";
 import { CloseSessionDialog } from "./components/CloseSessionDialog";
 import { FontSizeDialog } from "./components/FontSizeDialog";
 import { MenuBar } from "./components/MenuBar";
-import { SearchOverlay } from "./components/SearchOverlay";
+import {
+  SearchOverlay,
+  type SearchOverlayHandle,
+} from "./components/SearchOverlay";
 import { SessionDialog } from "./components/SessionDialog";
 import { Splitter } from "./components/Splitter";
 import { StatusBar } from "./components/StatusBar";
@@ -72,6 +81,7 @@ export default function App() {
     null,
   );
   const [searchOpen, setSearchOpen] = useState(false);
+  const searchRef = useRef<SearchOverlayHandle>(null);
   const [aboutOpen, setAboutOpen] = useState(false);
   const [fontSettingsOpen, setFontSettingsOpen] = useState(false);
 
@@ -137,6 +147,18 @@ export default function App() {
 
   const newSession = useCallback(() => setDialog({ profile: null }), []);
 
+  const openSearch = useCallback(() => {
+    if (!ftpMode) setSearchOpen(true);
+  }, [ftpMode]);
+
+  // Jump to the next match; with the search box closed this just opens it
+  // so the user can type a query.
+  const findNext = useCallback(() => {
+    if (ftpMode) return;
+    if (!searchOpen) setSearchOpen(true);
+    else searchRef.current?.findNext();
+  }, [ftpMode, searchOpen]);
+
   // --- keyboard -------------------------------------------------------------
 
   useEffect(() => {
@@ -168,12 +190,14 @@ export default function App() {
         return;
       }
 
-      const mod = event.metaKey || event.ctrlKey;
-      if (!mod) return;
-
       const key = event.key.toLowerCase();
 
-      if (event.altKey && !event.shiftKey) {
+      // View panels: ⌘⌥←/→/↓ on macOS, Ctrl+Alt+←/→/↓ elsewhere.
+      if (
+        (IS_MAC ? event.metaKey : event.ctrlKey) &&
+        event.altKey &&
+        !event.shiftKey
+      ) {
         const panel = viewPanelByShortcutCode[event.code];
         if (panel) {
           event.preventDefault();
@@ -182,16 +206,39 @@ export default function App() {
         }
       }
 
-      if (key === "n") {
-        event.preventDefault();
-        newSession();
-      } else if (key === "w" && activeId) {
-        event.preventDefault();
-        requestCloseTab(activeId);
-      } else if (key === "f" && !ftpMode) {
-        event.preventDefault();
-        setSearchOpen(true);
-      } else if (key === "k" && activeId && !ftpMode) {
+      // Session and search shortcuts: ⌘ on macOS, Alt elsewhere. Plain
+      // Ctrl+N/W/F/G are readline and shell keys (^W kills a word, ^G is
+      // BEL) and must keep reaching the terminal.
+      const appMod = IS_MAC
+        ? event.metaKey && !event.ctrlKey && !event.altKey
+        : event.altKey && !event.ctrlKey && !event.metaKey;
+      if (appMod && !event.shiftKey) {
+        if (key === "n") {
+          event.preventDefault();
+          newSession();
+          return;
+        }
+        if (key === "w") {
+          event.preventDefault();
+          if (activeId) requestCloseTab(activeId);
+          return;
+        }
+        if (key === "f") {
+          event.preventDefault();
+          openSearch();
+          return;
+        }
+        if (key === "g") {
+          event.preventDefault();
+          findNext();
+          return;
+        }
+      }
+
+      const mod = event.metaKey || event.ctrlKey;
+      if (!mod) return;
+
+      if (key === "k" && activeId && !ftpMode) {
         event.preventDefault();
         getController(activeId)?.clear();
       } else if (/^[1-9]$/.test(event.key)) {
@@ -209,8 +256,10 @@ export default function App() {
     activateAdjacentTab,
     activeId,
     closeRequestId,
+    findNext,
     ftpMode,
     newSession,
+    openSearch,
     requestCloseTab,
     setActive,
     togglePanel,
@@ -233,9 +282,8 @@ export default function App() {
     >
       <MenuBar
         onNewSession={newSession}
-        onFind={() => {
-          if (!ftpMode) setSearchOpen(true);
-        }}
+        onFind={openSearch}
+        onFindNext={findNext}
         onFontSettings={() => setFontSettingsOpen(true)}
         onCheckForUpdates={() => void updater.checkForUpdates()}
         onAbout={() => setAboutOpen(true)}
@@ -261,7 +309,11 @@ export default function App() {
 
         <div className="center">
           <TabStrip onNewSession={newSession} />
-          <SearchOverlay open={searchOpen} onOpenChange={setSearchOpen} />
+          <SearchOverlay
+            ref={searchRef}
+            open={searchOpen}
+            onOpenChange={setSearchOpen}
+          />
           <TerminalPane onNewSession={newSession} />
         </div>
 

@@ -62,6 +62,7 @@ interface Menu {
 interface Props {
   onNewSession: () => void;
   onFind: () => void;
+  onFindNext: () => void;
   onFontSettings: () => void;
   onCheckForUpdates: () => void;
   onAbout: () => void;
@@ -117,7 +118,7 @@ export function MenuBar(props: Props) {
     {
       title: "Session",
       entries: [
-        { label: "New Session…", shortcut: sc("⌘N", "Ctrl+N"), action: props.onNewSession },
+        { label: "New Session…", shortcut: sc("⌘N", "Alt+N"), action: props.onNewSession },
         "separator",
         {
           label: "Previous Session",
@@ -132,7 +133,7 @@ export function MenuBar(props: Props) {
         "separator",
         {
           label: "Close Session",
-          shortcut: sc("⌘W", "Ctrl+W"),
+          shortcut: sc("⌘W", "Alt+W"),
           action: withActive(requestCloseTab),
         },
         {
@@ -186,8 +187,8 @@ export function MenuBar(props: Props) {
     {
       title: "Search",
       entries: [
-        { label: "Find…", shortcut: sc("⌘F", "Ctrl+F"), action: props.onFind },
-        { label: "Find Next", shortcut: sc("⌘G", "Ctrl+G"), action: props.onFind },
+        { label: "Find…", shortcut: sc("⌘F", "Alt+F"), action: props.onFind },
+        { label: "Find Next", shortcut: sc("⌘G", "Alt+G"), action: props.onFindNext },
       ],
     },
     {

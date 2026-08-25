@@ -23,6 +23,9 @@ import {
 
 export type GutterMode = "off" | "line" | "time" | "both";
 
+/** Alt+letter shortcuts owned by the app on Windows / Linux (see App.tsx). */
+const APP_ALT_SHORTCUT_KEYS = new Set(["n", "w", "f", "g"]);
+
 function openTerminalWebLink(event: MouseEvent, uri: string) {
   // Opening terminal output on an unmodified click makes accidental launches
   // too easy. Match native terminal behavior on macOS and other platforms.
@@ -279,6 +282,13 @@ export class TerminalController {
         void navigator.clipboard.readText().then((text) => {
           if (text) this.term.paste(text);
         });
+        return false;
+      }
+
+      // Alt+N / W / F / G are app shortcuts (new and close session, find,
+      // find next). Leave them unhandled so the window-level handler
+      // receives them instead of xterm sending ESC-prefixed input.
+      if (altOnly && APP_ALT_SHORTCUT_KEYS.has(key)) {
         return false;
       }
 
