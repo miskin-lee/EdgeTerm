@@ -212,6 +212,12 @@ const USER_PROMPT =
  * A bare `#` is a comment, not a root prompt, so the sign needs a prefix then.
  */
 const BARE_PROMPT = /^([A-Za-z~/][\w.~/-]*\s?)?(>>>|[$#%>❯➜])(?=\s)/;
+/**
+ * cmd.exe and PowerShell prompts: `C:\Users\x>dir`, `PS C:\Users\x> ls`,
+ * `PS /home/x> ls`, `PS> ls`. Group 1 is the `PS` tag, group 2 or 3 the path.
+ */
+const WINDOWS_PROMPT =
+  /^(?:(PS)\s?([A-Za-z]:\\[^<>|]*?|[/~][^<>|]*?)?|([A-Za-z]:\\[^<>|]*?))>/;
 
 /**
  * Column-header rows from ls/ps/df/kubectl/docker/netstat: three or more
@@ -384,8 +390,17 @@ export function semanticLine(text: string): SemanticLine {
   // it may be half-typed (a line left behind by tab completion or Ctrl-C),
   // and the shell's own highlighting owns it anyway.
   let commandFrom = -1;
-  const userPrompt = wholeLine ? null : USER_PROMPT.exec(text);
-  if (userPrompt) {
+  const windowsPrompt = wholeLine ? null : WINDOWS_PROMPT.exec(text);
+  const userPrompt =
+    wholeLine || windowsPrompt ? null : USER_PROMPT.exec(text);
+  if (windowsPrompt) {
+    addParts(windowsPrompt, [
+      [windowsPrompt[1] ?? "", C.mint],
+      [windowsPrompt[2] ?? windowsPrompt[3] ?? "", C.yellow],
+    ]);
+    add(windowsPrompt[0].length - 1, windowsPrompt[0].length, C.rose);
+    commandFrom = windowsPrompt[0].length;
+  } else if (userPrompt) {
     addParts(userPrompt, [
       [userPrompt[1], userPrompt[1] === "root" ? C.red : C.lime],
       [userPrompt[2], C.mint],
@@ -459,8 +474,10 @@ export function semanticLine(text: string): SemanticLine {
   addCaptureMatches(/(["'][A-Za-z_][^"']*["'])\s*:/g, 1, C.sky);
   // Quoted strings are one token, so a keyword or number inside keeps the
   // string color. Single quotes only count when they cannot be apostrophes.
-  addMatches(
-    /"(?:\\.|[^"\\])*"|(?<![\w\p{L}])'(?:\\.|[^'\\])*'(?![\w\p{L}])/gu,
+  addMatches(/"(?:\\.|[^"\\])*"/g, C.gold);
+  addCaptureMatches(
+    /(?:^|[^\w\p{L}])('(?:\\.|[^'\\])*')(?![\w\p{L}])/gu,
+    1,
     C.gold,
   );
   addMatches(/\$\{?[A-Za-z_][A-Za-z0-9_]*\}?/g, C.coral);
@@ -642,9 +659,10 @@ export function semanticLine(text: string): SemanticLine {
   // Brackets cycle through three hues by nesting depth.
   if (text.length <= PUNCTUATION_MAX_LENGTH) {
     addMatches(
-      /-->|<--|&&|\|\||>>|<<|=>|->|::|==|!=|<=|>=|\+=|-=|\*\*|[|;&<>=:?*!^~]|(?<=\s)[-+](?=\s|$)/g,
+      /-->|<--|&&|\|\||>>|<<|=>|->|::|==|!=|<=|>=|\+=|-=|\*\*|[|;&<>=:?*!^~]/g,
       C.lime,
     );
+    addCaptureMatches(/(?:^|\s)([-+])(?=\s|$)/g, 1, C.lime);
     const bracketLevels = [C.lime, C.orchid, C.blue];
     let depth = 0;
     for (let i = 0; i < text.length; i += 1) {
