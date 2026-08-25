@@ -37,16 +37,16 @@ Local shell, SSH, and serial terminals automatically detect ZMODEM sessions. Run
 
 **Keyboard shortcuts**
 
-| Shortcut | Action |
-| --- | --- |
-| `⌘N` | Open the new-session dialog |
-| `⌘W` | Close the current session |
-| `⌘F` | Search the terminal buffer |
-| `⌘K` | Clear the screen |
-| `⌘←` / `⌘→` | Switch to the previous / next open session |
-| `⌘1`–`⌘9` | Switch to tab N |
-| `⌘⌥←` / `⌘⌥→` / `⌘⌥↓` | Show or hide Filer / Session / Sender |
-| `⌘C` / `⌘V` | Copy / paste inside the terminal |
+| macOS | Windows / Linux | Action |
+| --- | --- | --- |
+| `⌘N` | `Ctrl+N` | Open the new-session dialog |
+| `⌘W` | `Ctrl+W` | Close the current session |
+| `⌘F` | `Ctrl+F` | Search the terminal buffer |
+| `⌘K` | `Ctrl+K` | Clear the screen |
+| `⌘←` / `⌘→` | `Ctrl+Shift+[` / `Ctrl+Shift+]` | Switch to the previous / next open session |
+| `⌘1`–`⌘9` | `Ctrl+1`–`Ctrl+9` | Switch to tab N |
+| `⌘⌥←` / `⌘⌥→` / `⌘⌥↓` | `Ctrl+Alt+←` / `Ctrl+Alt+→` / `Ctrl+Alt+↓` | Show or hide Filer / Session / Sender |
+| `⌘C` / `⌘V` | `Alt+C` / `Alt+V` | Copy / paste inside the terminal |
 
 ## Automatic updates
 

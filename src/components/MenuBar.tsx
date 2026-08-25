@@ -3,6 +3,7 @@ import { getCurrentWindow } from "@tauri-apps/api/window";
 import { ask } from "@tauri-apps/plugin-dialog";
 import { openUrl } from "@tauri-apps/plugin-opener";
 
+import { IS_MAC, shortcutLabel as sc } from "../platform";
 import { useStore } from "../store";
 import type { GutterMode } from "../terminal";
 import { getController } from "../terminalRegistry";
@@ -13,7 +14,6 @@ const TUTORIAL_URL = "https://miskin-lee.github.io/EdgeTerm/tutorial.html";
 // With `titleBarStyle: "Overlay"` macOS paints the traffic lights over our
 // content, so the menubar doubles as the drag region and leaves room for them
 // (except in native fullscreen, where macOS hides the traffic lights).
-const IS_MAC = /Mac/i.test(navigator.platform || navigator.userAgent);
 
 function useMacFullscreen(): boolean {
   const [fullscreen, setFullscreen] = useState(false);
@@ -117,22 +117,22 @@ export function MenuBar(props: Props) {
     {
       title: "Session",
       entries: [
-        { label: "New Session…", shortcut: "⌘N", action: props.onNewSession },
+        { label: "New Session…", shortcut: sc("⌘N", "Ctrl+N"), action: props.onNewSession },
         "separator",
         {
           label: "Previous Session",
-          shortcut: "⌘←",
+          shortcut: sc("⌘←", "Ctrl+Shift+["),
           action: () => activateAdjacentTab(-1),
         },
         {
           label: "Next Session",
-          shortcut: "⌘→",
+          shortcut: sc("⌘→", "Ctrl+Shift+]"),
           action: () => activateAdjacentTab(1),
         },
         "separator",
         {
           label: "Close Session",
-          shortcut: "⌘W",
+          shortcut: sc("⌘W", "Ctrl+W"),
           action: withActive((id) => void closeTab(id)),
         },
         {
@@ -160,7 +160,7 @@ export function MenuBar(props: Props) {
       entries: [
         {
           label: "Copy",
-          shortcut: "⌘C",
+          shortcut: sc("⌘C", "Alt+C"),
           action: withActive((id) => {
             const term = getController(id)?.term;
             if (term?.hasSelection())
@@ -169,7 +169,7 @@ export function MenuBar(props: Props) {
         },
         {
           label: "Paste",
-          shortcut: "⌘V",
+          shortcut: sc("⌘V", "Alt+V"),
           action: withActive(async (id) => {
             const text = await navigator.clipboard.readText();
             if (text) getController(id)?.term.paste(text);
@@ -178,7 +178,7 @@ export function MenuBar(props: Props) {
         "separator",
         {
           label: "Clear Buffer",
-          shortcut: "⌘K",
+          shortcut: sc("⌘K", "Ctrl+K"),
           action: withActive((id) => getController(id)?.clear()),
         },
       ],
@@ -186,8 +186,8 @@ export function MenuBar(props: Props) {
     {
       title: "Search",
       entries: [
-        { label: "Find…", shortcut: "⌘F", action: props.onFind },
-        { label: "Find Next", shortcut: "⌘G", action: props.onFind },
+        { label: "Find…", shortcut: sc("⌘F", "Ctrl+F"), action: props.onFind },
+        { label: "Find Next", shortcut: sc("⌘G", "Ctrl+G"), action: props.onFind },
       ],
     },
     {
@@ -195,19 +195,19 @@ export function MenuBar(props: Props) {
       entries: [
         {
           label: "Filer",
-          shortcut: "⌘⌥←",
+          shortcut: sc("⌘⌥←", "Ctrl+Alt+←"),
           checked: panels.filer,
           action: () => togglePanel("filer"),
         },
         {
           label: "Session",
-          shortcut: "⌘⌥→",
+          shortcut: sc("⌘⌥→", "Ctrl+Alt+→"),
           checked: panels.sessions,
           action: () => togglePanel("sessions"),
         },
         {
           label: "Sender",
-          shortcut: "⌘⌥↓",
+          shortcut: sc("⌘⌥↓", "Ctrl+Alt+↓"),
           checked: panels.sender,
           action: () => togglePanel("sender"),
         },

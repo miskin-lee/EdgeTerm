@@ -13,6 +13,7 @@ import { UpdateDialog } from "./components/UpdateDialog";
 import { FilerPanel } from "./components/panels/FilerPanel";
 import { SenderPanel } from "./components/panels/SenderPanel";
 import { SessionPanel } from "./components/panels/SessionPanel";
+import { IS_MAC } from "./platform";
 import { setSemanticColorTheme } from "./semanticColors";
 import { useActiveTab, useStore, type PanelName } from "./store";
 import { allControllers, getController } from "./terminalRegistry";
@@ -21,6 +22,16 @@ import { useUpdater } from "./updater";
 
 const clamp = (value: number, min: number, max: number) =>
   Math.min(max, Math.max(min, value));
+
+const tabStepByMacCode: Partial<Record<string, -1 | 1>> = {
+  ArrowLeft: -1,
+  ArrowRight: 1,
+};
+
+const tabStepByCode: Partial<Record<string, -1 | 1>> = {
+  BracketLeft: -1,
+  BracketRight: 1,
+};
 
 const viewPanelByShortcutCode: Partial<Record<string, PanelName>> = {
   ArrowLeft: "filer",
@@ -121,15 +132,31 @@ export default function App() {
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
-      const mod = event.metaKey || event.ctrlKey;
-      if (!mod) return;
-
       // xterm keeps a hidden textarea for input, so "focus is in a text field"
       // has to exclude the terminal itself or every shortcut would be dead
       // exactly where it matters most.
       const target = event.target as HTMLElement | null;
       const inTerminal = Boolean(target?.closest(".xterm"));
       if (!inTerminal && target?.closest("input, textarea, select")) return;
+
+      // Previous / next tab: ⌘←/→ on macOS, Ctrl+Shift+[ / ] elsewhere
+      // (Alt+arrows are word navigation in Linux shells, Win+arrows belong
+      // to the OS on Windows).
+      const tabStep = IS_MAC
+        ? event.metaKey && !event.ctrlKey && !event.altKey && !event.shiftKey
+          ? tabStepByMacCode[event.code]
+          : undefined
+        : event.ctrlKey && event.shiftKey && !event.altKey && !event.metaKey
+          ? tabStepByCode[event.code]
+          : undefined;
+      if (tabStep) {
+        event.preventDefault();
+        activateAdjacentTab(tabStep);
+        return;
+      }
+
+      const mod = event.metaKey || event.ctrlKey;
+      if (!mod) return;
 
       const key = event.key.toLowerCase();
 
@@ -140,18 +167,6 @@ export default function App() {
           togglePanel(panel);
           return;
         }
-      }
-
-      if (
-        event.metaKey &&
-        !event.ctrlKey &&
-        !event.altKey &&
-        !event.shiftKey &&
-        (event.code === "ArrowLeft" || event.code === "ArrowRight")
-      ) {
-        event.preventDefault();
-        activateAdjacentTab(event.code === "ArrowLeft" ? -1 : 1);
-        return;
       }
 
       if (key === "n") {

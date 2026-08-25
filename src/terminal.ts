@@ -13,6 +13,7 @@ import {
   type ITheme,
 } from "@xterm/xterm";
 
+import { IS_MAC } from "./platform";
 import { semanticRanges } from "./semanticColors";
 import type { ThemeMode } from "./types";
 import {
@@ -244,16 +245,51 @@ export class TerminalController {
 
     this.term.attachCustomKeyEventHandler((event) => {
       if (event.type !== "keydown") return true;
-      const mod = event.metaKey || (event.ctrlKey && event.shiftKey);
-      if (mod && event.key.toLowerCase() === "c" && this.term.hasSelection()) {
-        // Let the browser emit its native copy event. xterm handles that event
-        // and writes the current selection to the clipboard exactly once.
+      const key = event.key.toLowerCase();
+
+      if (IS_MAC) {
+        if (!event.metaKey) return true;
+        if (key === "c" && this.term.hasSelection()) {
+          // Let the browser emit its native copy event. xterm handles that
+          // event and writes the current selection to the clipboard once.
+          return false;
+        }
+        if (key === "v") {
+          // Let the browser emit its native paste event. xterm handles newline
+          // normalization and bracketed paste before forwarding the text
+          // through onData. Reading and forwarding it here as well would paste
+          // it twice.
+          return false;
+        }
+        return true;
+      }
+
+      // Windows / Linux: Alt+C / Alt+V copy and paste. Plain Ctrl+C/V must
+      // keep reaching the shell (SIGINT, ^V), and xterm would otherwise turn
+      // Alt+key into ESC-prefixed input, so these are taken over here.
+      const altOnly =
+        event.altKey && !event.ctrlKey && !event.metaKey && !event.shiftKey;
+      if (altOnly && key === "c" && this.term.hasSelection()) {
+        event.preventDefault();
+        void navigator.clipboard.writeText(this.term.getSelection());
         return false;
       }
-      if (mod && event.key.toLowerCase() === "v") {
-        // Let the browser emit its native paste event. xterm handles newline
-        // normalization and bracketed paste before forwarding the text through
-        // onData. Reading and forwarding it here as well would paste it twice.
+      if (altOnly && key === "v") {
+        event.preventDefault();
+        void navigator.clipboard.readText().then((text) => {
+          if (text) this.term.paste(text);
+        });
+        return false;
+      }
+
+      // Ctrl+Shift+[ / ] switch tabs. Leave them unhandled so the app-level
+      // shortcut handler on window receives them instead of xterm.
+      const ctrlShiftOnly =
+        event.ctrlKey && event.shiftKey && !event.altKey && !event.metaKey;
+      if (
+        ctrlShiftOnly &&
+        (event.code === "BracketLeft" || event.code === "BracketRight")
+      ) {
         return false;
       }
       return true;
