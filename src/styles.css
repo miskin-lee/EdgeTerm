@@ -1,5 +1,41 @@
 @import "@xterm/xterm/css/xterm.css";
 
+/* JetBrains Mono is bundled with the app (public/fonts, OFL-1.1 licensed) so
+   the buffer renders identically on every machine. App.tsx re-fits open
+   terminals once these faces finish loading, because xterm measures cell
+   size with the fallback font if a session opens first. */
+@font-face {
+  font-family: "JetBrains Mono";
+  src: url("/fonts/JetBrainsMono-Regular.woff2") format("woff2");
+  font-weight: 400;
+  font-style: normal;
+  font-display: block;
+}
+
+@font-face {
+  font-family: "JetBrains Mono";
+  src: url("/fonts/JetBrainsMono-Bold.woff2") format("woff2");
+  font-weight: 700;
+  font-style: normal;
+  font-display: block;
+}
+
+@font-face {
+  font-family: "JetBrains Mono";
+  src: url("/fonts/JetBrainsMono-Italic.woff2") format("woff2");
+  font-weight: 400;
+  font-style: italic;
+  font-display: block;
+}
+
+@font-face {
+  font-family: "JetBrains Mono";
+  src: url("/fonts/JetBrainsMono-BoldItalic.woff2") format("woff2");
+  font-weight: 700;
+  font-style: italic;
+  font-display: block;
+}
+
 /* The dark palette follows VS Code Dark Modern: the editor surface (#1f1f1f)
    inside one neutral chrome gray (#181818) with #2b2b2b borders, #313131
    input fields, a single blue accent (#0078d4) with white-on-blue primaries,
