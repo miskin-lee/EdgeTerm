@@ -165,6 +165,8 @@ interface AppStore {
   status: string;
   error: string | null;
   errorSessionId: string | null;
+  /** Tab awaiting the user's answer in the close-confirmation dialog. */
+  closeRequestId: string | null;
 
   loadProfiles: () => Promise<void>;
   upsertProfile: (profile: SessionProfile) => Promise<SessionProfile>;
@@ -173,6 +175,8 @@ interface AppStore {
   addTab: (info: SessionInfo, state?: SessionState) => void;
   updateTabInfo: (id: string, info: SessionInfo) => void;
   closeTab: (id: string) => Promise<void>;
+  requestCloseTab: (id: string) => void;
+  cancelCloseRequest: () => void;
   setActive: (id: string) => void;
   activateAdjacentTab: (direction: -1 | 1) => void;
 
@@ -207,6 +211,7 @@ export const useStore = create<AppStore>((set, get) => ({
   status: "Ready",
   error: null,
   errorSessionId: null,
+  closeRequestId: null,
 
   async loadProfiles() {
     set({ profiles: await api.listProfiles() });
@@ -265,7 +270,26 @@ export const useStore = create<AppStore>((set, get) => ({
       status: clearsSessionError ? "Ready" : current.status,
       error: clearsSessionError ? null : current.error,
       errorSessionId: clearsSessionError ? null : current.errorSessionId,
+      closeRequestId:
+        current.closeRequestId === id ? null : current.closeRequestId,
     });
+  },
+
+  // Every user-facing "close" goes through here. A live session is guarded
+  // by a confirmation dialog so a stray ⌘W cannot drop an SSH connection;
+  // a tab whose session already ended has nothing left to protect.
+  requestCloseTab(id) {
+    const tab = get().tabs.find((item) => item.info.id === id);
+    if (!tab) return;
+    if (tab.state === "connecting" || tab.state === "connected") {
+      set({ closeRequestId: id });
+    } else {
+      void get().closeTab(id);
+    }
+  },
+
+  cancelCloseRequest() {
+    set({ closeRequestId: null });
   },
 
   setActive(id) {

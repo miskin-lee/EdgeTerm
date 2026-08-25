@@ -40,7 +40,7 @@ Local shell, SSH, and serial terminals automatically detect ZMODEM sessions. Run
 | macOS | Windows / Linux | Action |
 | --- | --- | --- |
 | `⌘N` | `Ctrl+N` | Open the new-session dialog |
-| `⌘W` | `Ctrl+W` | Close the current session |
+| `⌘W` | `Ctrl+W` | Close the current session (a live session asks for confirmation; `Enter` closes, `Esc` cancels) |
 | `⌘F` | `Ctrl+F` | Search the terminal buffer |
 | `⌘K` | `Ctrl+K` | Clear the screen |
 | `⌘←` / `⌘→` | `Ctrl+Shift+[` / `Ctrl+Shift+]` | Switch to the previous / next open session |

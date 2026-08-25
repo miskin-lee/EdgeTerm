@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState, type CSSProperties } from "react";
 
 import * as api from "./api";
+import { CloseSessionDialog } from "./components/CloseSessionDialog";
 import { FontSizeDialog } from "./components/FontSizeDialog";
 import { MenuBar } from "./components/MenuBar";
 import { SearchOverlay } from "./components/SearchOverlay";
@@ -54,10 +55,18 @@ export default function App() {
   const setActive = useStore((s) => s.setActive);
   const activateAdjacentTab = useStore((s) => s.activateAdjacentTab);
   const closeTab = useStore((s) => s.closeTab);
+  const requestCloseTab = useStore((s) => s.requestCloseTab);
+  const cancelCloseRequest = useStore((s) => s.cancelCloseRequest);
+  const closeRequestId = useStore((s) => s.closeRequestId);
   const applyState = useStore((s) => s.applyState);
   const theme = useStore((s) => s.theme);
   const activeTab = useActiveTab();
   const ftpMode = activeTab?.info.kind === "ftp";
+  const closeRequestTab = useStore((s) =>
+    s.closeRequestId
+      ? s.tabs.find((tab) => tab.info.id === s.closeRequestId)
+      : undefined,
+  );
 
   const [dialog, setDialog] = useState<{ profile: SessionProfile | null } | null>(
     null,
@@ -132,6 +141,10 @@ export default function App() {
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
+      // While the close confirmation is up it owns the keyboard: Enter
+      // closes, Esc cancels, and a repeated ⌘W must not bypass the prompt.
+      if (closeRequestId) return;
+
       // xterm keeps a hidden textarea for input, so "focus is in a text field"
       // has to exclude the terminal itself or every shortcut would be dead
       // exactly where it matters most.
@@ -174,7 +187,7 @@ export default function App() {
         newSession();
       } else if (key === "w" && activeId) {
         event.preventDefault();
-        void closeTab(activeId);
+        requestCloseTab(activeId);
       } else if (key === "f" && !ftpMode) {
         event.preventDefault();
         setSearchOpen(true);
@@ -195,9 +208,10 @@ export default function App() {
   }, [
     activateAdjacentTab,
     activeId,
-    closeTab,
+    closeRequestId,
     ftpMode,
     newSession,
+    requestCloseTab,
     setActive,
     togglePanel,
   ]);
@@ -300,6 +314,23 @@ export default function App() {
         <SessionDialog
           initial={dialog.profile}
           onClose={() => setDialog(null)}
+        />
+      )}
+
+      {closeRequestTab && (
+        <CloseSessionDialog
+          tab={closeRequestTab}
+          onConfirm={() => {
+            // Dismiss first so a second Enter cannot re-enter closeTab while
+            // the backend close is still in flight.
+            cancelCloseRequest();
+            void closeTab(closeRequestTab.info.id);
+          }}
+          onCancel={() => {
+            cancelCloseRequest();
+            // The dialog took focus from the terminal; hand it back.
+            getController(closeRequestTab.info.id)?.focus();
+          }}
         />
       )}
 

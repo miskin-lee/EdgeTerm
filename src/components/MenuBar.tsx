@@ -81,7 +81,7 @@ export function MenuBar(props: Props) {
   const setTheme = useStore((s) => s.setTheme);
   const resetSettings = useStore((s) => s.resetSettings);
   const setStatus = useStore((s) => s.setStatus);
-  const closeTab = useStore((s) => s.closeTab);
+  const requestCloseTab = useStore((s) => s.requestCloseTab);
   const activateAdjacentTab = useStore((s) => s.activateAdjacentTab);
 
   useEffect(() => {
@@ -133,7 +133,7 @@ export function MenuBar(props: Props) {
         {
           label: "Close Session",
           shortcut: sc("⌘W", "Ctrl+W"),
-          action: withActive((id) => void closeTab(id)),
+          action: withActive(requestCloseTab),
         },
         {
           label: "Cancel ZMODEM Transfer",
