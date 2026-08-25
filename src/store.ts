@@ -23,7 +23,7 @@ export interface Tab {
 export type PanelName = "filer" | "sessions" | "sender";
 
 export const PANEL_FONT_SIZE = { min: 9, max: 18, default: 12 } as const;
-export const BUFFER_FONT_SIZE = { min: 8, max: 32, default: 12 } as const;
+export const BUFFER_FONT_SIZE = { min: 8, max: 32, default: 13 } as const;
 export const TERMINAL_SCROLLBACK = {
   min: 0,
   max: 1_000_000,
