@@ -14,7 +14,7 @@ import {
 } from "@xterm/xterm";
 
 import { IS_MAC } from "./platform";
-import { semanticRanges } from "./semanticColors";
+import { semanticLine, type SemanticRange } from "./semanticColors";
 import type { ThemeMode } from "./types";
 import {
   ZmodemController,
@@ -227,6 +227,9 @@ export class TerminalController {
 
     this.term.onResize(({ cols, rows }) => {
       this.callbacks.onResize(cols, rows);
+      // Line bands span the column count they were created with; drop
+      // everything so the next render rebuilds decorations at the new width.
+      this.disposeAllSemanticColors();
       this.trimLineMetadata();
       this.measureCell();
       this.syncGutter();
@@ -411,6 +414,8 @@ export class TerminalController {
     if (this.term.options.fontSize === fontSize) return;
     this.term.options.fontSize = fontSize;
     this.cellHeight = 0;
+    // Underline elements are sized in pixels at creation time.
+    this.disposeAllSemanticColors();
     this.fit();
   }
 
@@ -631,12 +636,46 @@ export class TerminalController {
     // Pathological logical lines (minified assets, base64 blobs) are not
     // worth the regex cost; their rows are still recorded below so they are
     // not re-examined every frame.
-    const ranges =
-      text && text.length <= 4000 ? semanticRanges(text) : [];
+    const { ranges, band }: { ranges: SemanticRange[]; band?: string } =
+      text && text.length <= 4000 ? semanticLine(text) : { ranges: [] };
 
     const cursorIndex = buf.baseY + buf.cursorY;
     const rowMarkers = new Map<number, IMarker>();
     const rowDecorations = new Map<number, IDecoration[]>();
+    const markerFor = (row: number): IMarker | undefined => {
+      let marker = rowMarkers.get(row);
+      if (!marker) {
+        marker = this.term.registerMarker(row - cursorIndex) ?? undefined;
+        if (marker) rowMarkers.set(row, marker);
+      }
+      return marker;
+    };
+    const record = (row: number, decoration: IDecoration) => {
+      let list = rowDecorations.get(row);
+      if (!list) rowDecorations.set(row, (list = []));
+      list.push(decoration);
+    };
+
+    // A line band tints every row of the logical line behind the text. It is
+    // painted on the bottom layer so selection still shows through, and only
+    // on rows that carry no ANSI styling of their own, since a bottom-layer
+    // decoration background replaces the cell's own background.
+    if (band) {
+      for (let row = first; row <= last; row += 1) {
+        const line = buf.getLine(row);
+        if (!line || !isUnstyledSpan(line, 0, line.length, work)) continue;
+        const marker = markerFor(row);
+        if (!marker) continue;
+        const decoration = this.term.registerDecoration({
+          marker,
+          x: 0,
+          width: this.term.cols,
+          backgroundColor: band,
+          layer: "bottom",
+        });
+        if (decoration) record(row, decoration);
+      }
+    }
 
     for (const range of ranges) {
       // A range that crosses a soft wrap becomes one decoration per row.
@@ -652,12 +691,8 @@ export class TerminalController {
         const line = buf.getLine(row);
         if (!line || !isUnstyledSpan(line, startCol, endCol, work)) continue;
 
-        let marker = rowMarkers.get(row);
-        if (!marker) {
-          marker = this.term.registerMarker(row - cursorIndex);
-          if (!marker) continue;
-          rowMarkers.set(row, marker);
-        }
+        const marker = markerFor(row);
+        if (!marker) continue;
         const decoration = this.term.registerDecoration({
           marker,
           x: startCol,
@@ -666,9 +701,16 @@ export class TerminalController {
           layer: "top",
         });
         if (!decoration) continue;
-        let list = rowDecorations.get(row);
-        if (!list) rowDecorations.set(row, (list = []));
-        list.push(decoration);
+        if (range.underline) {
+          // The decoration element is an empty overlay sized to the span;
+          // a bottom border on it draws the underline.
+          const color = range.color;
+          decoration.onRender((element) => {
+            element.classList.add("semantic-underline");
+            element.style.borderBottomColor = color;
+          });
+        }
+        record(row, decoration);
       }
     }
 

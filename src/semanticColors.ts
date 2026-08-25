@@ -3,86 +3,172 @@ import type { ThemeMode } from "./types";
 export interface SemanticRange {
   start: number;
   end: number;
+  /** Foreground color for the span. */
   color: string;
+  /** Draw a thin underline in `color` (links). */
+  underline?: boolean;
+}
+
+export interface SemanticLine {
+  ranges: SemanticRange[];
+  /** Full-width tint behind the whole logical line, blended and opaque. */
+  band?: string;
 }
 
 type SemanticPalette = Record<
   | "rose"
   | "red"
+  | "coral"
   | "orange"
   | "amber"
   | "yellow"
+  | "gold"
   | "lime"
   | "green"
-  | "teal"
+  | "mint"
   | "cyan"
   | "sky"
   | "blue"
   | "violet"
-  | "magenta"
+  | "purple"
+  | "orchid"
   | "pink"
   | "slate"
   | "gray",
   string
 >;
 
-// One palette per background, both drawn from VS Code's colors so semantic
-// decorations read like VS Code syntax highlighting.
+// One palette per background. Both lean warm on purpose: the most frequent
+// tokens in terminal output (paths, strings, numbers, options, prompts) sit in
+// the yellow/orange/purple/pink range, and blue/cyan are reserved for the few
+// classes where they carry meaning (links, network, commands, keys).
+//
+// Role map (same for both themes):
+//   rose    prompt sign, fatal/panic class, signals, git conflicts
+//   red     errors, root user, diff removals, executable permission bits
+//   coral   environment variables, pending/transitional states
+//   orange  command-line options (in output such as --help text)
+//   amber   warnings, sizes/units/percentages, write permission bits, TODO
+//   yellow  paths, filenames, prompt cwd
+//   gold    quoted strings
+//   lime    operators, bracket level 1, diff additions, prompt user, ls owner
+//   green   success states, times, ✓ glyphs
+//   mint    hostnames, domains, IP/MAC addresses, ls group
+//   cyan    emails, HTTP methods, diff hunks
+//   sky     keys and variables, table headers, read permission bits, option
+//           values, URLs, progress verbs
+//   blue    info class, bracket level 3
+//   violet  versions, section headers, git renames
+//   purple  numbers, booleans/null, permission type bits
+//   orchid  dates, UUIDs, bracket level 2
+//   pink    hashes
+//   slate   debug class, HTTP versions, diff headers, timezone
+//   gray    comments, muted permission bits, disabled states
 export const SEMANTIC_PALETTES: Record<ThemeMode, SemanticPalette> = {
-  // The dark set uses VS Code's dark syntax colors (keyword blue #569cd6,
-  // variable blue #9cdcfe, type teal #4ec9b0, string salmon #ce9178, number
-  // green #b5cea8, function khaki #dcdcaa, control purple, charts purple),
-  // its dark terminal ANSI colors, and its dark UI colors (warning #cca700,
-  // muted gray #9d9d9d).
+  // Monokai-derived, as WindTerm's dige-black scheme is, tuned so every entry
+  // clears 4.5:1 on the #1f1f1f terminal background. That matters because the
+  // renderer's minimum-contrast pass would otherwise shift these hues.
   dark: {
-    rose: "#f0648c",
-    red: "#f14c4c",
-    orange: "#ce9178",
-    amber: "#cca700",
-    yellow: "#dcdcaa",
-    lime: "#b5cea8",
-    green: "#0dbc79",
-    teal: "#4ec9b0",
-    cyan: "#29b8db",
-    sky: "#9cdcfe",
-    blue: "#569cd6",
-    violet: "#b180d7",
-    magenta: "#d670d6",
-    pink: "#d670b0",
-    slate: "#85a0b5",
-    gray: "#9d9d9d",
+    rose: "#ff6188",
+    red: "#ff5c57",
+    coral: "#ff7f50",
+    orange: "#fd971f",
+    amber: "#ffb454",
+    yellow: "#e6db74",
+    gold: "#ffd866",
+    lime: "#a6e22e",
+    green: "#3fd463",
+    mint: "#5fd7c0",
+    cyan: "#66d9ef",
+    sky: "#7fb4ff",
+    blue: "#6796e6",
+    violet: "#ab9df2",
+    purple: "#ae81ff",
+    orchid: "#da70d6",
+    pink: "#f78fb3",
+    slate: "#8a9bb0",
+    gray: "#8c8c8c",
   },
-  // The light set draws on VS Code's light palette: its terminal ANSI colors
-  // (red/green/yellow/blue/magenta/cyan), its light syntax colors (teal types
-  // #267f99, constant blue #0070c1, purple #652d90), and its light UI colors
-  // (warning #bf8803, git-added #587c0c, muted gray #616161).
+  // The same hues pulled down to 4.5:1 on white. WindTerm's own light scheme
+  // uses web-color names (Plum, DarkOrange, DodgerBlue) that fall well short
+  // of that, so these are darker cousins rather than copies.
   light: {
-    rose: "#ad1457",
-    red: "#cd3131",
-    orange: "#bc4c00",
-    amber: "#bf8803",
-    yellow: "#949800",
-    lime: "#587c0c",
-    green: "#107c10",
-    teal: "#267f99",
-    cyan: "#0598bc",
-    sky: "#0070c1",
-    blue: "#0451a5",
-    violet: "#652d90",
-    magenta: "#bc05bc",
-    pink: "#c41d7f",
-    slate: "#546e7a",
-    gray: "#616161",
+    rose: "#d6336c",
+    red: "#d32f2f",
+    coral: "#c93d0a",
+    orange: "#b85208",
+    amber: "#9a6600",
+    yellow: "#8a7000",
+    gold: "#9a6b00",
+    lime: "#4f7d00",
+    green: "#22804e",
+    mint: "#0b7f70",
+    cyan: "#0a7ea4",
+    sky: "#1a6fd0",
+    blue: "#1e5bb8",
+    violet: "#6f42c1",
+    purple: "#7e3fbf",
+    orchid: "#b23fb2",
+    pink: "#c2185b",
+    slate: "#5b6b7b",
+    gray: "#767676",
   },
 };
 
-// Mutable binding so semanticRanges picks up the active theme without every
-// call site threading it through. Decorations bake the color they were created
-// with, so TerminalController rebuilds them on a theme switch.
+/** Terminal backgrounds the bands are blended against (see XTERM_THEMES). */
+const TERMINAL_BACKGROUNDS: Record<ThemeMode, string> = {
+  dark: "#1f1f1f",
+  light: "#ffffff",
+};
+
+interface SemanticBands {
+  header: string;
+  error: string;
+  warn: string;
+  added: string;
+  removed: string;
+}
+
+/** Mixes `alpha` of `color` over `base`; xterm drops decoration alpha. */
+function blend(base: string, color: string, alpha: number): string {
+  const channel = (hex: string, i: number) => parseInt(hex.slice(i, i + 2), 16);
+  let out = "#";
+  for (let i = 1; i < 7; i += 2) {
+    const value = Math.round(
+      channel(base, i) + (channel(color, i) - channel(base, i)) * alpha,
+    );
+    out += value.toString(16).padStart(2, "0");
+  }
+  return out;
+}
+
+function bandsFor(mode: ThemeMode): SemanticBands {
+  const base = TERMINAL_BACKGROUNDS[mode];
+  const palette = SEMANTIC_PALETTES[mode];
+  const strength = mode === "dark" ? 1 : 0.7;
+  return {
+    header: blend(base, palette.sky, 0.09 * strength),
+    error: blend(base, palette.red, 0.13 * strength),
+    warn: blend(base, palette.amber, 0.11 * strength),
+    added: blend(base, palette.lime, 0.11 * strength),
+    removed: blend(base, palette.red, 0.11 * strength),
+  };
+}
+
+export const SEMANTIC_BANDS: Record<ThemeMode, SemanticBands> = {
+  dark: bandsFor("dark"),
+  light: bandsFor("light"),
+};
+
+// Mutable bindings so semanticLine picks up the active theme without every
+// call site threading it through. Decorations bake the colors they were
+// created with, so TerminalController rebuilds them on a theme switch.
 export let SEMANTIC_COLORS: SemanticPalette = SEMANTIC_PALETTES.dark;
+let BANDS: SemanticBands = SEMANTIC_BANDS.dark;
 
 export function setSemanticColorTheme(mode: ThemeMode) {
   SEMANTIC_COLORS = SEMANTIC_PALETTES[mode];
+  BANDS = SEMANTIC_BANDS[mode];
 }
 
 function gitStatusColor(status: string): string {
@@ -92,24 +178,99 @@ function gitStatusColor(status: string): string {
   if (status.includes("R") || status.includes("C"))
     return SEMANTIC_COLORS.violet;
   if (status.includes("U")) return SEMANTIC_COLORS.rose;
-  return SEMANTIC_COLORS.yellow;
+  return SEMANTIC_COLORS.amber;
+}
+
+const PERMISSION_TOKEN = /[bcdlps-][rwxStTs-]{9}[+@.]?/;
+const PERMISSION_LINE = new RegExp(`^${PERMISSION_TOKEN.source}(?:\\s|$)`);
+
+/** Colors an `ls -l` mode string bit by bit, WindTerm style. */
+function permissionBitColor(index: number, ch: string): string {
+  const C = SEMANTIC_COLORS;
+  if (index === 0) return ch === "-" ? C.gray : C.purple;
+  if (index > 9) return C.gray;
+  switch (ch) {
+    case "r":
+      return C.sky;
+    case "w":
+      return C.amber;
+    case "-":
+      return C.gray;
+    default:
+      return C.red;
+  }
+}
+
+/**
+ * Tokens that make up a shell prompt: `user@host:cwd$`, `[user@host cwd]$`,
+ * `user@host cwd %` and the like. Group 4 is the prompt sign.
+ */
+const USER_PROMPT =
+  /^\[?([A-Za-z0-9._-]+)@([A-Za-z0-9._-]+)(?::|\s+)([^\]$#>%❯]*?)\]?\s*([$#>%❯])(?=\s|$)/;
+/**
+ * Prompts without a user@host: `$ ls`, `sh-4.2$ ls`, `~ % ls`, `❯ ls`, `>>>`.
+ * A bare `#` is a comment, not a root prompt, so the sign needs a prefix then.
+ */
+const BARE_PROMPT = /^([A-Za-z~/][\w.~/-]*\s?)?(>>>|[$#%>❯➜])(?=\s)/;
+
+/**
+ * Column-header rows from ls/ps/df/kubectl/docker/netstat: three or more
+ * tokens, most of them capitalized, with no punctuation that would suggest
+ * prose or key/value output.
+ */
+function isTableHeader(text: string): boolean {
+  if (/[:=,"'`]/.test(text)) return false;
+  const tokens = text.trim().split(/\s+/);
+  if (tokens.length < 3) return false;
+  // Prose in Title Case is not a header; columns are either upper-case or
+  // padded apart by runs of spaces.
+  if (!/\s{2,}/.test(text.trim()) && /[a-z]/.test(text)) return false;
+  let capitalized = 0;
+  for (const token of tokens) {
+    if (/^[%A-Z][A-Za-z0-9%/()._+-]*$/.test(token)) capitalized += 1;
+    else if (!/^[a-z][a-z]{0,3}$/.test(token)) return false;
+  }
+  return capitalized * 3 >= tokens.length * 2;
 }
 
 /**
  * Finds useful tokens in plain, single-width terminal output. ANSI-styled cells
  * are filtered by TerminalController before these ranges become decorations.
  */
-export function semanticRanges(text: string): SemanticRange[] {
+/**
+ * Every range becomes an xterm decoration, and the renderer walks a row's
+ * decorations for each cell it paints, so dense lines are capped: punctuation
+ * classes are skipped on very long lines and no line yields more than this
+ * many ranges. Rules run in priority order, so what gets dropped is the least
+ * informative (operators, brackets, stray numbers).
+ */
+const MAX_RANGES_PER_LINE = 240;
+const PUNCTUATION_MAX_LENGTH = 1000;
+
+export function semanticLine(text: string): SemanticLine {
+  const C = SEMANTIC_COLORS;
   const ranges: SemanticRange[] = [];
-  const add = (start: number, end: number, color: string) => {
+  let band: string | undefined;
+  // First rule to claim a character wins; a bitmap keeps that O(span) instead
+  // of scanning every earlier range.
+  const claimed = new Uint8Array(text.length);
+  const add = (
+    start: number,
+    end: number,
+    color: string,
+    underline?: boolean,
+  ) => {
+    if (end > text.length) end = text.length;
     if (start < 0 || end <= start) return;
-    if (ranges.some((range) => start < range.end && end > range.start)) return;
-    ranges.push({ start, end, color });
+    if (ranges.length >= MAX_RANGES_PER_LINE) return;
+    for (let i = start; i < end; i += 1) if (claimed[i]) return;
+    claimed.fill(1, start, end);
+    ranges.push(underline ? { start, end, color, underline } : { start, end, color });
   };
-  const addMatches = (pattern: RegExp, color: string) => {
+  const addMatches = (pattern: RegExp, color: string, underline?: boolean) => {
     for (const match of text.matchAll(pattern)) {
       if (match.index !== undefined) {
-        add(match.index, match.index + match[0].length, color);
+        add(match.index, match.index + match[0].length, color, underline);
       }
     }
   };
@@ -142,128 +303,210 @@ export function semanticRanges(text: string): SemanticRange[] {
     }
   };
 
-  // Uncolored diffs become immediately scannable. ANSI-colored git output is
-  // left untouched by the controller's cell-style guard.
-  const startsWithUnixPermissions = /^[bcdlps-][rwxStTs-]{9}[+@.]?(?:\s|$)/.test(
-    text,
-  );
+  // Whole-line classes first: uncolored diffs, comments, section headers and
+  // table headers. ANSI-colored git output is left untouched by the
+  // controller's cell-style guard.
+  const startsWithUnixPermissions = PERMISSION_LINE.test(text);
+  let wholeLine = true;
   if (/^@@(?:\s|$)/.test(text)) {
-    add(0, text.length, SEMANTIC_COLORS.cyan);
+    add(0, text.length, C.cyan);
   } else if (/^\+(?!\+\+)/.test(text)) {
-    add(0, text.length, SEMANTIC_COLORS.green);
-  } else if (/^-(?!--)/.test(text) && !startsWithUnixPermissions) {
-    add(0, text.length, SEMANTIC_COLORS.red);
+    add(0, text.length, C.lime);
+    band = BANDS.added;
+  } else if (
+    /^-(?!--)/.test(text) &&
+    !startsWithUnixPermissions &&
+    // `- item` with a single space is a YAML or Markdown list, not a removal.
+    !/^- \S/.test(text)
+  ) {
+    add(0, text.length, C.red);
+    band = BANDS.removed;
   } else if (/^(?:\+\+\+|---)\s/.test(text)) {
-    add(0, text.length, SEMANTIC_COLORS.violet);
+    add(0, text.length, C.slate);
+  } else if (/^\s*(?:#!|#+(?:\s|$)|\/\/(?:\s|$))/.test(text)) {
+    add(0, text.length, C.gray);
+  } else if (/^\s*\[[^\]\s][^\]]*\]\s*$/.test(text)) {
+    add(0, text.length, C.violet);
+  } else if (isTableHeader(text)) {
+    add(0, text.length, C.sky);
+    band = BANDS.header;
+  } else {
+    wholeLine = false;
   }
-  addCaptureMatches(
-    /(?:^|\s)([bcdlps-][rwxStTs-]{9}[+@.]?)(?=\s|$)/g,
-    1,
-    SEMANTIC_COLORS.teal,
-  );
 
-  // Shell prompts: user, host, working directory and prompt marker each get a
-  // distinct hue when the shell theme itself did not provide one.
-  const prompt =
-    /^([A-Za-z0-9._-]+)@([A-Za-z0-9._-]+)(?::|\s+)([^$#>%]*?)([$#>%])(?:\s|$)/.exec(
-      text,
-    );
-  if (prompt) {
-    addParts(prompt, [
-      [prompt[1], SEMANTIC_COLORS.green],
-      [prompt[2], SEMANTIC_COLORS.cyan],
-      [prompt[3], SEMANTIC_COLORS.blue],
-      [prompt[4], SEMANTIC_COLORS.magenta],
-    ]);
+  // Severity bands: only unmistakable level tokens (upper-case or a
+  // compiler-style `error:` prefix) tint the whole line, so prose that merely
+  // mentions an error is left alone.
+  if (!band) {
+    if (
+      /(?:^|[\s\[(|])(?:ERROR|FATAL|PANIC|CRIT(?:ICAL)?|EMERG(?:ENCY)?|SEVERE|Traceback)\b|^\s*error(?:\[E\d+\])?:/.test(
+        text,
+      )
+    ) {
+      band = BANDS.error;
+    } else if (/(?:^|[\s\[(|])WARN(?:ING)?\b|^\s*warning:/.test(text)) {
+      band = BANDS.warn;
+    }
   }
+
+  // `ls -l` mode strings: type bit, then r/w/x bits each in their own hue,
+  // with runs of the same color merged into one range. On a long listing the
+  // owner and group columns get the prompt's user/host hues.
+  for (const match of text.matchAll(
+    new RegExp(`(?:^|\\s)(${PERMISSION_TOKEN.source})(?=\\s|$)`, "g"),
+  )) {
+    if (match.index === undefined) continue;
+    const token = match[1];
+    const base = match.index + match[0].indexOf(token);
+    let runStart = 0;
+    let runColor = permissionBitColor(0, token[0]);
+    for (let i = 1; i <= token.length; i += 1) {
+      const color = i < token.length ? permissionBitColor(i, token[i]) : "";
+      if (color === runColor) continue;
+      add(base + runStart, base + i, runColor);
+      runStart = i;
+      runColor = color;
+    }
+  }
+  if (startsWithUnixPermissions) {
+    const columns = /^\S+\s+\d+\s+([\w.$-]+)\s+([\w.$-]+)\s/.exec(text);
+    if (columns) {
+      addParts(columns, [
+        [columns[1], C.lime],
+        [columns[2], C.mint],
+      ]);
+    }
+  }
+
+  // Shell prompts: user, host, working directory and prompt sign each get a
+  // distinct hue when the shell theme itself did not provide one. Everything
+  // after the sign is the user's input, which is deliberately left untouched:
+  // it may be half-typed (a line left behind by tab completion or Ctrl-C),
+  // and the shell's own highlighting owns it anyway.
+  let commandFrom = -1;
+  const userPrompt = wholeLine ? null : USER_PROMPT.exec(text);
+  if (userPrompt) {
+    addParts(userPrompt, [
+      [userPrompt[1], userPrompt[1] === "root" ? C.red : C.lime],
+      [userPrompt[2], C.mint],
+      [userPrompt[3].trim(), C.yellow],
+      [userPrompt[4], C.rose],
+    ]);
+    commandFrom = userPrompt[0].length;
+  } else if (!wholeLine) {
+    const barePrompt = BARE_PROMPT.exec(text);
+    if (barePrompt && (barePrompt[1] || barePrompt[2] !== "#")) {
+      const sign = barePrompt[2];
+      const signStart = barePrompt[0].length - sign.length;
+      if (barePrompt[1]) add(0, barePrompt[1].trimEnd().length, C.yellow);
+      add(signStart, signStart + sign.length, C.rose);
+      commandFrom = barePrompt[0].length;
+    }
+  }
+  if (commandFrom >= 0) {
+    claimed.fill(1, commandFrom);
+    return { ranges };
+  }
+
+  // Build-tool progress verbs (cargo, npm, git, pip) at the start of a line.
+  addCaptureMatches(
+    /^\s*(Compiling|Checking|Building|Bundling|Downloading|Downloaded|Fetching|Cloning|Resolving|Updating|Installing|Installed|Documenting|Packaging|Uploading|Verifying|Linking|Testing|Running|Generating|Collecting|Preparing|Extracting|Pulling|Pushing|Creating|Removing|Starting|Stopping)\b/g,
+    1,
+    C.sky,
+  );
+  addCaptureMatches(/^\s*(Finished|Done|Success|Succeeded|Passed)\b/g, 1, C.green);
 
   // A traditional date result gets token-by-token treatment.
   const unixDate =
     /\b(Mon|Tue|Wed|Thu|Fri|Sat|Sun)\s+(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+(\d{1,2})\s+(\d{2}:\d{2}:\d{2}(?:\.\d+)?)\s+([A-Z]{2,5}|[+-]\d{4})\s+(\d{4})\b/g;
   for (const match of text.matchAll(unixDate)) {
     addParts(match, [
-      [match[1], SEMANTIC_COLORS.cyan],
-      [match[2], SEMANTIC_COLORS.magenta],
-      [match[3], SEMANTIC_COLORS.yellow],
-      [match[4], SEMANTIC_COLORS.green],
-      [match[5], SEMANTIC_COLORS.blue],
-      [match[6], SEMANTIC_COLORS.yellow],
+      [match[1], C.orchid],
+      [match[2], C.orchid],
+      [match[3], C.purple],
+      [match[4], C.green],
+      [match[5], C.slate],
+      [match[6], C.purple],
     ]);
   }
 
   // Structured data and network locations are more useful as whole tokens than
-  // as a collection of independently colored numbers.
-  addMatches(
-    /\b(?:https?|ftp|ssh|ws|wss):\/\/[^\s<>"']+/gi,
-    SEMANTIC_COLORS.sky,
-  );
-  addMatches(
-    /\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/gi,
-    SEMANTIC_COLORS.cyan,
-  );
-  addMatches(/\b(?:[0-9a-f]{2}:){5}[0-9a-f]{2}\b/gi, SEMANTIC_COLORS.pink);
+  // as a collection of independently colored numbers. Links are underlined.
+  addMatches(/\b(?:https?|ftp|ssh|ws|wss):\/\/[^\s<>"']+/gi, C.sky, true);
+  addMatches(/\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/gi, C.cyan, true);
+  addMatches(/\b(?:[0-9a-f]{2}[:-]){5}[0-9a-f]{2}\b/gi, C.mint);
   addCaptureMatches(
     /(?:^|[^\w:])((?:(?:[0-9a-f]{1,4}:){7}[0-9a-f]{1,4}|(?:[0-9a-f]{1,4}:)*[0-9a-f]{0,4}::(?:[0-9a-f]{0,4}:)*[0-9a-f]{0,4})(?:%[A-Za-z0-9._-]+)?)(?![\w:])/gi,
     1,
-    SEMANTIC_COLORS.cyan,
+    C.mint,
   );
   addMatches(
     /\b(?:\d{1,3}\.){3}\d{1,3}(?:\/(?:[12]?\d|3[0-2]))?\b/g,
-    SEMANTIC_COLORS.cyan,
+    C.mint,
   );
   addMatches(
     /\b[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\b/gi,
-    SEMANTIC_COLORS.violet,
+    C.orchid,
   );
   addMatches(
     /\b(?:sha(?:1|224|256|384|512):)?[0-9a-f]{7,64}\b/gi,
-    SEMANTIC_COLORS.pink,
+    C.pink,
   );
-  addMatches(/\b0x[0-9a-f]+\b/gi, SEMANTIC_COLORS.magenta);
+  addMatches(/\b0x[0-9a-f]+\b/gi, C.purple);
 
-  // JSON/configuration keys stay distinct from quoted values.
-  addCaptureMatches(
-    /(["'][A-Za-z_][^"']*["'])\s*:/g,
-    1,
-    SEMANTIC_COLORS.pink,
+  // JSON/configuration keys stay distinct from quoted values; environment
+  // variables and command-line options get their own warm hues.
+  addCaptureMatches(/(["'][A-Za-z_][^"']*["'])\s*:/g, 1, C.sky);
+  // Quoted strings are one token, so a keyword or number inside keeps the
+  // string color. Single quotes only count when they cannot be apostrophes.
+  addMatches(
+    /"(?:\\.|[^"\\])*"|(?<![\w\p{L}])'(?:\\.|[^'\\])*'(?![\w\p{L}])/gu,
+    C.gold,
   );
-  addMatches(/\$\{?[A-Z_][A-Z0-9_]*\}?/g, SEMANTIC_COLORS.magenta);
+  addMatches(/\$\{?[A-Za-z_][A-Za-z0-9_]*\}?/g, C.coral);
   addCaptureMatches(
-    /(?:^|\s)(--?[A-Za-z][\w-]*)\b/g,
+    /(?:^|[\s\[|])(--?[A-Za-z][\w-]*)(?=[\s=,\]]|$)/g,
     1,
-    SEMANTIC_COLORS.violet,
+    C.orange,
   );
   addCaptureMatches(
     /(?:^|[\s,{])([A-Za-z_][\w.-]*)(?=\s*=)/g,
     1,
-    SEMANTIC_COLORS.sky,
+    C.sky,
   );
 
-  // Filesystem artifacts, permissions and common source/config filenames.
-  // `\p{L}` keeps path segments and filenames whole when they contain CJK or
-  // other non-ASCII letters.
+  // Filesystem artifacts and common source/config filenames. `\p{L}` keeps
+  // path segments and filenames whole when they contain CJK or other
+  // non-ASCII letters.
   addCaptureMatches(
-    /(?:^|[\s=(\[{'"])((?:~|\.{1,2})?\/(?:[\w\p{L}.@%+,:=-]+\/)*[\w\p{L}.@%+,:=-]+\/?)/gu,
+    /(?:^|[\s=(\[{'"])((?:~|\.{1,2})?\/(?:[\w\p{L}.@%+,-]+\/)*[\w\p{L}.@%+,-]+\/?)/gu,
     1,
-    SEMANTIC_COLORS.blue,
+    C.yellow,
   );
-  addMatches(
-    /\b[A-Za-z]:\\(?:[^\\\s]+\\)*[^\\\s]*\b/g,
-    SEMANTIC_COLORS.blue,
+  addCaptureMatches(
+    /(?:^|[\s=(\[{'"])(?!HTTP\/\d|(?:req|ops)\/s\b)(?=[\w\p{L}.@%+,\/-]*\p{L})((?:[\w\p{L}.@%+,-]+\/)+[\w\p{L}.@%+,-]*)/gu,
+    1,
+    C.yellow,
   );
+  addCaptureMatches(/(?:^|\s)(~)(?=\s|$)/g, 1, C.yellow);
+  addMatches(/\b[A-Za-z]:\\(?:[^\\\s]+\\)*[^\\\s]*\b/g, C.yellow);
   addCaptureMatches(
     /(?:^|[^\w\p{L}])([\w\p{L}@+-][\w\p{L}.@+-]*\.(?:bash|c|cc|conf|cpp|css|csv|go|h|hpp|html|ini|java|js|json|jsx|lock|log|md|mjs|py|rs|sh|sql|toml|ts|tsx|txt|xml|ya?ml|zsh))\b/giu,
     1,
-    SEMANTIC_COLORS.teal,
+    C.yellow,
+  );
+  addMatches(
+    /\b(?:(?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.)+(?:com|net|org|io|dev|app|ai|cn|co|me|info|cloud|local|internal|lan|localdomain)|localhost)\b(?![.-]\w)/gi,
+    C.mint,
   );
 
   // HTTP requests and responses use the familiar success/redirect/client/server
   // error progression without coloring unrelated three-digit numbers.
   addMatches(
     /\b(?:CONNECT|DELETE|GET|HEAD|OPTIONS|PATCH|POST|PUT|TRACE)\b/g,
-    SEMANTIC_COLORS.blue,
+    C.cyan,
   );
-  addMatches(/\bHTTP\/\d(?:\.\d)?\b/g, SEMANTIC_COLORS.sky);
+  addMatches(/\bHTTP\/\d(?:\.\d)?\b/g, C.slate);
   for (const match of text.matchAll(
     /\bHTTP\/\d(?:\.\d)?\s+([1-5]\d{2})\b/g,
   )) {
@@ -273,14 +516,14 @@ export function semanticRanges(text: string): SemanticRange[] {
     const family = Number(code[0]);
     const color =
       family === 2
-        ? SEMANTIC_COLORS.green
+        ? C.green
         : family === 3
-          ? SEMANTIC_COLORS.cyan
+          ? C.cyan
           : family === 4
-            ? SEMANTIC_COLORS.orange
+            ? C.orange
             : family === 5
-              ? SEMANTIC_COLORS.red
-              : SEMANTIC_COLORS.gray;
+              ? C.red
+              : C.gray;
     add(start, start + code.length, color);
   }
 
@@ -290,68 +533,149 @@ export function semanticRanges(text: string): SemanticRange[] {
     add(0, gitStatus[1].length, gitStatusColor(gitStatus[1]));
   }
 
-  // Log levels and lifecycle states. More severe or specific classes run first
-  // so a generic success/failure rule cannot mask them.
+  // Status glyphs and annotation tags.
+  addMatches(/[✓✔✅]/gu, C.green);
+  addMatches(/[✗✘❌⛔🚫]/gu, C.red);
+  addMatches(/⚠/gu, C.amber);
+  addMatches(/[→➜➔⇒▶►]/gu, C.lime);
+  addMatches(/\b(?:TODO|FIXME|XXX|HACK|BUG)\b/g, C.amber);
+  addMatches(/\bNOTE\b/g, C.blue);
+  addMatches(/\bSIG[A-Z]{2,8}\b/g, C.rose);
+
+  // Log levels and lifecycle states, including Kubernetes, Docker and systemd
+  // vocabulary. More severe or specific classes run first so a generic
+  // success/failure rule cannot mask them. The word lists extend WindTerm's
+  // lexer, so negations like "not"/"no"/"cannot" read as failures and
+  // "yes"/"ok"/"valid" as successes.
   addMatches(
-    /\b(?:alert|crit(?:ical)?|emerg(?:ency)?|fatal|panic|segfault|traceback|aborted|corrupt(?:ed|ion)?)\b/gi,
-    SEMANTIC_COLORS.rose,
+    /\b(?:alert|crit(?:ical)?|emerg(?:ency)?|fatal|panic|segfault|traceback|aborted|corrupt(?:ed|ion)?|CrashLoopBackOff|ImagePullBackOff|ErrImagePull|OOMKilled|Evicted)\b/gi,
+    C.rose,
   );
   addMatches(
-    /\b(?:denied|error|exception|fail(?:ed|ure)?|forbidden|invalid|rejected|timeout|unreachable)\b/gi,
-    SEMANTIC_COLORS.red,
+    /\b(?:bad|cannot|can't|couldn't|denied|error|errors|exception|fail(?:ed|ure|ures|ing)?|forbidden|incorrect|invalid|missing|no|not|refused|rejected|timeout|timed out|unable|unhealthy|unreachable|unsupported|wrong|NotReady|BackOff|Degraded)\b/gi,
+    C.red,
   );
   addMatches(
-    /\b(?:caution|deprecated|unstable|warn(?:ing)?)\b/gi,
-    SEMANTIC_COLORS.amber,
+    /\b(?:caution|closed|deprecated|disconnected|exited|killed|terminated|terminating|unstable|warn(?:ing)?|paused|ContainerCreating|PodInitializing|Init:\d+\/\d+)\b/gi,
+    C.amber,
   );
   addMatches(
-    /\b(?:pending|queued|retrying|starting|waiting)\b/gi,
-    SEMANTIC_COLORS.orange,
+    /\b(?:pending|queued|retrying|starting|waiting|restarting|updating|creating|scheduled|in progress)\b/gi,
+    C.coral,
   );
   addMatches(
-    /\b(?:active|connected|done|healthy|ok|online|passed|ready|running|success(?:ful|fully)?|succeeded)\b/gi,
-    SEMANTIC_COLORS.lime,
+    /\b(?:active|available|completed?|connected|correct|done|enabled|healthy|loaded|ok|okay|online|pass(?:ed)?|ready|running|succe(?:ss|eded|ssful|ssfully)|supported|valid|yes)\b/gi,
+    C.green,
+  );
+  // Docker's `Up 3 hours` status, case-sensitive so prose "up" stays plain.
+  addMatches(/\bUp\b/g, C.green);
+  addMatches(/\b(?:debug|trace|verbose)\b/gi, C.slate);
+  addMatches(
+    /\b(?:info|notice|access|authentication|connection|disconnection|login|logout|password|permissions?)\b/gi,
+    C.blue,
   );
   addMatches(
-    /\b(?:debug|trace|verbose)\b/gi,
-    SEMANTIC_COLORS.slate,
-  );
-  addMatches(/\b(?:info|notice)\b/gi, SEMANTIC_COLORS.sky);
-  addMatches(
-    /\b(?:cancelled|canceled|disabled|inactive|offline|skipped|stopped|unknown)\b/gi,
-    SEMANTIC_COLORS.gray,
+    /\b(?:cancelled|canceled|disabled|inactive|dead|offline|skipped|stopped|unknown)\b/gi,
+    C.gray,
   );
 
   // Dates, times, versions and measured values.
-  addMatches(/\b\d{4}-\d{2}-\d{2}\b/g, SEMANTIC_COLORS.magenta);
+  for (const match of text.matchAll(
+    /\b(\d{4}-\d{2}-\d{2})T(\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?(?:Z|[+-]\d{2}:?\d{2})?)\b/g,
+  )) {
+    addParts(match, [
+      [match[1], C.orchid],
+      [match[2], C.green],
+    ]);
+  }
+  addMatches(/\b\d{4}[-/]\d{2}[-/]\d{2}\b/g, C.orchid);
+  // `file.rs:42:17` positions are numbers, not a clock time.
+  for (const match of text.matchAll(/\.\w{1,5}:(\d+)(?::(\d+))?\b/g)) {
+    addParts(match, [
+      [match[1], C.purple],
+      [match[2] ?? "", C.purple],
+    ]);
+  }
   addMatches(
     /\b(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\b/g,
-    SEMANTIC_COLORS.magenta,
+    C.orchid,
   );
+  addMatches(/\b(?:Mon|Tue|Wed|Thu|Fri|Sat|Sun)\b/g, C.orchid);
   addMatches(
     /\b\d{1,2}:\d{2}(?::\d{2}(?:\.\d+)?)?(?:Z|[+-]\d{2}:?\d{2})?\b/g,
-    SEMANTIC_COLORS.green,
+    C.green,
   );
   addMatches(
     /\bv?\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?\b/g,
-    SEMANTIC_COLORS.violet,
+    C.violet,
   );
+  addMatches(/\b\d+(?:\.\d+)?e[+-]?\d+\b/gi, C.purple);
   addMatches(
-    /\b\d+(?:\.\d+)?\s?(?:B|GB|GiB|KB|KiB|MB|MiB|TB|TiB|bps|d|fps|h|kHz|MHz|GHz|min|ms|ns|ops|req\/s|s|µs)(?![\w])/gi,
-    SEMANTIC_COLORS.yellow,
+    /\b\d+(?:\.\d+)?\s?(?:B|GB|GiB|KB|KiB|MB|MiB|TB|TiB|[KMGTP]|bps|d|fps|h|kHz|MHz|GHz|min|ms|ns|ops|req\/s|s|µs)(?![\w])/gi,
+    C.amber,
   );
-  addMatches(/\b\d+(?:\.\d+)?%(?![\w])/g, SEMANTIC_COLORS.yellow);
-  addMatches(
-    /\b(?:false|null|nil|none|true|undefined)\b/gi,
-    SEMANTIC_COLORS.violet,
+  addCaptureMatches(
+    /(?:^|[^\w.])([-+]?\d+(?:\.\d+)?(?:%|°[CF]?))(?![\w])/gu,
+    1,
+    C.amber,
+  );
+  addMatches(/\b(?:\d+[dhms])+(?:\d+ms)?\b/g, C.amber);
+  addMatches(/\b(?:false|null|nil|none|true|undefined)\b/gi, C.purple);
+
+  // Otherwise-unclassified numeric values: thousands separators, scientific
+  // notation and negatives included.
+  addMatches(/\b\d{1,3}(?:,\d{3})+(?:\.\d+)?\b/g, C.purple);
+  addCaptureMatches(/(?:^|[\s=(\[,])(-\d+(?:\.\d+)?)\b/g, 1, C.purple);
+  addMatches(/\b\d+(?:\.\d+)?\b/g, C.purple);
+
+  // Option values (`--level=debug`), YAML keys and HTTP header names come after
+  // the value classes so a path or number keeps its own color.
+  addCaptureMatches(/\s--?[\w-]+=(\S+)/g, 1, C.sky);
+  addCaptureMatches(
+    /^\s*(?:-\s+)?([A-Za-z_][\w.-]*)\s*:(?:\s|$)/g,
+    1,
+    C.sky,
   );
 
-  // Quoted values and finally otherwise-unclassified numeric values.
-  addMatches(
-    /"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'/g,
-    SEMANTIC_COLORS.green,
-  );
-  addMatches(/\b\d+(?:\.\d+)?\b/g, SEMANTIC_COLORS.yellow);
+  // Operators and brackets last, so they only pick up punctuation nothing
+  // else claimed (a `:` inside a time or a `=` inside a URL stays put).
+  // Brackets cycle through three hues by nesting depth.
+  if (text.length <= PUNCTUATION_MAX_LENGTH) {
+    addMatches(
+      /-->|<--|&&|\|\||>>|<<|=>|->|::|==|!=|<=|>=|\+=|-=|\*\*|[|;&<>=:?*!^~]|(?<=\s)[-+](?=\s|$)/g,
+      C.lime,
+    );
+    const bracketLevels = [C.lime, C.orchid, C.blue];
+    let depth = 0;
+    for (let i = 0; i < text.length; i += 1) {
+      const ch = text[i];
+      if (ch === "(" || ch === "[" || ch === "{") {
+        add(i, i + 1, bracketLevels[depth % bracketLevels.length]);
+        depth += 1;
+      } else if (ch === ")" || ch === "]" || ch === "}") {
+        depth = Math.max(0, depth - 1);
+        add(i, i + 1, bracketLevels[depth % bracketLevels.length]);
+      }
+    }
+  }
 
-  return ranges.sort((a, b) => a.start - b.start);
+  // Adjacent same-style ranges collapse into one decoration (`):` or a run of
+  // permission bits), which is what keeps the renderer's per-cell decoration
+  // walk short.
+  ranges.sort((a, b) => a.start - b.start);
+  const merged: SemanticRange[] = [];
+  for (const range of ranges) {
+    const last = merged[merged.length - 1];
+    if (
+      last &&
+      last.end === range.start &&
+      last.color === range.color &&
+      !!last.underline === !!range.underline
+    ) {
+      last.end = range.end;
+    } else {
+      merged.push(range);
+    }
+  }
+  return band ? { ranges: merged, band } : { ranges: merged };
 }

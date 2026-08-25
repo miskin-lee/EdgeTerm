@@ -24,7 +24,7 @@ Standard FTP does not encrypt credentials or file contents. Use FTP only on a tr
 **Interface** (based on the WindTerm layout)
 
 - **Timestamp and line-number gutter** — WindTerm's most recognizable feature. Every output line includes `[HH:MM:SS.SSS]` and a cumulative line number, with the cursor line highlighted. Four display modes are available from the `Session` menu.
-- **Rich color rendering** — Supports ANSI 16-color, 256-color, and 24-bit true color, with additional semantic highlighting for unstyled logs, network addresses, paths, Git diffs, HTTP, JSON, and more.
+- **Rich color rendering** — Supports ANSI 16-color, 256-color, and 24-bit true color, plus warm semantic highlighting for unstyled output that goes beyond WindTerm: prompts, options, operators and rainbow brackets, `ls -l` permission bits and owner columns, table headers, log levels and Kubernetes/Docker/systemd states, network addresses and domains, paths, Git diffs, HTTP, JSON/YAML, and more — with subtle line bands for errors/warnings, diffs and headers, and underlined links.
 - **Filer** (left): a file browser that automatically switches to SFTP for SSH sessions, with file and folder upload (including drag & drop), file and folder download, create-directory, and delete operations. Other terminal sessions browse the local filesystem.
 - **FTP workspace**: FTP sessions open a dedicated dual-pane file manager, with the FTP server on the left and the local computer on the right. It supports two-way streaming transfers of files and whole folders plus create, rename, and non-recursive delete operations.
 - **Session** (right): saved connection profiles organized into collapsible groups; double-click to connect.
@@ -91,7 +91,7 @@ To publish a release, manually trigger **Actions → Release → Run workflow** 
 Before releasing, use the following command to set and commit the version. It synchronizes `package.json`, `package-lock.json`, `Cargo.toml`, and `Cargo.lock`; Tauri installers also read this version directly:
 
 ```bash
-npm run version:set -- 0.3.4
+npm run version:set -- 0.3.5
 ```
 
 Release tags map one-to-one to application versions. For example, version `0.1.1` can only be published as `v0.1.1`. If that tag already points to another commit, the workflow stops and requires a version bump, preventing different builds from being published under the same version number.
