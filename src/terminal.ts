@@ -13,6 +13,7 @@ import {
   type ITheme,
 } from "@xterm/xterm";
 
+import type { CommandSuggestion } from "./history";
 import { IS_MAC } from "./platform";
 import { semanticLine, type SemanticRange } from "./semanticColors";
 import type { ThemeMode } from "./types";
@@ -100,6 +101,21 @@ interface Callbacks {
   onResize: (cols: number, rows: number) => void;
   onCursorMove: (line: number, column: number) => void;
   onStatus: (message: string, error?: boolean) => void;
+  /** An executed command line, captured from the buffer after Enter. */
+  onCommand: (command: string) => void;
+  /** Ranked history completions for the current input; [] when none. */
+  suggest: (input: string) => CommandSuggestion[];
+}
+
+/**
+ * Where the user's typing begins on the prompt line. Captured on the first
+ * keystroke after a fresh prompt, before the shell has echoed anything, so the
+ * cursor still sits at the prompt's end. The marker tracks the row across
+ * scrolling; the column is fixed because prompts do not move.
+ */
+interface InputAnchor {
+  marker: IMarker;
+  col: number;
 }
 
 interface SemanticRow {
@@ -139,6 +155,19 @@ export class TerminalController {
   private themeMode: ThemeMode;
   private scrollback: number;
   private pendingShellClear = false;
+  /** Command history capture + completion popup. Opt-in via the Edit menu. */
+  private suggestionsOn = false;
+  private inputAnchor: InputAnchor | null = null;
+  private readonly popup: HTMLElement;
+  /** Rows currently displayed; [] while the popup is hidden. */
+  private candidates: CommandSuggestion[] = [];
+  /** Selected row, or -1 while the popup is passive (keys pass through). */
+  private popupIndex = -1;
+  /** The input the current candidates were computed for. */
+  private popupInput = "";
+  /** Input the user dismissed the popup for (Esc / accept); "" = none. */
+  private dismissedInput = "";
+  private popupSyncScheduled = false;
   /**
    * Semantic coloring is render-driven: only rows in and around the viewport
    * are colored, on the frame they become visible or change. Keeping the
@@ -190,6 +219,10 @@ export class TerminalController {
     this.zmodemNotice.setAttribute("role", "status");
     this.zmodemNotice.setAttribute("aria-live", "polite");
 
+    this.popup = document.createElement("div");
+    this.popup.className = "term-suggest is-hidden";
+    this.popup.setAttribute("role", "listbox");
+
     this.zmodem = new ZmodemController(sessionId, {
       toTerminal: (bytes) => this.term.write(bytes),
       onStatus: callbacks.onStatus,
@@ -206,7 +239,9 @@ export class TerminalController {
     // ZMODEM owns the byte stream while a transfer is active. Forwarding
     // keystrokes or paste data in the middle of a binary frame corrupts it.
     this.term.onData((data) => {
-      if (!this.zmodem.isActive()) this.callbacks.onData(data);
+      if (this.zmodem.isActive()) return;
+      this.trackInput(data);
+      this.callbacks.onData(data);
     });
     this.term.parser.registerCsiHandler({ final: "J" }, (params) => {
       const mode = params[0];
@@ -223,6 +258,9 @@ export class TerminalController {
         this.pendingShellClear = false;
         this.clearBufferAndMetadata();
       }
+      // The shell's echo of a keystroke lands here; recompute the suggestions
+      // from the buffer only while the user is composing a command.
+      if (this.inputAnchor) this.schedulePopupSync();
     });
 
     this.term.onResize(({ cols, rows }) => {
@@ -240,7 +278,10 @@ export class TerminalController {
       this.refreshSemanticColors();
       this.syncGutter();
     });
-    this.term.onScroll(() => this.syncGutter());
+    this.term.onScroll(() => {
+      this.syncGutter();
+      if (this.inputAnchor || this.candidates.length) this.schedulePopupSync();
+    });
     this.term.onCursorMove(() => {
       const buf = this.term.buffer.active;
       this.callbacks.onCursorMove(
@@ -252,6 +293,48 @@ export class TerminalController {
     this.term.attachCustomKeyEventHandler((event) => {
       if (event.type !== "keydown") return true;
       const key = event.key.toLowerCase();
+
+      // IDE-style completion popup. While it is *passive* every key still
+      // reaches the shell (so ↑ history, Tab completion and a remote shell's
+      // own → autosuggest keep working); only ↓ (step into the list) and Esc
+      // (dismiss) are taken. Once a row is selected the list owns ↑/↓ and
+      // Enter/Tab accept — the user opted in by stepping into it.
+      if (
+        this.candidates.length > 0 &&
+        !event.isComposing &&
+        !event.ctrlKey &&
+        !event.altKey &&
+        !event.metaKey &&
+        !event.shiftKey
+      ) {
+        if (key === "escape") {
+          event.preventDefault();
+          this.dismissedInput = this.popupInput;
+          this.hidePopup();
+          return false;
+        }
+        if (key === "arrowdown") {
+          event.preventDefault();
+          this.setPopupIndex(
+            this.popupIndex >= this.candidates.length - 1
+              ? this.candidates.length - 1
+              : this.popupIndex + 1,
+          );
+          return false;
+        }
+        if (this.popupIndex >= 0) {
+          if (key === "arrowup") {
+            event.preventDefault();
+            this.setPopupIndex(this.popupIndex - 1);
+            return false;
+          }
+          if (key === "enter" || key === "tab") {
+            event.preventDefault();
+            this.acceptSuggestion(this.popupIndex);
+            return false;
+          }
+        }
+      }
 
       if (IS_MAC) {
         if (!event.metaKey) return true;
@@ -344,6 +427,10 @@ export class TerminalController {
     root.appendChild(this.zmodemNotice);
 
     this.term.open(this.host);
+    // Inside the host (not the root) so the completion popup positions
+    // against the terminal content, past the gutter, and survives
+    // re-parenting above.
+    this.host.appendChild(this.popup);
 
     // WebGL is a large win on heavy output but is unavailable in some
     // environments; the canvas/DOM renderer remains a working fallback.
@@ -368,6 +455,7 @@ export class TerminalController {
     }
     this.measureCell();
     this.syncGutter();
+    if (this.inputAnchor || this.candidates.length) this.schedulePopupSync();
     return { cols: this.term.cols, rows: this.term.rows };
   }
 
@@ -401,6 +489,7 @@ export class TerminalController {
     // which corrupts the decoration service's sorted-by-line lookups whenever
     // decorated markers die out of line order.
     this.disposeAllSemanticColors();
+    this.dropAnchor();
     this.term.clear();
     this.resetLineMetadata();
   }
@@ -415,6 +504,12 @@ export class TerminalController {
     this.gutterMode = mode;
     this.applyGutterMode();
     this.syncGutter();
+  }
+
+  setSuggestions(enabled: boolean) {
+    if (this.suggestionsOn === enabled) return;
+    this.suggestionsOn = enabled;
+    if (!enabled) this.dropAnchor();
   }
 
   setFontSize(fontSize: number) {
@@ -456,6 +551,7 @@ export class TerminalController {
 
   dispose() {
     this.disposed = true;
+    this.dropAnchor();
     if (this.zmodemNoticeTimer !== null) {
       window.clearTimeout(this.zmodemNoticeTimer);
       this.zmodemNoticeTimer = null;
@@ -489,6 +585,285 @@ export class TerminalController {
         kind === "error" ? 7000 : 4500,
       );
     }
+  }
+
+  // --- command history & inline suggestions --------------------------------
+
+  /**
+   * Follows the user's keystrokes to delimit the command being composed.
+   * Keystroke echo comes back from the shell, so the buffer — not the raw
+   * input — is the source of truth for the command text; this only decides
+   * *where* that text starts and *when* it was submitted.
+   */
+  private trackInput(data: string) {
+    if (!this.suggestionsOn) return;
+    const buf = this.term.buffer.active;
+    if (buf.type !== "normal") {
+      this.dropAnchor();
+      return;
+    }
+    if (data === "\r") {
+      this.captureCommand();
+    } else if (data === "\x03") {
+      // Ctrl+C abandons the line.
+      this.dropAnchor();
+    } else if (data.includes("\r")) {
+      // A multi-line paste executed commands we did not watch being typed;
+      // the anchor no longer describes anything real.
+      this.dropAnchor();
+    } else if (!this.inputAnchor) {
+      const marker = this.term.registerMarker(0);
+      if (marker) this.inputAnchor = { marker, col: buf.cursorX };
+    }
+    this.schedulePopupSync();
+  }
+
+  /**
+   * Reads the command submitted with Enter. The buffer is read again after a
+   * short delay so echoes still in flight from the remote (the last
+   * keystrokes of a fast typist, or a shell erasing its own autosuggestion)
+   * have settled; the immediate snapshot is the fallback in case the line is
+   * gone by then (e.g. a `clear` in the executed command's output).
+   */
+  private captureCommand() {
+    const anchor = this.inputAnchor;
+    this.inputAnchor = null;
+    this.dismissedInput = "";
+    this.hidePopup();
+    if (!anchor) return;
+
+    const snapshot = this.readInput(anchor);
+    window.setTimeout(() => {
+      const settled = this.disposed ? null : this.readInput(anchor);
+      anchor.marker.dispose();
+      const command = (settled ?? snapshot ?? "")
+        // A zsh-style right prompt shares the input row, separated from the
+        // command by a run of padding spaces; cut it off. Three-plus literal
+        // spaces inside a real command line are vanishingly rare.
+        .replace(/ {3,}\S.*$/, "")
+        .trimEnd();
+      // A leading space opts out of history, mirroring the shells'
+      // `ignorespace` convention. Length guards against captured output.
+      if (!command || command.startsWith(" ") || command.length > 500) return;
+      if (!this.disposed) this.callbacks.onCommand(command);
+    }, 150);
+  }
+
+  /**
+   * The typed text: anchor column to the end of the (soft-wrapped) line, or
+   * to `end` (a buffer position, normally the cursor) when given. The popup
+   * passes the cursor so trailing spaces the user typed survive (right-
+   * trimming would corrupt the accepted remainder), a zsh-style right prompt
+   * on the same row is never read as input, and a remote shell's own inline
+   * autosuggestion after the cursor is ignored. Returns null when `end` does
+   * not lie on the anchor's logical line.
+   */
+  private readInput(
+    anchor: InputAnchor,
+    end?: { row: number; col: number },
+  ): string | null {
+    if (anchor.marker.isDisposed) return null;
+    const buf = this.term.buffer.active;
+    if (buf.type !== "normal") return null;
+    let row = anchor.marker.line;
+    const first = buf.getLine(row);
+    if (!first) return null;
+
+    const lines: { line: IBufferLine; start: number }[] = [
+      { line: first, start: anchor.col },
+    ];
+    let next = buf.getLine(row + 1);
+    while (next?.isWrapped && lines.length <= 10) {
+      lines.push({ line: next, start: 0 });
+      row += 1;
+      next = buf.getLine(row + 1);
+    }
+
+    const lastIndex = end
+      ? end.row - anchor.marker.line
+      : lines.length - 1;
+    if (lastIndex < 0 || lastIndex >= lines.length) return null;
+
+    let text = "";
+    for (let i = 0; i <= lastIndex; i += 1) {
+      const { line, start } = lines[i];
+      if (i < lastIndex) {
+        // A wrapped row is filled edge to edge; every cell is content.
+        text += line.translateToString(false, start);
+      } else if (end) {
+        text += line.translateToString(false, start, Math.max(end.col, start));
+      } else {
+        text += line.translateToString(true, start);
+      }
+    }
+    return text;
+  }
+
+  private schedulePopupSync() {
+    if (this.popupSyncScheduled || this.disposed) return;
+    this.popupSyncScheduled = true;
+    requestAnimationFrame(() => {
+      this.popupSyncScheduled = false;
+      if (!this.disposed) this.syncPopup();
+    });
+  }
+
+  /**
+   * Shows history matches for the typed input as a floating completion list
+   * anchored to the cursor, IDE-style. The input is read up to the cursor
+   * only, so a remote shell's own inline autosuggestion (fish,
+   * zsh-autosuggestions) after the cursor never feeds back into ours.
+   */
+  private syncPopup() {
+    const anchor = this.inputAnchor;
+    if (!this.suggestionsOn || !anchor || !this.host) {
+      this.hidePopup();
+      return;
+    }
+    const buf = this.term.buffer.active;
+    if (buf.type !== "normal" || anchor.marker.isDisposed) {
+      this.hidePopup();
+      return;
+    }
+
+    const cursorRow = buf.baseY + buf.cursorY;
+    const input = this.readInput(anchor, {
+      row: cursorRow,
+      col: buf.cursorX,
+    });
+    if (!input || input === this.dismissedInput) {
+      this.hidePopup();
+      return;
+    }
+
+    const candidates = this.callbacks.suggest(input);
+    if (candidates.length === 0) {
+      this.hidePopup();
+      return;
+    }
+
+    const viewRow = cursorRow - buf.viewportY;
+    const screen = this.host.querySelector<HTMLElement>(".xterm-screen");
+    if (
+      viewRow < 0 ||
+      viewRow >= this.term.rows ||
+      !screen ||
+      this.term.cols === 0
+    ) {
+      this.hidePopup();
+      return;
+    }
+    if (this.cellHeight <= 0) this.measureCell();
+    if (this.cellHeight <= 0) {
+      this.hidePopup();
+      return;
+    }
+
+    const inputChanged = input !== this.popupInput;
+    this.popupInput = input;
+    this.candidates = candidates;
+    // New input returns the popup to passive so stray navigation state never
+    // survives a keystroke; stepping into the list is always deliberate.
+    if (inputChanged) this.popupIndex = -1;
+    else if (this.popupIndex >= candidates.length) {
+      this.popupIndex = candidates.length - 1;
+    }
+    this.renderPopup();
+
+    // Horizontally at the input's start (IDE convention), vertically under
+    // the cursor row, flipped above when there is no room below.
+    const screenRect = screen.getBoundingClientRect();
+    const hostRect = this.host.getBoundingClientRect();
+    const cellWidth = screenRect.width / this.term.cols;
+    const anchorCol = cursorRow === anchor.marker.line ? anchor.col : 0;
+    const screenLeft = screenRect.left - hostRect.left;
+    const screenTop = screenRect.top - hostRect.top;
+
+    this.popup.classList.remove("is-hidden");
+    this.popup.style.maxWidth = `${Math.max(120, hostRect.width - 12)}px`;
+    const width = this.popup.offsetWidth;
+    const height = this.popup.offsetHeight;
+    const left = Math.max(
+      0,
+      Math.min(screenLeft + anchorCol * cellWidth, hostRect.width - width - 6),
+    );
+    let top = screenTop + (viewRow + 1) * this.cellHeight + 2;
+    if (top + height > hostRect.height) {
+      const above = screenTop + viewRow * this.cellHeight - height - 2;
+      if (above >= 0) top = above;
+    }
+    this.popup.style.left = `${left}px`;
+    this.popup.style.top = `${top}px`;
+  }
+
+  private renderPopup() {
+    this.popup.replaceChildren();
+    this.candidates.forEach((candidate, index) => {
+      const row = document.createElement("div");
+      row.className = `term-suggest-item${
+        index === this.popupIndex ? " is-selected" : ""
+      }`;
+      row.setAttribute("role", "option");
+
+      const { command, matchStart } = candidate;
+      const matchEnd = matchStart + this.popupInput.length;
+      const pre = document.createElement("span");
+      pre.textContent = command.slice(0, matchStart);
+      const match = document.createElement("span");
+      match.className = "term-suggest-match";
+      match.textContent = command.slice(matchStart, matchEnd);
+      const post = document.createElement("span");
+      post.textContent = command.slice(matchEnd);
+      row.append(pre, match, post);
+
+      row.addEventListener("mousedown", (event) => {
+        // preventDefault keeps focus in the terminal.
+        event.preventDefault();
+        this.acceptSuggestion(index);
+      });
+      this.popup.appendChild(row);
+    });
+  }
+
+  private setPopupIndex(index: number) {
+    this.popupIndex = Math.max(
+      -1,
+      Math.min(index, this.candidates.length - 1),
+    );
+    const rows = this.popup.children;
+    for (let i = 0; i < rows.length; i += 1) {
+      rows[i].classList.toggle("is-selected", i === this.popupIndex);
+    }
+  }
+
+  private acceptSuggestion(index: number) {
+    const candidate = this.candidates[index] ?? this.candidates[0];
+    if (!candidate) return;
+    const input = this.popupInput;
+    // A prefix match completes in place. Any other match erases the typed
+    // input first — one backspace per code point, so the shell edits its own
+    // line — then sends the full command.
+    const data = candidate.command.startsWith(input)
+      ? candidate.command.slice(input.length)
+      : "\x7f".repeat([...input].length) + candidate.command;
+    this.dismissedInput = candidate.command;
+    this.hidePopup();
+    if (data && !this.zmodem.isActive()) this.callbacks.onData(data);
+  }
+
+  private hidePopup() {
+    if (this.candidates.length === 0) return;
+    this.candidates = [];
+    this.popupIndex = -1;
+    this.popup.replaceChildren();
+    this.popup.classList.add("is-hidden");
+  }
+
+  private dropAnchor() {
+    this.inputAnchor?.marker.dispose();
+    this.inputAnchor = null;
+    this.dismissedInput = "";
+    this.hidePopup();
   }
 
   private applyGutterMode() {

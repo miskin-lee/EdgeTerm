@@ -141,6 +141,19 @@ pub enum LineEnding {
     Crlf,
 }
 
+/// One remembered shell command, used for inline suggestions while typing.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CommandHistoryEntry {
+    pub command: String,
+    /// `protocol:address` of the session the command ran in, so suggestions
+    /// can prefer commands seen on the same host.
+    pub host: String,
+    pub count: u32,
+    /// Unix milliseconds of the most recent use.
+    pub last_used: i64,
+}
+
 /// A reusable command shown as a tag in the Sender pane.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]

@@ -3,6 +3,7 @@ import { getCurrentWindow } from "@tauri-apps/api/window";
 import { ask } from "@tauri-apps/plugin-dialog";
 import { openUrl } from "@tauri-apps/plugin-opener";
 
+import { commandHistory } from "../history";
 import { IS_MAC, shortcutLabel as sc } from "../platform";
 import { useStore } from "../store";
 import type { GutterMode } from "../terminal";
@@ -80,6 +81,8 @@ export function MenuBar(props: Props) {
   const setGutterMode = useStore((s) => s.setGutterMode);
   const theme = useStore((s) => s.theme);
   const setTheme = useStore((s) => s.setTheme);
+  const suggestionsEnabled = useStore((s) => s.suggestionsEnabled);
+  const setSuggestionsEnabled = useStore((s) => s.setSuggestionsEnabled);
   const resetSettings = useStore((s) => s.resetSettings);
   const setStatus = useStore((s) => s.setStatus);
   const requestCloseTab = useStore((s) => s.requestCloseTab);
@@ -187,6 +190,35 @@ export function MenuBar(props: Props) {
           shortcut: sc("⌘K", "Ctrl+K"),
           action: withActive((id) => getController(id)?.clear()),
         },
+        "separator",
+        {
+          label: "Command Suggestions",
+          checked: suggestionsEnabled,
+          action: () => setSuggestionsEnabled(!suggestionsEnabled),
+        },
+        {
+          label: "Clear Command History…",
+          action: () => {
+            void (async () => {
+              const confirmed = await ask(
+                "Delete the recorded command history used for inline suggestions?",
+                {
+                  title: "Clear Command History",
+                  kind: "warning",
+                  okLabel: "Clear",
+                  cancelLabel: "Cancel",
+                },
+              );
+              if (!confirmed) return;
+              try {
+                await commandHistory.clear();
+                setStatus("Command history cleared");
+              } catch (error) {
+                setStatus(`Failed to clear command history: ${error}`);
+              }
+            })();
+          },
+        },
       ],
     },
     {
@@ -247,7 +279,7 @@ export function MenuBar(props: Props) {
           action: () => {
             void (async () => {
               const confirmed = await ask(
-                "Restore panel visibility, timestamp and line display, theme, font sizes, and scrollback to their defaults?",
+                "Restore panel visibility, timestamp and line display, theme, font sizes, scrollback, and command suggestions to their defaults?",
                 {
                   title: "Restore Default Settings",
                   kind: "warning",

@@ -55,6 +55,7 @@ function TerminalHost({ tab, active }: { tab: Tab; active: boolean }) {
   const gutterMode = useStore((s) => s.gutterMode);
   const bufferFontSize = useStore((s) => s.bufferFontSize);
   const terminalScrollback = useStore((s) => s.terminalScrollback);
+  const suggestionsEnabled = useStore((s) => s.suggestionsEnabled);
   const id = tab.info.id;
 
   useEffect(() => {
@@ -81,6 +82,10 @@ function TerminalHost({ tab, active }: { tab: Tab; active: boolean }) {
   useEffect(() => {
     getController(id)?.setScrollback(terminalScrollback);
   }, [id, terminalScrollback]);
+
+  useEffect(() => {
+    getController(id)?.setSuggestions(suggestionsEnabled);
+  }, [id, suggestionsEnabled]);
 
   useEffect(() => {
     if (!active) return;

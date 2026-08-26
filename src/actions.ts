@@ -1,4 +1,5 @@
 import * as api from "./api";
+import { commandHistory } from "./history";
 import { useStore } from "./store";
 import { TerminalController } from "./terminal";
 import {
@@ -49,6 +50,16 @@ function pendingSessionInfo(
 }
 
 /**
+ * The history bucket a session's commands belong to, so suggestions can
+ * prefer commands seen on the same host. Resolved per call because the tab's
+ * info is refined once the backend connects.
+ */
+function historyHost(id: string): string {
+  const tab = useStore.getState().tabs.find((item) => item.info.id === id);
+  return tab ? `${tab.info.protocol}:${tab.info.address}` : "";
+}
+
+/**
  * Returns the terminal for a session, creating it if needed. Wiring lives here
  * rather than in the React component so a terminal can exist before anything
  * renders.
@@ -61,6 +72,8 @@ export function ensureController(id: string): TerminalController {
     id,
     {
       onData: (data) => void api.writeSession(id, data).catch(() => undefined),
+      onCommand: (command) => commandHistory.record(command, historyHost(id)),
+      suggest: (input) => commandHistory.suggest(input, historyHost(id)),
       onResize: (cols, rows) => {
         useStore.getState().setSize(id, cols, rows);
         void api.resizeSession(id, cols, rows).catch(() => undefined);
@@ -78,6 +91,7 @@ export function ensureController(id: string): TerminalController {
     useStore.getState().terminalScrollback,
     useStore.getState().theme,
   );
+  controller.setSuggestions(useStore.getState().suggestionsEnabled);
   setController(id, controller);
   return controller;
 }

@@ -23,6 +23,7 @@ import { UpdateDialog } from "./components/UpdateDialog";
 import { FilerPanel } from "./components/panels/FilerPanel";
 import { SenderPanel } from "./components/panels/SenderPanel";
 import { SessionPanel } from "./components/panels/SessionPanel";
+import { commandHistory } from "./history";
 import { IS_MAC } from "./platform";
 import { setSemanticColorTheme } from "./semanticColors";
 import { useActiveTab, useStore, type PanelName } from "./store";
@@ -93,6 +94,8 @@ export default function App() {
 
   useEffect(() => {
     void loadProfiles();
+    // Opt-in feature: fetch the history only for users who enabled it.
+    if (useStore.getState().suggestionsEnabled) commandHistory.load();
   }, [loadProfiles]);
 
   // Theme is applied in three places: the CSS variable palette keys off the

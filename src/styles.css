@@ -1073,9 +1073,67 @@ textarea:focus {
 }
 
 .term-host {
+  position: relative; /* anchors the completion popup */
   flex: 1;
   min-width: 0;
   padding-left: 6px;
+}
+
+/* IDE-style completion popup: history commands matching the typed input,
+   floated under the cursor row. Position is set from the terminal's cell
+   metrics; the look matches the app's menu dropdowns. */
+.term-suggest {
+  position: absolute;
+  z-index: 7;
+  min-width: 180px;
+  padding: 3px;
+  overflow: hidden;
+  background: var(--bg-panel-alt);
+  border: 1px solid var(--border-strong);
+  border-radius: 5px;
+  box-shadow: var(--shadow-menu);
+  font-family:
+    "JetBrains Mono", "SF Mono", Menlo, Consolas, "DejaVu Sans Mono", monospace;
+  font-size: 12px;
+}
+
+.term-suggest.is-hidden {
+  display: none;
+}
+
+.term-suggest-item {
+  display: block;
+  overflow: hidden;
+  padding: 2px 8px;
+  border-radius: 3px;
+  color: var(--fg-dim);
+  cursor: pointer;
+  text-overflow: ellipsis;
+  white-space: pre;
+}
+
+.term-suggest-item:hover {
+  background: var(--bg-hover);
+}
+
+.term-suggest-item.is-selected {
+  background: var(--bg-active);
+  color: var(--fg);
+}
+
+.term-suggest-match {
+  color: var(--accent);
+  font-weight: 600;
+}
+
+/* --accent is illegible on the dark palette's --bg-active; the light
+   palette's selected row is pale, where --accent stays readable. */
+.term-suggest-item.is-selected .term-suggest-match {
+  color: #75beff;
+}
+
+:root[data-theme="light"] .term-suggest-item.is-selected .term-suggest-match {
+  color: var(--accent);
 }
 
 .term-host .xterm {

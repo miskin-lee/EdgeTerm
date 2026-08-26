@@ -54,6 +54,26 @@ export const saveSenderCommand = (command: SavedCommand) =>
 export const deleteSenderCommand = (id: string) =>
   invoke<void>("delete_sender_command", { id });
 
+// --- command history ---------------------------------------------------------
+
+export interface CommandHistoryEntry {
+  command: string;
+  /** `protocol:address` of the session the command ran in. */
+  host: string;
+  count: number;
+  /** Unix milliseconds of the most recent use. */
+  lastUsed: number;
+}
+
+export const listCommandHistory = () =>
+  invoke<CommandHistoryEntry[]>("list_command_history");
+
+export const recordCommand = (command: string, host: string) =>
+  invoke<void>("record_command", { command, host });
+
+export const clearCommandHistory = () =>
+  invoke<void>("clear_command_history");
+
 // --- sessions ---------------------------------------------------------------
 
 export const openSession = (profile: SessionProfile, sessionId: string) =>

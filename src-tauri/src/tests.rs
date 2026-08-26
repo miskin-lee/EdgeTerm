@@ -193,6 +193,38 @@ fn store_persists_sender_commands_across_restarts() {
 }
 
 #[test]
+fn store_merges_and_persists_command_history() {
+    let dir = temp_dir("history");
+    let path = dir.join("sessions.json");
+    let store = Store::load_from(path.clone());
+
+    store.record_command("ls -la", "ssh:db:22").unwrap();
+    store.record_command("ls -la", "ssh:db:22").unwrap();
+    store.record_command("make test  ", "shell:/bin/zsh").unwrap();
+    store.record_command("   ", "shell:/bin/zsh").unwrap();
+
+    let entries = store.list_command_history();
+    assert_eq!(entries.len(), 2, "duplicates merge, blank lines are dropped");
+    let ls = entries
+        .iter()
+        .find(|entry| entry.command == "ls -la")
+        .expect("merged entry");
+    assert_eq!(ls.count, 2);
+    assert_eq!(ls.host, "ssh:db:22");
+    assert!(
+        entries.iter().any(|entry| entry.command == "make test"),
+        "trailing whitespace is trimmed before storing"
+    );
+
+    let reloaded = Store::load_from(path);
+    assert_eq!(reloaded.list_command_history().len(), 2);
+    reloaded.clear_command_history().unwrap();
+    assert!(reloaded.list_command_history().is_empty());
+
+    let _ = std::fs::remove_dir_all(dir);
+}
+
+#[test]
 fn store_persists_secrets_separately_for_restart_reconnects() {
     let dir = temp_dir("secrets");
     let path = dir.join("sessions.json");

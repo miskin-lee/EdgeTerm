@@ -5,9 +5,11 @@ use parking_lot::Mutex;
 use serde::{Deserialize, Serialize};
 
 use crate::error::{AppError, Result};
-use crate::model::{AuthKind, SavedCommand, SessionKind, SessionProfile};
+use crate::model::{AuthKind, CommandHistoryEntry, SavedCommand, SessionKind, SessionProfile};
 
 const MAX_SAVED_COMMANDS: usize = 1000;
+const MAX_COMMAND_HISTORY: usize = 5000;
+const MAX_HISTORY_COMMAND_LEN: usize = 500;
 
 /// Secrets are kept separately from the public session profiles.  This avoids
 /// returning them to the webview while still allowing a saved session to be
@@ -31,13 +33,17 @@ struct StoredSecrets {
 /// the macOS Keychain authorization dialog that otherwise reappears when an
 /// unsigned development build changes identity between restarts.
 /// `sender_commands.json` keeps reusable Sender tags across restarts and upgrades.
+/// `command_history.json` remembers executed commands for inline suggestions;
+/// like credentials it may contain sensitive text, so it is owner-only too.
 pub struct Store {
     path: PathBuf,
     credentials_path: PathBuf,
     sender_commands_path: PathBuf,
+    command_history_path: PathBuf,
     profiles: Mutex<Vec<SessionProfile>>,
     credentials: Mutex<HashMap<String, StoredSecrets>>,
     sender_commands: Mutex<Vec<SavedCommand>>,
+    command_history: Mutex<Vec<CommandHistoryEntry>>,
 }
 
 impl Store {
@@ -53,6 +59,8 @@ impl Store {
             read_json(&credentials_path_for(&path)).unwrap_or_default();
         let sender_commands_path = sender_commands_path_for(&path);
         let sender_commands = read_json(&sender_commands_path).unwrap_or_default();
+        let command_history_path = command_history_path_for(&path);
+        let command_history = read_json(&command_history_path).unwrap_or_default();
         let mut imported_legacy_credentials = false;
         for profile in &mut profiles {
             if profile.password.is_some() || profile.passphrase.is_some() {
@@ -72,10 +80,12 @@ impl Store {
         let store = Store {
             credentials_path: credentials_path_for(&path),
             sender_commands_path,
+            command_history_path,
             path,
             profiles: Mutex::new(profiles),
             credentials: Mutex::new(credentials),
             sender_commands: Mutex::new(sender_commands),
+            command_history: Mutex::new(command_history),
         };
         if imported_legacy_credentials {
             // Best effort migration. A later explicit save will surface any
@@ -165,6 +175,56 @@ impl Store {
         self.persist_sender_commands()
     }
 
+    pub fn list_command_history(&self) -> Vec<CommandHistoryEntry> {
+        self.command_history.lock().clone()
+    }
+
+    pub fn record_command(&self, command: &str, host: &str) -> Result<()> {
+        let command = command.trim_end();
+        if command.is_empty() || command.len() > MAX_HISTORY_COMMAND_LEN {
+            return Ok(());
+        }
+        {
+            let mut entries = self.command_history.lock();
+            let existing = entries
+                .iter_mut()
+                .find(|entry| entry.command == command && entry.host == host);
+            match existing {
+                Some(entry) => {
+                    entry.count = entry.count.saturating_add(1);
+                    entry.last_used = unix_millis();
+                }
+                None => {
+                    entries.push(CommandHistoryEntry {
+                        command: command.to_string(),
+                        host: host.to_string(),
+                        count: 1,
+                        last_used: unix_millis(),
+                    });
+                    if entries.len() > MAX_COMMAND_HISTORY {
+                        // Evict the least recently used entry, not the oldest
+                        // insertion: a daily-driver command must never fall out
+                        // just because it was learned early.
+                        if let Some(oldest) = entries
+                            .iter()
+                            .enumerate()
+                            .min_by_key(|(_, entry)| entry.last_used)
+                            .map(|(index, _)| index)
+                        {
+                            entries.remove(oldest);
+                        }
+                    }
+                }
+            }
+        }
+        self.persist_command_history()
+    }
+
+    pub fn clear_command_history(&self) -> Result<()> {
+        self.command_history.lock().clear();
+        self.persist_command_history()
+    }
+
     fn persist(&self) -> Result<()> {
         let parent = self
             .path
@@ -189,6 +249,26 @@ impl Store {
         let commands = serde_json::to_string_pretty(&*self.sender_commands.lock())?;
         write_owner_only(&self.sender_commands_path, &commands)
     }
+
+    fn persist_command_history(&self) -> Result<()> {
+        let parent = self
+            .command_history_path
+            .parent()
+            .ok_or_else(|| AppError::new("config directory has no parent"))?;
+        std::fs::create_dir_all(parent)?;
+
+        // Compact JSON: unlike the other stores this file is rewritten on
+        // every executed command, so keep the write as small as possible.
+        let entries = serde_json::to_string(&*self.command_history.lock())?;
+        write_owner_only(&self.command_history_path, &entries)
+    }
+}
+
+fn unix_millis() -> i64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|elapsed| elapsed.as_millis() as i64)
+        .unwrap_or(0)
 }
 
 fn sync_secrets(profile: &SessionProfile, credentials: &mut HashMap<String, StoredSecrets>) {
@@ -245,6 +325,10 @@ fn credentials_path_for(path: &Path) -> PathBuf {
 
 fn sender_commands_path_for(path: &Path) -> PathBuf {
     path.with_file_name("sender_commands.json")
+}
+
+fn command_history_path_for(path: &Path) -> PathBuf {
+    path.with_file_name("command_history.json")
 }
 
 fn config_path() -> PathBuf {

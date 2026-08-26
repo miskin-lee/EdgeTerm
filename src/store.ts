@@ -1,6 +1,7 @@
 import { create } from "zustand";
 
 import * as api from "./api";
+import { commandHistory } from "./history";
 import type { GutterMode } from "./terminal";
 import { disposeController } from "./terminalRegistry";
 import type {
@@ -41,6 +42,17 @@ const TERMINAL_SCROLLBACK_KEY = "edgeterm.terminalScrollback";
 const GUTTER_MODE_KEY = "edgeterm.gutterMode";
 const PANELS_KEY = "edgeterm.panels";
 const THEME_KEY = "edgeterm.theme";
+const SUGGESTIONS_KEY = "edgeterm.suggestions";
+
+// Opt-in: command capture and the completion popup stay off until the user
+// enables them in the Edit menu.
+const loadSuggestionsEnabled = (): boolean => {
+  try {
+    return localStorage.getItem(SUGGESTIONS_KEY) === "on";
+  } catch {
+    return false;
+  }
+};
 
 export const loadTheme = (): ThemeMode => {
   try {
@@ -161,6 +173,8 @@ interface AppStore {
   panelFontSize: number;
   bufferFontSize: number;
   terminalScrollback: number;
+  /** Command history recording + fish-style inline suggestions. */
+  suggestionsEnabled: boolean;
   panels: Record<PanelName, boolean>;
   status: string;
   error: string | null;
@@ -190,6 +204,7 @@ interface AppStore {
   setPanelFontSize: (size: number) => void;
   setBufferFontSize: (size: number) => void;
   setTerminalScrollback: (rows: number) => void;
+  setSuggestionsEnabled: (enabled: boolean) => void;
   resetSettings: () => void;
   setStatus: (status: string) => void;
   setError: (error: string | null, sessionId?: string) => void;
@@ -207,6 +222,7 @@ export const useStore = create<AppStore>((set, get) => ({
   panelFontSize: loadFontSize(PANEL_FONT_SIZE_KEY, PANEL_FONT_SIZE),
   bufferFontSize: loadFontSize(BUFFER_FONT_SIZE_KEY, BUFFER_FONT_SIZE),
   terminalScrollback: loadScrollback(),
+  suggestionsEnabled: loadSuggestionsEnabled(),
   panels: loadPanels(),
   status: "Ready",
   error: null,
@@ -365,6 +381,18 @@ export const useStore = create<AppStore>((set, get) => ({
     saveScrollback(terminalScrollback);
   },
 
+  setSuggestionsEnabled(enabled) {
+    set({ suggestionsEnabled: enabled });
+    // The history is only fetched once someone opts in (load() is a no-op on
+    // repeat calls).
+    if (enabled) commandHistory.load();
+    try {
+      localStorage.setItem(SUGGESTIONS_KEY, enabled ? "on" : "off");
+    } catch {
+      // The setting still applies for this run when storage is unavailable.
+    }
+  },
+
   resetSettings() {
     set({
       panels: { ...DEFAULT_PANELS },
@@ -373,6 +401,7 @@ export const useStore = create<AppStore>((set, get) => ({
       panelFontSize: PANEL_FONT_SIZE.default,
       bufferFontSize: BUFFER_FONT_SIZE.default,
       terminalScrollback: TERMINAL_SCROLLBACK.default,
+      suggestionsEnabled: false,
     });
     try {
       localStorage.removeItem(PANELS_KEY);
@@ -381,6 +410,7 @@ export const useStore = create<AppStore>((set, get) => ({
       localStorage.removeItem(PANEL_FONT_SIZE_KEY);
       localStorage.removeItem(BUFFER_FONT_SIZE_KEY);
       localStorage.removeItem(TERMINAL_SCROLLBACK_KEY);
+      localStorage.removeItem(SUGGESTIONS_KEY);
     } catch {
       // The defaults still apply for this run when storage is unavailable.
     }

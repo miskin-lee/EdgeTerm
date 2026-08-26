@@ -8,8 +8,8 @@ use tokio::sync::mpsc;
 use crate::error::{err, AppError, Result};
 use crate::fs_local;
 use crate::model::{
-    DirListing, SavedCommand, SerialPortDesc, SessionInfo, SessionKind, SessionProfile,
-    ZmodemFileInfo,
+    CommandHistoryEntry, DirListing, SavedCommand, SerialPortDesc, SessionInfo, SessionKind,
+    SessionProfile, ZmodemFileInfo,
 };
 use crate::session::{
     self, SessionCommand, SessionHandle, SessionManager, SftpRequest, SftpResponse,
@@ -57,6 +57,23 @@ pub fn save_sender_command(
 #[tauri::command]
 pub fn delete_sender_command(state: State<'_, AppState>, id: String) -> Result<()> {
     state.store.delete_sender_command(&id)
+}
+
+// --- command history --------------------------------------------------------
+
+#[tauri::command]
+pub fn list_command_history(state: State<'_, AppState>) -> Vec<CommandHistoryEntry> {
+    state.store.list_command_history()
+}
+
+#[tauri::command]
+pub fn record_command(state: State<'_, AppState>, command: String, host: String) -> Result<()> {
+    state.store.record_command(&command, &host)
+}
+
+#[tauri::command]
+pub fn clear_command_history(state: State<'_, AppState>) -> Result<()> {
+    state.store.clear_command_history()
 }
 
 // --- sessions ---------------------------------------------------------------
