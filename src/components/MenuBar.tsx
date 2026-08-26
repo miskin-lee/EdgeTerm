@@ -81,11 +81,17 @@ const RESTORE_ICON = (
 const CLOSE_ICON = <path d="M0.5 0.5l9 9M9.5 0.5l-9 9" />;
 
 function WindowControls({ maximized }: { maximized: boolean }) {
+  // The middle button toggles against the window's real state rather than
+  // calling maximize() / unmaximize() from the cached `maximized` flag: it is
+  // right even if the flag lags, and it is the one maximize command the
+  // capability grants (`core:window:allow-toggle-maximize`); plain maximize /
+  // unmaximize are not in `core:window:default` and would be rejected.
+  const toggleMaximize = (win: TauriWindow) => win.toggleMaximize();
   const controls: WindowControl[] = [
     { label: "Minimize", icon: MINIMIZE_ICON, action: (win) => win.minimize() },
     maximized
-      ? { label: "Restore Down", icon: RESTORE_ICON, action: (win) => win.unmaximize() }
-      : { label: "Maximize", icon: MAXIMIZE_ICON, action: (win) => win.maximize() },
+      ? { label: "Restore Down", icon: RESTORE_ICON, action: toggleMaximize }
+      : { label: "Maximize", icon: MAXIMIZE_ICON, action: toggleMaximize },
     { label: "Close", icon: CLOSE_ICON, action: (win) => win.close(), className: " is-close" },
   ];
   return (
