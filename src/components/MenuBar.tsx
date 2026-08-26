@@ -125,18 +125,18 @@ export function MenuBar(props: Props) {
         "separator",
         {
           label: "Previous Session",
-          shortcut: sc("⌘←", "Ctrl+Shift+["),
+          shortcut: sc("⌘[", "Alt+["),
           action: () => activateAdjacentTab(-1),
         },
         {
           label: "Next Session",
-          shortcut: sc("⌘→", "Ctrl+Shift+]"),
+          shortcut: sc("⌘]", "Alt+]"),
           action: () => activateAdjacentTab(1),
         },
         "separator",
         {
           label: "Close Session",
-          shortcut: sc("⌘W", "Alt+W"),
+          shortcut: sc("⌘W", "Ctrl+Shift+W"),
           action: withActive(requestCloseTab),
         },
         {
@@ -164,7 +164,7 @@ export function MenuBar(props: Props) {
       entries: [
         {
           label: "Copy",
-          shortcut: sc("⌘C", "Alt+C"),
+          shortcut: sc("⌘C", "Ctrl+Shift+C"),
           action: withActive((id) => {
             const term = getController(id)?.term;
             if (term?.hasSelection())
@@ -173,7 +173,7 @@ export function MenuBar(props: Props) {
         },
         {
           label: "Paste",
-          shortcut: sc("⌘V", "Alt+V"),
+          shortcut: sc("⌘V", "Ctrl+Shift+V"),
           action: withActive(async (id) => {
             const text = await navigator.clipboard.readText();
             if (text) getController(id)?.term.paste(text);
@@ -181,13 +181,13 @@ export function MenuBar(props: Props) {
         },
         {
           label: "Select All",
-          shortcut: sc("⌘A", "Alt+A"),
+          shortcut: sc("⌘A", "Ctrl+Shift+A"),
           action: withActive((id) => getController(id)?.term.selectAll()),
         },
         "separator",
         {
           label: "Clear Buffer",
-          shortcut: sc("⌘K", "Ctrl+K"),
+          shortcut: sc("⌘K", "Alt+K"),
           action: withActive((id) => getController(id)?.clear()),
         },
         "separator",
@@ -224,8 +224,8 @@ export function MenuBar(props: Props) {
     {
       title: "Search",
       entries: [
-        { label: "Find…", shortcut: sc("⌘F", "Alt+F"), action: props.onFind },
-        { label: "Find Next", shortcut: sc("⌘G", "Alt+G"), action: props.onFindNext },
+        { label: "Find…", shortcut: sc("⌘F", "Ctrl+Shift+F"), action: props.onFind },
+        { label: "Find Next", shortcut: sc("⌘G", "Ctrl+Shift+G"), action: props.onFindNext },
       ],
     },
     {

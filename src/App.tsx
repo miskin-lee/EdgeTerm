@@ -24,31 +24,15 @@ import { FilerPanel } from "./components/panels/FilerPanel";
 import { SenderPanel } from "./components/panels/SenderPanel";
 import { SessionPanel } from "./components/panels/SessionPanel";
 import { commandHistory } from "./history";
-import { IS_MAC } from "./platform";
 import { setSemanticColorTheme } from "./semanticColors";
-import { useActiveTab, useStore, type PanelName } from "./store";
+import { matchAppShortcut } from "./shortcuts";
+import { useActiveTab, useStore } from "./store";
 import { allControllers, getController } from "./terminalRegistry";
 import type { SessionProfile, SessionState } from "./types";
 import { useUpdater } from "./updater";
 
 const clamp = (value: number, min: number, max: number) =>
   Math.min(max, Math.max(min, value));
-
-const tabStepByMacCode: Partial<Record<string, -1 | 1>> = {
-  ArrowLeft: -1,
-  ArrowRight: 1,
-};
-
-const tabStepByCode: Partial<Record<string, -1 | 1>> = {
-  BracketLeft: -1,
-  BracketRight: 1,
-};
-
-const viewPanelByShortcutCode: Partial<Record<string, PanelName>> = {
-  ArrowLeft: "filer",
-  ArrowRight: "sessions",
-  ArrowDown: "sender",
-};
 
 export default function App() {
   const updater = useUpdater();
@@ -181,79 +165,49 @@ export default function App() {
       const inTerminal = Boolean(target?.closest(".xterm"));
       if (!inTerminal && target?.closest("input, textarea, select")) return;
 
-      // Previous / next tab: ⌘←/→ on macOS, Ctrl+Shift+[ / ] elsewhere
-      // (Alt+arrows are word navigation in Linux shells, Win+arrows belong
-      // to the OS on Windows).
-      const tabStep = IS_MAC
-        ? event.metaKey && !event.ctrlKey && !event.altKey && !event.shiftKey
-          ? tabStepByMacCode[event.code]
-          : undefined
-        : event.ctrlKey && event.shiftKey && !event.altKey && !event.metaKey
-          ? tabStepByCode[event.code]
-          : undefined;
-      if (tabStep) {
-        event.preventDefault();
-        activateAdjacentTab(tabStep);
-        return;
-      }
+      // The modifier scheme is platform-specific (⌘ on macOS, Alt elsewhere)
+      // and lives in shortcuts.ts; only the dispatch happens here.
+      const shortcut = matchAppShortcut(event);
+      if (!shortcut) return;
 
-      const key = event.key.toLowerCase();
-
-      // View panels: ⌘⌥←/→/↓ on macOS, Ctrl+Alt+←/→/↓ elsewhere.
-      if (
-        (IS_MAC ? event.metaKey : event.ctrlKey) &&
-        event.altKey &&
-        !event.shiftKey
-      ) {
-        const panel = viewPanelByShortcutCode[event.code];
-        if (panel) {
+      switch (shortcut.kind) {
+        case "tabStep":
           event.preventDefault();
-          togglePanel(panel);
+          activateAdjacentTab(shortcut.step);
           return;
-        }
-      }
-
-      // Session and search shortcuts: ⌘ on macOS, Alt elsewhere. Plain
-      // Ctrl+N/W/F/G are readline and shell keys (^W kills a word, ^G is
-      // BEL) and must keep reaching the terminal.
-      const appMod = IS_MAC
-        ? event.metaKey && !event.ctrlKey && !event.altKey
-        : event.altKey && !event.ctrlKey && !event.metaKey;
-      if (appMod && !event.shiftKey) {
-        if (key === "n") {
+        case "togglePanel":
+          event.preventDefault();
+          togglePanel(shortcut.panel);
+          return;
+        case "newSession":
           event.preventDefault();
           newSession();
           return;
-        }
-        if (key === "w") {
+        case "closeSession":
           event.preventDefault();
           if (activeId) requestCloseTab(activeId);
           return;
-        }
-        if (key === "f") {
+        case "find":
           event.preventDefault();
           openSearch();
           return;
-        }
-        if (key === "g") {
+        case "findNext":
           event.preventDefault();
           findNext();
           return;
-        }
-      }
-
-      const mod = event.metaKey || event.ctrlKey;
-      if (!mod) return;
-
-      if (key === "k" && activeId && !ftpMode) {
-        event.preventDefault();
-        getController(activeId)?.clear();
-      } else if (/^[1-9]$/.test(event.key)) {
-        const index = Number(event.key) - 1;
-        const tab = useStore.getState().tabs[index];
-        if (tab) {
-          event.preventDefault();
-          setActive(tab.info.id);
+        case "clear":
+          if (activeId && !ftpMode) {
+            event.preventDefault();
+            getController(activeId)?.clear();
+          }
+          return;
+        case "tab": {
+          const tab = useStore.getState().tabs[shortcut.index];
+          if (tab) {
+            event.preventDefault();
+            setActive(tab.info.id);
+          }
+          return;
         }
       }
     };

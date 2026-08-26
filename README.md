@@ -40,14 +40,14 @@ Local shell, SSH, and serial terminals automatically detect ZMODEM sessions. Run
 | macOS | Windows / Linux | Action |
 | --- | --- | --- |
 | `⌘N` | `Alt+N` | Open the new-session dialog |
-| `⌘W` | `Alt+W` | Close the current session (a live session asks for confirmation; `Enter` closes, `Esc` cancels) |
-| `⌘F` / `⌘G` | `Alt+F` / `Alt+G` | Search the terminal buffer / find next |
-| `⌘K` | `Ctrl+K` | Clear the screen |
-| `⌘←` / `⌘→` | `Ctrl+Shift+[` / `Ctrl+Shift+]` | Switch to the previous / next open session |
-| `⌘1`–`⌘9` | `Ctrl+1`–`Ctrl+9` | Switch to tab N |
+| `⌘W` | `Ctrl+Shift+W` | Close the current session (a live session asks for confirmation; `Enter` closes, `Esc` cancels) |
+| `⌘F` / `⌘G` | `Ctrl+Shift+F` / `Ctrl+Shift+G` | Search the terminal buffer / find next |
+| `⌘K` | `Alt+K` | Clear the screen |
+| `⌘[` / `⌘]` | `Alt+[` / `Alt+]` | Switch to the previous / next open session |
+| `⌘1`–`⌘9` | `Alt+1`–`Alt+9` | Switch to tab N |
 | `⌘⌥←` / `⌘⌥→` / `⌘⌥↓` | `Ctrl+Alt+←` / `Ctrl+Alt+→` / `Ctrl+Alt+↓` | Show or hide Filer / Session / Sender |
-| `⌘C` / `⌘V` | `Alt+C` / `Alt+V` | Copy / paste inside the terminal |
-| `⌘A` | `Alt+A` | Select the whole terminal buffer |
+| `⌘C` / `⌘V` | `Ctrl+Shift+C` / `Ctrl+Shift+V` | Copy / paste inside the terminal |
+| `⌘A` | `Ctrl+Shift+A` | Select the whole terminal buffer |
 
 ## Automatic updates
 

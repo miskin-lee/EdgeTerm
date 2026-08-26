@@ -7,7 +7,7 @@ import {
   type KeyboardEvent,
 } from "react";
 
-import { IS_MAC } from "../platform";
+import { matchAppShortcut } from "../shortcuts";
 import { useActiveTab, useStore } from "../store";
 import { getController } from "../terminalRegistry";
 
@@ -23,17 +23,13 @@ export interface SearchOverlayHandle {
   focus: () => void;
 }
 
-// Find / Find Next while typing in the box: ⌘F / ⌘G on macOS, Alt+F /
-// Alt+G elsewhere. The window-level shortcut handler ignores key events
-// from inputs, so the shortcuts are mirrored here.
-const isAppShortcut = (event: KeyboardEvent, key: string) =>
-  event.key.toLowerCase() === key &&
-  !event.shiftKey &&
-  (IS_MAC
-    ? event.metaKey && !event.ctrlKey && !event.altKey
-    : event.altKey && !event.ctrlKey && !event.metaKey);
-const isFindKey = (event: KeyboardEvent) => isAppShortcut(event, "f");
-const isFindNextKey = (event: KeyboardEvent) => isAppShortcut(event, "g");
+// Find / Find Next while typing in the box: ⌘F / ⌘G on macOS,
+// Ctrl+Shift+F / Ctrl+Shift+G elsewhere. The window-level shortcut handler
+// ignores key events from inputs, so the shortcuts are mirrored here.
+const isFindKey = (event: KeyboardEvent) =>
+  matchAppShortcut(event)?.kind === "find";
+const isFindNextKey = (event: KeyboardEvent) =>
+  matchAppShortcut(event)?.kind === "findNext";
 
 export const SearchOverlay = forwardRef<SearchOverlayHandle, Props>(
   function SearchOverlay({ open, onOpenChange }, ref) {

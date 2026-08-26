@@ -15,6 +15,7 @@ import {
 
 import type { CommandSuggestion } from "./history";
 import { IS_MAC } from "./platform";
+import { matchAppShortcut } from "./shortcuts";
 import { semanticLine, type SemanticRange } from "./semanticColors";
 import type { ThemeMode } from "./types";
 import {
@@ -23,9 +24,6 @@ import {
 } from "./zmodem";
 
 export type GutterMode = "off" | "line" | "time" | "both";
-
-/** Alt+letter shortcuts owned by the app on Windows / Linux (see App.tsx). */
-const APP_ALT_SHORTCUT_KEYS = new Set(["n", "w", "f", "g"]);
 
 function openTerminalWebLink(event: MouseEvent, uri: string) {
   // Opening terminal output on an unmodified click makes accidental launches
@@ -337,6 +335,8 @@ export class TerminalController {
       }
 
       if (IS_MAC) {
+        // Only ⌘ combinations are app keys on macOS. Option types characters
+        // and Ctrl belongs to the shell, so both go straight to xterm.
         if (!event.metaKey) return true;
         if (key === "c" && this.term.hasSelection()) {
           // Let the browser emit its native copy event. xterm handles that
@@ -350,27 +350,34 @@ export class TerminalController {
           // it twice.
           return false;
         }
+        // ⌘N / W / F / G / K, ⌘[ / ⌘] and ⌘1–9 are app shortcuts. Leave
+        // them unhandled so the window-level handler receives them.
+        if (matchAppShortcut(event)) return false;
         return true;
       }
 
-      // Windows / Linux: Alt+A / Alt+C / Alt+V select all, copy and paste.
-      // Plain Ctrl+A/C/V must keep reaching the shell (^A is readline
-      // beginning-of-line, ^C is SIGINT, ^V is quoted-insert), and xterm
-      // would otherwise turn Alt+key into ESC-prefixed input, so these are
-      // taken over here. (xterm itself maps ⌘A to select-all on macOS.)
-      const altOnly =
-        event.altKey && !event.ctrlKey && !event.metaKey && !event.shiftKey;
-      if (altOnly && key === "a") {
+      // Windows / Linux: Ctrl+Shift+A / C / V select all, copy and paste, as
+      // in WindTerm, GNOME Terminal and VS Code. Plain Ctrl+A/C/V keep
+      // reaching the shell (^A is readline beginning-of-line, ^C is SIGINT,
+      // ^V is quoted-insert), and Alt+letter is left alone because it is
+      // readline's Meta layer. (xterm itself maps ⌘A to select-all on macOS.)
+      const ctrlShiftOnly =
+        event.ctrlKey && event.shiftKey && !event.altKey && !event.metaKey;
+      if (ctrlShiftOnly && key === "a") {
         event.preventDefault();
         this.term.selectAll();
         return false;
       }
-      if (altOnly && key === "c" && this.term.hasSelection()) {
+      if (ctrlShiftOnly && key === "c") {
+        // Consumed even without a selection so it never reaches the shell
+        // as an accidental ^C.
         event.preventDefault();
-        void navigator.clipboard.writeText(this.term.getSelection());
+        if (this.term.hasSelection()) {
+          void navigator.clipboard.writeText(this.term.getSelection());
+        }
         return false;
       }
-      if (altOnly && key === "v") {
+      if (ctrlShiftOnly && key === "v") {
         event.preventDefault();
         void navigator.clipboard.readText().then((text) => {
           if (text) this.term.paste(text);
@@ -378,23 +385,10 @@ export class TerminalController {
         return false;
       }
 
-      // Alt+N / W / F / G are app shortcuts (new and close session, find,
-      // find next). Leave them unhandled so the window-level handler
-      // receives them instead of xterm sending ESC-prefixed input.
-      if (altOnly && APP_ALT_SHORTCUT_KEYS.has(key)) {
-        return false;
-      }
-
-      // Ctrl+Shift+[ / ] switch tabs. Leave them unhandled so the app-level
-      // shortcut handler on window receives them instead of xterm.
-      const ctrlShiftOnly =
-        event.ctrlKey && event.shiftKey && !event.altKey && !event.metaKey;
-      if (
-        ctrlShiftOnly &&
-        (event.code === "BracketLeft" || event.code === "BracketRight")
-      ) {
-        return false;
-      }
+      // Ctrl+Shift+W / F / G, Alt+N / K, Alt+[ / Alt+] and Alt+1–9 are app
+      // shortcuts. Leave them unhandled so the window-level handler receives
+      // them instead of xterm sending ESC-prefixed input.
+      if (matchAppShortcut(event)) return false;
       return true;
     });
 

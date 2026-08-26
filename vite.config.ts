@@ -3,10 +3,20 @@ import react from "@vitejs/plugin-react";
 
 // @ts-expect-error process is a nodejs global
 const host = process.env.TAURI_DEV_HOST;
+// @ts-expect-error process is a nodejs global
+const targetIsMac: boolean = process.platform === "darwin";
 
 // https://vite.dev/config/
 export default defineConfig(async () => ({
   plugins: [react()],
+
+  // Keyboard shortcuts follow platform-specific flows (⌘ on macOS, Alt
+  // elsewhere; see src/shortcuts.ts). Tauri builds the frontend on the target
+  // OS, so the platform is fixed at build time and the other platform's
+  // branch is eliminated from the bundle.
+  define: {
+    __EDGETERM_MAC__: JSON.stringify(targetIsMac),
+  },
 
   build: {
     // The Material file icons are ~1000 small SVGs; emit them as files instead of

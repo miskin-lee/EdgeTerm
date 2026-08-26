@@ -109,8 +109,8 @@
       <span data-i18n="zh">逐个功能的实操指南 —— 从第一次连接到 ZMODEM 文件传输。</span>
     </p>
     <p class="dim">
-      <span data-i18n="en">Shortcuts are written with <kbd>⌘</kbd> (macOS); on Windows and Linux use <kbd>Ctrl</kbd> instead, except select all / copy / paste (<kbd>Alt+A</kbd> / <kbd>Alt+C</kbd> / <kbd>Alt+V</kbd>) and tab switching (<kbd>Ctrl+Shift+[</kbd> / <kbd>Ctrl+Shift+]</kbd>) — see <a href="#shortcuts">Keyboard Shortcuts</a>.</span>
-      <span data-i18n="zh">本文快捷键以 macOS 的 <kbd>⌘</kbd> 表示；Windows / Linux 下请使用 <kbd>Ctrl</kbd>，但全选 / 复制 / 粘贴为 <kbd>Alt+A</kbd> / <kbd>Alt+C</kbd> / <kbd>Alt+V</kbd>，切换标签为 <kbd>Ctrl+Shift+[</kbd> / <kbd>Ctrl+Shift+]</kbd>，详见<a href="#shortcuts">快捷键一览</a>。</span>
+      <span data-i18n="en">Shortcuts are written with <kbd>⌘</kbd> (macOS); Windows and Linux use <kbd>Ctrl+Shift</kbd> or <kbd>Alt</kbd> instead — see <a href="#shortcuts">Keyboard Shortcuts</a> for the full table.</span>
+      <span data-i18n="zh">本文快捷键以 macOS 的 <kbd>⌘</kbd> 表示；Windows / Linux 下对应 <kbd>Ctrl+Shift</kbd> 或 <kbd>Alt</kbd> 组合，完整对照见<a href="#shortcuts">快捷键一览</a>。</span>
     </p>
 
     <section id="getting-started">
@@ -144,7 +144,7 @@
         <tr><td><strong>Sender</strong> <span data-i18n="en">(bottom)</span><span data-i18n="zh">（底部）</span></td><td><span data-i18n="en">Send commands or hex bytes to one or all sessions</span><span data-i18n="zh">向当前或全部会话发送命令 / 十六进制数据</span></td><td><kbd>⌘⌥↓</kbd></td></tr>
       </table></div>
       <ul>
-        <li><span data-i18n="en"><strong>Tabs</strong> — each open session is a tab. Switch with <kbd>⌘←</kbd> / <kbd>⌘→</kbd> or jump directly with <kbd>⌘1</kbd>–<kbd>⌘9</kbd>.</span><span data-i18n="zh"><strong>标签页</strong> —— 每个打开的会话是一个标签。用 <kbd>⌘←</kbd> / <kbd>⌘→</kbd> 切换，或用 <kbd>⌘1</kbd>–<kbd>⌘9</kbd> 直接跳转。</span></li>
+        <li><span data-i18n="en"><strong>Tabs</strong> — each open session is a tab. Switch with <kbd>⌘[</kbd> / <kbd>⌘]</kbd> or jump directly with <kbd>⌘1</kbd>–<kbd>⌘9</kbd>.</span><span data-i18n="zh"><strong>标签页</strong> —— 每个打开的会话是一个标签。用 <kbd>⌘[</kbd> / <kbd>⌘]</kbd> 切换，或用 <kbd>⌘1</kbd>–<kbd>⌘9</kbd> 直接跳转。</span></li>
         <li><span data-i18n="en"><strong>Address bar</strong> — shows the active session as <code>ssh › host:port</code>.</span><span data-i18n="zh"><strong>地址栏</strong> —— 以 <code>ssh › host:port</code> 形式显示当前会话。</span></li>
         <li><span data-i18n="en"><strong>Status bar</strong> — terminal size (columns × rows), cursor position (Ln/Ch), and the session protocol.</span><span data-i18n="zh"><strong>状态栏</strong> —— 终端尺寸（列 × 行）、光标位置（Ln/Ch）和会话协议。</span></li>
       </ul>
@@ -349,18 +349,18 @@
       <div class="table-wrap"><table>
         <tr><th>macOS</th><th>Windows / Linux</th><th><span data-i18n="en">Action</span><span data-i18n="zh">动作</span></th></tr>
         <tr><td><kbd>⌘N</kbd></td><td><kbd>Alt+N</kbd></td><td><span data-i18n="en">Open the new-session dialog</span><span data-i18n="zh">打开新建会话对话框</span></td></tr>
-        <tr><td><kbd>⌘W</kbd></td><td><kbd>Alt+W</kbd></td><td><span data-i18n="en">Close the current session (a live session asks for confirmation; Enter closes, Esc cancels)</span><span data-i18n="zh">关闭当前会话（会话仍在线时会弹出确认，Enter 关闭，Esc 取消）</span></td></tr>
-        <tr><td><kbd>⌘F</kbd> / <kbd>⌘G</kbd></td><td><kbd>Alt+F</kbd> / <kbd>Alt+G</kbd></td><td><span data-i18n="en">Search the buffer / find next</span><span data-i18n="zh">缓冲区查找 / 下一个匹配</span></td></tr>
-        <tr><td><kbd>⌘K</kbd></td><td><kbd>Ctrl+K</kbd></td><td><span data-i18n="en">Clear the screen and scrollback</span><span data-i18n="zh">清屏并清空回滚缓冲区</span></td></tr>
-        <tr><td><kbd>⌘←</kbd> / <kbd>⌘→</kbd></td><td><kbd>Ctrl+Shift+[</kbd> / <kbd>Ctrl+Shift+]</kbd></td><td><span data-i18n="en">Previous / next open session</span><span data-i18n="zh">上一个 / 下一个已打开会话</span></td></tr>
-        <tr><td><kbd>⌘1</kbd>–<kbd>⌘9</kbd></td><td><kbd>Ctrl+1</kbd>–<kbd>Ctrl+9</kbd></td><td><span data-i18n="en">Jump to tab N</span><span data-i18n="zh">跳转到第 N 个标签</span></td></tr>
+        <tr><td><kbd>⌘W</kbd></td><td><kbd>Ctrl+Shift+W</kbd></td><td><span data-i18n="en">Close the current session (a live session asks for confirmation; Enter closes, Esc cancels)</span><span data-i18n="zh">关闭当前会话（会话仍在线时会弹出确认，Enter 关闭，Esc 取消）</span></td></tr>
+        <tr><td><kbd>⌘F</kbd> / <kbd>⌘G</kbd></td><td><kbd>Ctrl+Shift+F</kbd> / <kbd>Ctrl+Shift+G</kbd></td><td><span data-i18n="en">Search the buffer / find next</span><span data-i18n="zh">缓冲区查找 / 下一个匹配</span></td></tr>
+        <tr><td><kbd>⌘K</kbd></td><td><kbd>Alt+K</kbd></td><td><span data-i18n="en">Clear the screen and scrollback</span><span data-i18n="zh">清屏并清空回滚缓冲区</span></td></tr>
+        <tr><td><kbd>⌘[</kbd> / <kbd>⌘]</kbd></td><td><kbd>Alt+[</kbd> / <kbd>Alt+]</kbd></td><td><span data-i18n="en">Previous / next open session</span><span data-i18n="zh">上一个 / 下一个已打开会话</span></td></tr>
+        <tr><td><kbd>⌘1</kbd>–<kbd>⌘9</kbd></td><td><kbd>Alt+1</kbd>–<kbd>Alt+9</kbd></td><td><span data-i18n="en">Jump to tab N</span><span data-i18n="zh">跳转到第 N 个标签</span></td></tr>
         <tr><td><kbd>⌘⌥←</kbd> / <kbd>⌘⌥→</kbd> / <kbd>⌘⌥↓</kbd></td><td><kbd>Ctrl+Alt+←</kbd> / <kbd>Ctrl+Alt+→</kbd> / <kbd>Ctrl+Alt+↓</kbd></td><td><span data-i18n="en">Toggle Filer / Session / Sender</span><span data-i18n="zh">显示或隐藏 Filer / Session / Sender</span></td></tr>
-        <tr><td><kbd>⌘C</kbd> / <kbd>⌘V</kbd></td><td><kbd>Alt+C</kbd> / <kbd>Alt+V</kbd></td><td><span data-i18n="en">Copy / paste inside the terminal</span><span data-i18n="zh">终端内复制 / 粘贴</span></td></tr>
-        <tr><td><kbd>⌘A</kbd></td><td><kbd>Alt+A</kbd></td><td><span data-i18n="en">Select the whole terminal buffer</span><span data-i18n="zh">全选终端缓冲区</span></td></tr>
+        <tr><td><kbd>⌘C</kbd> / <kbd>⌘V</kbd></td><td><kbd>Ctrl+Shift+C</kbd> / <kbd>Ctrl+Shift+V</kbd></td><td><span data-i18n="en">Copy / paste inside the terminal</span><span data-i18n="zh">终端内复制 / 粘贴</span></td></tr>
+        <tr><td><kbd>⌘A</kbd></td><td><kbd>Ctrl+Shift+A</kbd></td><td><span data-i18n="en">Select the whole terminal buffer</span><span data-i18n="zh">全选终端缓冲区</span></td></tr>
       </table></div>
       <p class="dim">
-        <span data-i18n="en">Plain <kbd>Ctrl+A</kbd> / <kbd>Ctrl+C</kbd> / <kbd>Ctrl+V</kbd> are passed through to the shell on Windows and Linux, which is why select all, copy and paste use <kbd>Alt</kbd> there.</span>
-        <span data-i18n="zh">Windows / Linux 下 <kbd>Ctrl+A</kbd> / <kbd>Ctrl+C</kbd> / <kbd>Ctrl+V</kbd> 会原样发送给 Shell（行首、中断等），因此全选 / 复制 / 粘贴改用 <kbd>Alt</kbd>。</span>
+        <span data-i18n="en">On Windows and Linux plain <kbd>Ctrl+letter</kbd> is passed through to the shell (<kbd>Ctrl+C</kbd> interrupts, <kbd>Ctrl+W</kbd> kills a word) and <kbd>Alt+letter</kbd> is readline's Meta layer (<kbd>Alt+F</kbd> / <kbd>Alt+B</kbd> jump by word), which is why the editing shortcuts use <kbd>Ctrl+Shift</kbd> there.</span>
+        <span data-i18n="zh">Windows / Linux 下 <kbd>Ctrl+字母</kbd> 会原样发送给 Shell（<kbd>Ctrl+C</kbd> 中断、<kbd>Ctrl+W</kbd> 删词），<kbd>Alt+字母</kbd> 则是 readline 的 Meta 键位（<kbd>Alt+F</kbd> / <kbd>Alt+B</kbd> 按词跳转），因此编辑类快捷键改用 <kbd>Ctrl+Shift</kbd>。</span>
       </p>
     </section>
 

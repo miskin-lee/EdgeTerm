@@ -40,14 +40,14 @@ SSH / FTP 密码和 SSH 私钥口令保存在应用配置目录下仅当前系�
 | macOS | Windows / Linux | 动作 |
 | --- | --- | --- |
 | `⌘N` | `Alt+N` | 新建会话对话框 |
-| `⌘W` | `Alt+W` | 关闭当前会话（会话仍在线时会弹出确认，`Enter` 关闭，`Esc` 取消） |
-| `⌘F` / `⌘G` | `Alt+F` / `Alt+G` | 缓冲区内查找 / 下一个匹配 |
-| `⌘K` | `Ctrl+K` | 清屏 |
-| `⌘←` / `⌘→` | `Ctrl+Shift+[` / `Ctrl+Shift+]` | 切换到上一个 / 下一个已打开会话 |
-| `⌘1`–`⌘9` | `Ctrl+1`–`Ctrl+9` | 切换到第 N 个标签 |
+| `⌘W` | `Ctrl+Shift+W` | 关闭当前会话（会话仍在线时会弹出确认，`Enter` 关闭，`Esc` 取消） |
+| `⌘F` / `⌘G` | `Ctrl+Shift+F` / `Ctrl+Shift+G` | 缓冲区内查找 / 下一个匹配 |
+| `⌘K` | `Alt+K` | 清屏 |
+| `⌘[` / `⌘]` | `Alt+[` / `Alt+]` | 切换到上一个 / 下一个已打开会话 |
+| `⌘1`–`⌘9` | `Alt+1`–`Alt+9` | 切换到第 N 个标签 |
 | `⌘⌥←` / `⌘⌥→` / `⌘⌥↓` | `Ctrl+Alt+←` / `Ctrl+Alt+→` / `Ctrl+Alt+↓` | 显示或隐藏 Filer / Session / Sender |
-| `⌘C` / `⌘V` | `Alt+C` / `Alt+V` | 复制 / 粘贴（终端内） |
-| `⌘A` | `Alt+A` | 全选终端缓冲区 |
+| `⌘C` / `⌘V` | `Ctrl+Shift+C` / `Ctrl+Shift+V` | 复制 / 粘贴（终端内） |
+| `⌘A` | `Ctrl+Shift+A` | 全选终端缓冲区 |
 
 ## 自动更新
 
