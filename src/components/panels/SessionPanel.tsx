@@ -3,6 +3,7 @@ import { useMemo, useState } from "react";
 import { openSession } from "../../actions";
 import { useStore } from "../../store";
 import { colorForSession, type SessionProfile } from "../../types";
+import { DeleteProfileDialog } from "../DeleteProfileDialog";
 
 export const LOCAL_SHELL_PROFILE: SessionProfile = {
   id: "",
@@ -18,6 +19,20 @@ const SESSION_GROUPS = [
   { kind: "local", label: "Shell Sessions" },
 ] as const;
 
+/** One-line connection target, used for the row tooltip and delete prompt. */
+function describeProfile(profile: SessionProfile): string {
+  switch (profile.kind) {
+    case "ssh":
+      return `${profile.username ?? ""}@${profile.host ?? ""}:${profile.port ?? 22}`;
+    case "ftp":
+      return `${profile.username || "anonymous"}@${profile.host ?? ""}:${profile.port ?? 21}`;
+    case "serial":
+      return `${profile.portName ?? ""} @ ${profile.baudRate ?? 115200}`;
+    default:
+      return profile.shell ?? "default shell";
+  }
+}
+
 interface Props {
   onEditProfile: (profile: SessionProfile) => void;
   onNewSession: () => void;
@@ -28,6 +43,10 @@ export function SessionPanel({ onEditProfile, onNewSession }: Props) {
   const removeProfile = useStore((s) => s.removeProfile);
   const [filter, setFilter] = useState("");
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
+  /** Profile awaiting the user's answer in the delete-confirmation dialog. */
+  const [pendingDelete, setPendingDelete] = useState<SessionProfile | null>(
+    null,
+  );
 
   const groups = useMemo(() => {
     const needle = filter.trim().toLowerCase();
@@ -85,15 +104,7 @@ export function SessionPanel({ onEditProfile, onNewSession }: Props) {
                   className="row"
                   style={{ paddingLeft: 26 }}
                   onDoubleClick={() => void openSession(profile)}
-                  title={
-                    profile.kind === "ssh"
-                      ? `${profile.username ?? ""}@${profile.host ?? ""}:${profile.port ?? 22}`
-                      : profile.kind === "ftp"
-                        ? `${profile.username || "anonymous"}@${profile.host ?? ""}:${profile.port ?? 21}`
-                      : profile.kind === "serial"
-                        ? `${profile.portName ?? ""} @ ${profile.baudRate ?? 115200}`
-                        : (profile.shell ?? "default shell")
-                  }
+                  title={describeProfile(profile)}
                 >
                   <span
                     className="row-dot"
@@ -120,7 +131,7 @@ export function SessionPanel({ onEditProfile, onNewSession }: Props) {
                         className="panel-action"
                         onMouseDown={(event) => {
                           event.stopPropagation();
-                          void removeProfile(profile.id);
+                          setPendingDelete(profile);
                         }}
                         title="Delete"
                       >
@@ -133,6 +144,20 @@ export function SessionPanel({ onEditProfile, onNewSession }: Props) {
           </div>
         ))}
       </div>
+
+      {pendingDelete && (
+        <DeleteProfileDialog
+          profile={pendingDelete}
+          target={describeProfile(pendingDelete)}
+          onConfirm={() => {
+            // Dismiss first so a second Enter cannot re-enter removeProfile
+            // while the backend delete is still in flight.
+            setPendingDelete(null);
+            void removeProfile(pendingDelete.id);
+          }}
+          onCancel={() => setPendingDelete(null)}
+        />
+      )}
     </div>
   );
 }

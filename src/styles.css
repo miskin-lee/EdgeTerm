@@ -1888,6 +1888,17 @@ textarea:focus {
   filter: brightness(1.1);
 }
 
+.btn.is-danger {
+  background: var(--red);
+  border-color: var(--red);
+  color: #ffffff;
+  font-weight: 600;
+}
+
+.btn.is-danger:hover {
+  filter: brightness(1.1);
+}
+
 .dialog-error {
   padding: 8px 10px;
   border-radius: 4px;
@@ -1972,36 +1983,36 @@ textarea:focus {
   }
 }
 
-.close-session-dialog {
+.confirm-dialog {
   width: min(420px, calc(100vw - 40px));
 }
 
-.close-session-body {
+.confirm-dialog-body {
   gap: 6px;
   line-height: 1.5;
 }
 
-.close-session-target {
+.confirm-dialog-target {
   color: var(--fg-dim);
   font-family: var(--font-mono);
   user-select: text;
 }
 
-.close-session-hint {
+.confirm-dialog-hint {
   color: var(--fg-faint);
 }
 
-.close-session-footer {
+.confirm-dialog-footer {
   align-items: center;
 }
 
-.close-session-keys {
+.confirm-dialog-keys {
   margin-right: auto;
   color: var(--fg-faint);
   font-size: 11px;
 }
 
-.close-session-keys kbd {
+.confirm-dialog-keys kbd {
   padding: 1px 5px;
   border: 1px solid var(--border-strong);
   border-radius: 3px;
