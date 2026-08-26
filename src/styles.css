@@ -623,6 +623,20 @@ textarea:focus {
   background: var(--bg-panel-alt);
 }
 
+.terminal-search .search-count {
+  min-width: 56px;
+  padding: 0 2px;
+  text-align: center;
+  color: var(--fg-dim);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.terminal-search .search-count.is-empty {
+  color: var(--red);
+}
+
 /* --- terminal ------------------------------------------------------------- */
 
 .term-stack {

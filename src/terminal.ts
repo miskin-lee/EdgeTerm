@@ -1,6 +1,6 @@
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { FitAddon } from "@xterm/addon-fit";
-import { SearchAddon } from "@xterm/addon-search";
+import { SearchAddon, type ISearchOptions } from "@xterm/addon-search";
 import { Unicode11Addon } from "@xterm/addon-unicode11";
 import { WebLinksAddon } from "@xterm/addon-web-links";
 import { WebglAddon } from "@xterm/addon-webgl";
@@ -94,10 +94,40 @@ const XTERM_THEMES: Record<ThemeMode, ITheme> = {
   },
 };
 
+type SearchDecorations = NonNullable<ISearchOptions["decorations"]>;
+
+/**
+ * Find-in-buffer highlights, per theme. Enabling decorations is also what
+ * makes the search addon report the match index / count.
+ */
+const SEARCH_DECORATIONS: Record<ThemeMode, SearchDecorations> = {
+  dark: {
+    matchBackground: "#623315",
+    matchOverviewRuler: "#d18616",
+    activeMatchBackground: "#9e6a03",
+    activeMatchColorOverviewRuler: "#ffb700",
+  },
+  light: {
+    matchBackground: "#f5d3b0",
+    matchOverviewRuler: "#d18616",
+    activeMatchBackground: "#a8ac94",
+    activeMatchColorOverviewRuler: "#ffb700",
+  },
+};
+
+/** The search addon stops highlighting (and counting) past this many matches. */
+export const SEARCH_HIGHLIGHT_LIMIT = 1000;
+
+export interface SearchResults {
+  /** Zero-based index of the selected match; -1 when it is not among the highlighted ones. */
+  resultIndex: number;
+  /** Highlighted match count, capped at SEARCH_HIGHLIGHT_LIMIT. */
+  resultCount: number;
+}
+
 interface Callbacks {
   onData: (data: string) => void;
   onResize: (cols: number, rows: number) => void;
-  onCursorMove: (line: number, column: number) => void;
   onStatus: (message: string, error?: boolean) => void;
   /** An executed command line, captured from the buffer after Enter. */
   onCommand: (command: string) => void;
@@ -134,7 +164,12 @@ interface SemanticRow {
 export class TerminalController {
   readonly term: Terminal;
   readonly fitAddon = new FitAddon();
-  readonly searchAddon = new SearchAddon();
+  readonly searchAddon = new SearchAddon({
+    highlightLimit: SEARCH_HIGHLIGHT_LIMIT,
+  });
+  /** Fires after every search and whenever buffer changes shift the matches. */
+  readonly onSearchResults = this.searchAddon.onDidChangeResults;
+  private lastSearch: string | null = null;
   private readonly zmodem: ZmodemController;
   private readonly zmodemNotice: HTMLElement;
   private zmodemNoticeTimer: number | null = null;
@@ -280,14 +315,6 @@ export class TerminalController {
       this.syncGutter();
       if (this.inputAnchor || this.candidates.length) this.schedulePopupSync();
     });
-    this.term.onCursorMove(() => {
-      const buf = this.term.buffer.active;
-      this.callbacks.onCursorMove(
-        this.firstLineNumber + buf.baseY + buf.cursorY,
-        buf.cursorX + 1,
-      );
-    });
-
     this.term.attachCustomKeyEventHandler((event) => {
       if (event.type !== "keydown") return true;
       const key = event.key.toLowerCase();
@@ -522,6 +549,7 @@ export class TerminalController {
     // Decorations baked the previous palette's colors; drop them so the next
     // render recolors the viewport with the palette matching the new theme.
     this.disposeAllSemanticColors();
+    this.refreshSearch();
     if (this.term.rows > 0) this.term.refresh(0, this.term.rows - 1);
   }
 
@@ -533,10 +561,43 @@ export class TerminalController {
     this.syncGutter();
   }
 
-  search(query: string, forward = true) {
-    if (!query) return;
-    if (forward) this.searchAddon.findNext(query);
-    else this.searchAddon.findPrevious(query);
+  /**
+   * Find `query` in the buffer and highlight every match. `incremental`
+   * keeps the current match selected while the query is still being typed,
+   * instead of jumping to the next one.
+   */
+  search(query: string, forward = true, incremental = false) {
+    if (!query) {
+      this.clearSearch();
+      return;
+    }
+    this.lastSearch = query;
+    const options: ISearchOptions = {
+      incremental,
+      decorations: SEARCH_DECORATIONS[this.themeMode],
+    };
+    if (forward) this.searchAddon.findNext(query, options);
+    else this.searchAddon.findPrevious(query, options);
+  }
+
+  /** Drop the match highlights; also stops re-searching on every write. */
+  clearSearch() {
+    this.lastSearch = null;
+    this.searchAddon.clearDecorations();
+  }
+
+  /**
+   * Re-run the last search so highlights pick up the current theme colors.
+   * The addon only re-highlights when the term or matching options change,
+   * so the decorations are cleared first.
+   */
+  private refreshSearch() {
+    if (this.lastSearch === null) return;
+    this.searchAddon.clearDecorations();
+    this.searchAddon.findPrevious(this.lastSearch, {
+      incremental: true,
+      decorations: SEARCH_DECORATIONS[this.themeMode],
+    });
   }
 
   scrollToLine(absoluteLine: number) {

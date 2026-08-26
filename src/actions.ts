@@ -78,8 +78,6 @@ export function ensureController(id: string): TerminalController {
         useStore.getState().setSize(id, cols, rows);
         void api.resizeSession(id, cols, rows).catch(() => undefined);
       },
-      onCursorMove: (line, column) =>
-        useStore.getState().setCursor(id, line, column),
       onStatus: (message, error = false) => {
         const store = useStore.getState();
         store.setStatus(message);

@@ -6,7 +6,6 @@ export function StatusBar() {
   const tab = useActiveTab();
   const status = useStore((s) => s.status);
   const error = useStore((s) => s.error);
-  const gutterMode = useStore((s) => s.gutterMode);
   const [clock, setClock] = useState(() => new Date());
 
   useEffect(() => {
@@ -27,26 +26,15 @@ export function StatusBar() {
       <div className="status-spacer" />
       {tab && (
         <>
-          <span className="status-item">
-            {tab.info.kind === "local" ? "Local Mode" : "Remote Mode"}
-          </span>
           {tab.info.kind === "ftp" ? (
             <span className="status-item">Dual-pane file transfer</span>
           ) : (
-            <>
-              <span className="status-item">
-                Window {tab.rows}×{tab.cols}
-              </span>
-              <span className="status-item">
-                Ln {tab.cursorLine} Ch {tab.cursorColumn}
-              </span>
-            </>
+            <span className="status-item">
+              Window {tab.rows}×{tab.cols}
+            </span>
           )}
           <span className="status-item">{tab.info.protocol}</span>
         </>
-      )}
-      {tab?.info.kind !== "ftp" && (
-        <span className="status-item">gutter: {gutterMode}</span>
       )}
       <span className="status-item">{stamp}</span>
     </div>

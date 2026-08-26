@@ -17,8 +17,6 @@ export interface Tab {
   message?: string;
   cols: number;
   rows: number;
-  cursorLine: number;
-  cursorColumn: number;
 }
 
 export type PanelName = "filer" | "sessions" | "sender";
@@ -196,7 +194,6 @@ interface AppStore {
 
   applyState: (id: string, state: SessionState, message?: string) => void;
   setSize: (id: string, cols: number, rows: number) => void;
-  setCursor: (id: string, line: number, column: number) => void;
 
   togglePanel: (panel: PanelName) => void;
   setGutterMode: (mode: GutterMode) => void;
@@ -257,8 +254,6 @@ export const useStore = create<AppStore>((set, get) => ({
       state,
       cols: 80,
       rows: 24,
-      cursorLine: 1,
-      cursorColumn: 1,
     };
     set({ tabs: [...get().tabs, tab], activeId: info.id });
   },
@@ -328,10 +323,6 @@ export const useStore = create<AppStore>((set, get) => ({
 
   setSize(id, cols, rows) {
     set({ tabs: patchTab(get().tabs, id, { cols, rows }) });
-  },
-
-  setCursor(id, cursorLine, cursorColumn) {
-    set({ tabs: patchTab(get().tabs, id, { cursorLine, cursorColumn }) });
   },
 
   togglePanel(panel) {
