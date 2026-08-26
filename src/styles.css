@@ -232,10 +232,59 @@ textarea:focus {
   border-bottom: 1px solid var(--border);
 }
 
+/* macOS: the traffic lights sit ~2px below the bar's midline, so nudge the
+   menu titles down onto their centre line. */
+.menubar.is-mac {
+  padding-top: 4px;
+}
+
 /* Leave room for the macOS traffic lights drawn over the overlay title bar
    (the class is dropped in native fullscreen, where macOS hides them). */
-.menubar.is-mac {
+.menubar.has-traffic-lights {
   padding-left: 78px;
+}
+
+/* Windows: the window is undecorated, so the menubar carries the app icon and
+   the caption buttons (see MenuBar.tsx). */
+.menubar-icon {
+  width: 16px;
+  height: 16px;
+  margin-right: 6px;
+  flex: none;
+}
+
+.window-controls {
+  display: flex;
+  align-self: stretch;
+  margin-left: auto;
+  margin-right: -8px; /* flush with the window edge despite the bar padding */
+}
+
+.window-control {
+  width: 46px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 0;
+  color: var(--fg);
+}
+
+.window-control svg {
+  width: 10px;
+  height: 10px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1;
+  shape-rendering: crispEdges;
+}
+
+.window-control:hover {
+  background: var(--bg-hover);
+}
+
+.window-control.is-close:hover {
+  background: #c42b1c;
+  color: #fff;
 }
 
 .menu-item {
@@ -2070,16 +2119,12 @@ textarea:focus {
   flex: 0 0 32px;
   display: flex;
   align-items: center;
-  justify-content: flex-end;
+  justify-content: space-between;
   height: 32px;
   padding: 4px 8px;
   border-top: 1px solid var(--border);
   border-bottom: 1px solid var(--border);
   background: var(--bg-panel-alt);
-}
-
-.filer-toolbar.is-remote {
-  justify-content: space-between;
 }
 
 .filer-action {

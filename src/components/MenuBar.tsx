@@ -1,10 +1,14 @@
-import { useEffect, useRef, useState } from "react";
-import { getCurrentWindow } from "@tauri-apps/api/window";
+import { type ReactElement, useEffect, useRef, useState } from "react";
+import {
+  getCurrentWindow,
+  type Window as TauriWindow,
+} from "@tauri-apps/api/window";
 import { ask } from "@tauri-apps/plugin-dialog";
 import { openUrl } from "@tauri-apps/plugin-opener";
 
+import appIcon from "../../src-tauri/icons/32x32.png";
 import { commandHistory } from "../history";
-import { IS_MAC, shortcutLabel as sc } from "../platform";
+import { IS_MAC, IS_WINDOWS, shortcutLabel as sc } from "../platform";
 import { useStore } from "../store";
 import type { GutterMode } from "../terminal";
 import { getController } from "../terminalRegistry";
@@ -12,22 +16,30 @@ import type { ThemeMode } from "../types";
 
 const TUTORIAL_URL = "https://miskin-lee.github.io/EdgeTerm/tutorial.html";
 
-// With `titleBarStyle: "Overlay"` macOS paints the traffic lights over our
-// content, so the menubar doubles as the drag region and leaves room for them
-// (except in native fullscreen, where macOS hides the traffic lights).
+// The menubar is also the title bar: it is the window drag region and shares
+// its row with the window controls.
+// - macOS: `titleBarStyle: "Overlay"` paints the traffic lights over our
+//   content, so the bar leaves room for them (except in native fullscreen,
+//   where macOS hides them).
+// - Windows: the window is undecorated (see `create_main_window` in lib.rs),
+//   so the bar shows the app icon and draws minimize / maximize / close itself.
+// - Linux keeps the native title bar above the menubar.
 
-function useMacFullscreen(): boolean {
-  const [fullscreen, setFullscreen] = useState(false);
+/** Track a boolean window property, re-reading it whenever the window resizes. */
+function useWindowFlag(
+  enabled: boolean,
+  read: (win: TauriWindow) => Promise<boolean>,
+): boolean {
+  const [value, setValue] = useState(false);
   useEffect(() => {
-    if (!IS_MAC) return;
+    if (!enabled) return;
     const win = getCurrentWindow();
     let disposed = false;
     let unlisten: (() => void) | undefined;
     const sync = () => {
-      win
-        .isFullscreen()
-        .then((value) => {
-          if (!disposed) setFullscreen(value);
+      read(win)
+        .then((next) => {
+          if (!disposed) setValue(next);
         })
         .catch(() => {});
     };
@@ -43,8 +55,59 @@ function useMacFullscreen(): boolean {
       disposed = true;
       unlisten?.();
     };
-  }, []);
-  return fullscreen;
+  }, [enabled, read]);
+  return value;
+}
+
+const readFullscreen = (win: TauriWindow) => win.isFullscreen();
+const readMaximized = (win: TauriWindow) => win.isMaximized();
+
+interface WindowControl {
+  label: string;
+  icon: ReactElement;
+  action: (win: TauriWindow) => Promise<void>;
+  className?: string;
+}
+
+// Segoe Fluent-style caption glyphs on a 10px grid, drawn with 1px strokes.
+const MINIMIZE_ICON = <path d="M0 5.5h10" />;
+const MAXIMIZE_ICON = <rect x="0.5" y="0.5" width="9" height="9" />;
+const RESTORE_ICON = (
+  <>
+    <rect x="0.5" y="2.5" width="7" height="7" />
+    <path d="M2.5 2.5v-2h7v7h-2" />
+  </>
+);
+const CLOSE_ICON = <path d="M0.5 0.5l9 9M9.5 0.5l-9 9" />;
+
+function WindowControls({ maximized }: { maximized: boolean }) {
+  const controls: WindowControl[] = [
+    { label: "Minimize", icon: MINIMIZE_ICON, action: (win) => win.minimize() },
+    maximized
+      ? { label: "Restore Down", icon: RESTORE_ICON, action: (win) => win.unmaximize() }
+      : { label: "Maximize", icon: MAXIMIZE_ICON, action: (win) => win.maximize() },
+    { label: "Close", icon: CLOSE_ICON, action: (win) => win.close(), className: " is-close" },
+  ];
+  return (
+    <div className="window-controls">
+      {controls.map((control) => (
+        <button
+          key={control.label}
+          className={`window-control${control.className ?? ""}`}
+          title={control.label}
+          aria-label={control.label}
+          tabIndex={-1}
+          // Keep keyboard focus in the terminal.
+          onMouseDown={(event) => event.preventDefault()}
+          onClick={() => void control.action(getCurrentWindow()).catch(() => {})}
+        >
+          <svg viewBox="0 0 10 10" aria-hidden="true">
+            {control.icon}
+          </svg>
+        </button>
+      ))}
+    </div>
+  );
 }
 
 interface Entry {
@@ -72,7 +135,8 @@ interface Props {
 export function MenuBar(props: Props) {
   const [open, setOpen] = useState<string | null>(null);
   const barRef = useRef<HTMLDivElement>(null);
-  const macFullscreen = useMacFullscreen();
+  const macFullscreen = useWindowFlag(IS_MAC, readFullscreen);
+  const maximized = useWindowFlag(IS_WINDOWS, readMaximized);
 
   const activeId = useStore((s) => s.activeId);
   const panels = useStore((s) => s.panels);
@@ -91,9 +155,10 @@ export function MenuBar(props: Props) {
   useEffect(() => {
     if (!open) return;
     const dismiss = (event: MouseEvent) => {
-      const target = event.target as Node;
-      // Outside the bar, or on the bar's blank drag area (window drag start).
-      if (!barRef.current?.contains(target) || target === barRef.current) {
+      const target = event.target;
+      // Anywhere but a menu title or its dropdown: outside the bar, the bar's
+      // blank drag area (window drag start), the app icon or window controls.
+      if (!(target instanceof Element) || !target.closest(".menu-item")) {
         setOpen(null);
       }
     };
@@ -301,10 +366,19 @@ export function MenuBar(props: Props) {
 
   return (
     <div
-      className={`menubar${IS_MAC && !macFullscreen ? " is-mac" : ""}`}
+      className={`menubar${IS_MAC ? " is-mac" : ""}${IS_MAC && !macFullscreen ? " has-traffic-lights" : ""}`}
       ref={barRef}
       data-tauri-drag-region
     >
+      {IS_WINDOWS && (
+        <img
+          className="menubar-icon"
+          src={appIcon}
+          alt=""
+          draggable={false}
+          data-tauri-drag-region
+        />
+      )}
       {menus.map((menu) => (
         <div
           key={menu.title}
@@ -375,6 +449,7 @@ export function MenuBar(props: Props) {
           )}
         </div>
       ))}
+      {IS_WINDOWS && <WindowControls maximized={maximized} />}
     </div>
   );
 }

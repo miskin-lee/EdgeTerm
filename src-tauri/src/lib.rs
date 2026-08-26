@@ -10,6 +10,33 @@ mod tests;
 
 use commands::AppState;
 
+/// Build the main window from `tauri.conf.json` (`create: false` there keeps
+/// Tauri from creating it first).
+///
+/// `titleBarStyle: "Overlay"` only exists on macOS, so on Windows the native
+/// title bar would still sit above the menubar. Drop the decorations there and
+/// let the menubar draw the window controls itself (see `MenuBar.tsx`); tao
+/// keeps edge resizing, the DWM shadow and the maximized work-area fit for
+/// undecorated windows. Linux keeps the native frame: undecorated windows
+/// behave too differently across window managers.
+fn create_main_window(app: &tauri::App) -> tauri::Result<()> {
+    let config = app
+        .config()
+        .app
+        .windows
+        .first()
+        .cloned()
+        .expect("tauri.conf.json defines the main window");
+    #[allow(unused_mut)]
+    let mut builder = tauri::WebviewWindowBuilder::from_config(app.handle(), &config)?;
+    #[cfg(target_os = "windows")]
+    {
+        builder = builder.decorations(false);
+    }
+    builder.build()?;
+    Ok(())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -20,6 +47,7 @@ pub fn run() {
             #[cfg(desktop)]
             app.handle()
                 .plugin(tauri_plugin_updater::Builder::new().build())?;
+            create_main_window(app)?;
             Ok(())
         })
         .manage(AppState {

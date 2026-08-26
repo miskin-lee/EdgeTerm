@@ -385,6 +385,9 @@ export function FilerPanel() {
           : "Downloading"
     : "";
 
+  const remoteTitle = (label: string) =>
+    remote ? label : `${label} (connected SSH sessions only)`;
+
   return (
     <div className="panel" style={{ flex: 1 }}>
       <div className="panel-header">
@@ -397,51 +400,44 @@ export function FilerPanel() {
         </div>
       </div>
 
-      <div
-        className={`filer-toolbar${remote ? " is-remote" : ""}`}
-        role="toolbar"
-        aria-label="File actions"
-      >
-        {remote && (
-          <>
-            <button
-              className="panel-action filer-action"
-              onClick={() => setNewFolder("")}
-              title="New folder"
-              aria-label="New folder"
-              disabled={busy}
-            >
-              <FilerActionIcon name="new-folder" />
-            </button>
-            <button
-              className="panel-action filer-action"
-              onClick={upload}
-              title="Upload files"
-              aria-label="Upload files"
-              disabled={busy || !path}
-            >
-              <FilerActionIcon name="upload" />
-            </button>
-            <button
-              className="panel-action filer-action"
-              onClick={uploadFolder}
-              title="Upload folder"
-              aria-label="Upload folder"
-              disabled={busy || !path}
-            >
-              <FilerActionIcon name="upload-folder" />
-            </button>
-            <button
-              className="panel-action filer-action"
-              onClick={download}
-              title="Download file or folder"
-              aria-label="Download file or folder"
-              disabled={!selected || busy}
-            >
-              <FilerActionIcon name="download" />
-            </button>
-          </>
-        )}
+      {/* Remote-only actions stay visible on local sessions, just disabled. */}
+      <div className="filer-toolbar" role="toolbar" aria-label="File actions">
+        <button
+          className="panel-action filer-action"
+          onClick={() => setNewFolder("")}
+          title={remoteTitle("New folder")}
+          aria-label="New folder"
+          disabled={!remote || busy}
+        >
+          <FilerActionIcon name="new-folder" />
+        </button>
+        <button
+          className="panel-action filer-action"
+          onClick={upload}
+          title={remoteTitle("Upload files")}
+          aria-label="Upload files"
+          disabled={!remote || busy || !path}
+        >
+          <FilerActionIcon name="upload" />
+        </button>
+        <button
+          className="panel-action filer-action"
+          onClick={uploadFolder}
+          title={remoteTitle("Upload folder")}
+          aria-label="Upload folder"
+          disabled={!remote || busy || !path}
+        >
+          <FilerActionIcon name="upload-folder" />
+        </button>
+        <button
+          className="panel-action filer-action"
+          onClick={download}
+          title={remoteTitle("Download file or folder")}
+          aria-label="Download file or folder"
+          disabled={!remote || !selected || busy}
+        >
+          <FilerActionIcon name="download" />
+        </button>
         <button
           className="panel-action filer-action"
           onClick={() => void load(path)}
@@ -451,17 +447,15 @@ export function FilerPanel() {
         >
           <FilerActionIcon name="refresh" />
         </button>
-        {remote && (
-          <button
-            className="panel-action filer-action filer-action-danger"
-            onClick={removeSelected}
-            title="Delete"
-            aria-label="Delete"
-            disabled={!selected || busy}
-          >
-            <FilerActionIcon name="delete" />
-          </button>
-        )}
+        <button
+          className="panel-action filer-action filer-action-danger"
+          onClick={removeSelected}
+          title={remoteTitle("Delete")}
+          aria-label="Delete"
+          disabled={!remote || !selected || busy}
+        >
+          <FilerActionIcon name="delete" />
+        </button>
       </div>
 
       <div className="filer-path">
