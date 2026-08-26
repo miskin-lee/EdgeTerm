@@ -85,35 +85,17 @@ TAURI_SIGNING_PRIVATE_KEY_PASSWORD="$(security find-generic-password \
 
 要求：Rust 1.80.1+、Node 20.19+（推荐 Node 22 LTS）。macOS 需要 Xcode Command Line Tools。
 
-## 手动发布
+## 发布
 
-需要发布时，在仓库的 **Actions → Release → Run workflow** 中手动触发。工作流会校验版本和 updater 私钥，创建草稿 Release，构建所有支持的平台并生成签名更新包。发布前会删除意外产物，并逐项核对安装包、更新包及其 `latest.json` 映射。
+Release 由 GitHub Actions 上的 [Release 工作流](.github/workflows/release.yml)构建并发布。每个 Release 包含：
 
-发布前使用以下命令设置版本并提交。它会同步 `package.json`、`package-lock.json`、`Cargo.toml` 和 `Cargo.lock`；Tauri 安装包也直接读取这个版本：
+| 平台 | 安装包 |
+| --- | --- |
+| Windows x64 | NSIS 安装程序（`.exe`） |
+| macOS Apple Silicon | `.dmg`，以及应用内更新使用的 `.app.tar.gz` |
+| Linux x64 / ARM64 | `.AppImage` 和 `.deb` |
 
-```bash
-npm run version:set -- 0.1.1
-```
-
-Release tag 和软件版本严格一一对应，例如软件 `0.1.1` 只会发布为 `v0.1.1`。如果该 tag 已指向其他提交，工作流会停止并要求先提升版本，避免用同一版本号发布不同的软件内容。
-
-当前生成以下原生安装包：
-
-| 系统 | 架构 | Runner |
-| --- | --- | --- |
-| Linux | x64 | `ubuntu-22.04` |
-| Linux | ARM64 | `ubuntu-22.04-arm` |
-| Windows | x64 | `windows-2022` |
-| macOS | Apple Silicon ARM64 | `macos-15` |
-
-每个 Release 只包含 Linux x64 / ARM64 的 `.AppImage` 和 `.deb`、Windows x64 NSIS `.exe`、macOS Apple Silicon `.dmg` 及其 `.app.tar.gz` 更新包，以及 `latest.json`。不发布独立 `.sig`、`.rpm` 或 `.msi`；自动更新签名嵌入在 `latest.json` 中。Actions run 中仍会保留构建 Artifacts。工作流支持命令行触发：
-
-```bash
-gh workflow run release.yml
-gh run watch
-```
-
-Release 默认不做 macOS 公证或 Windows Authenticode 代码签名；macOS 应用只使用 ad-hoc 签名。它们与 updater 包签名是两套不同机制，用户首次安装时仍可能看到系统安全提示；对外分发前应配置平台开发者证书。工作流文件见 [`.github/workflows/release.yml`](.github/workflows/release.yml)。
+Release 不做 macOS 公证和 Windows Authenticode 代码签名，macOS 应用只使用 ad-hoc 签名。这与 updater 包签名是两套机制，首次安装时系统仍可能弹出安全提示。
 
 ## 已知限制
 

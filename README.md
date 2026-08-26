@@ -85,35 +85,17 @@ TAURI_SIGNING_PRIVATE_KEY_PASSWORD="$(security find-generic-password \
 
 Requirements: Rust 1.80.1+ and Node 20.19+ (Node 22 LTS recommended). macOS also requires the Xcode Command Line Tools.
 
-## Manual releases
+## Releases
 
-To publish a release, manually trigger **Actions → Release → Run workflow** in the repository. The workflow validates the version and updater private key, creates a draft Release, builds every supported platform, and generates signed update bundles. Each build job uploads only its own bundles and `.sig` files; a final job assembles `latest.json` from those signatures, removes unexpected assets (including the standalone `.sig` files), and verifies every supported installer and updater target against `latest.json` before publishing.
+Releases are built and published by the [Release workflow](.github/workflows/release.yml) on GitHub Actions. Each Release contains:
 
-Before releasing, use the following command to set and commit the version. It synchronizes `package.json`, `package-lock.json`, `Cargo.toml`, and `Cargo.lock`; Tauri installers also read this version directly:
+| Platform | Package |
+| --- | --- |
+| Windows x64 | NSIS installer (`.exe`) |
+| macOS Apple Silicon | `.dmg`, plus the `.app.tar.gz` bundle used by the in-app updater |
+| Linux x64 / ARM64 | `.AppImage` and `.deb` |
 
-```bash
-npm run version:set -- 0.3.9
-```
-
-Release tags map one-to-one to application versions. For example, version `0.1.1` can only be published as `v0.1.1`. If that tag already points to another commit, the workflow stops and requires a version bump, preventing different builds from being published under the same version number.
-
-The workflow currently builds native installers for these targets:
-
-| OS | Architecture | Runner |
-| --- | --- | --- |
-| Linux | x64 | `ubuntu-22.04` |
-| Linux | ARM64 | `ubuntu-22.04-arm` |
-| Windows | x64 | `windows-2022` |
-| macOS | Apple Silicon ARM64 | `macos-15` |
-
-Each Release contains only Linux `.AppImage` and `.deb` packages for x64 and ARM64, a Windows x64 NSIS `.exe`, a macOS Apple Silicon `.dmg` plus its `.app.tar.gz` updater bundle, and `latest.json`. Standalone `.sig`, `.rpm`, and `.msi` files are not published; updater signatures are embedded in `latest.json`. The Actions run also retains the build artifacts. The workflow can be triggered from the command line:
-
-```bash
-gh workflow run release.yml
-gh run watch
-```
-
-By default, releases are not notarized on macOS or code-signed with Windows Authenticode; the macOS application uses ad hoc signing only. These mechanisms are separate from updater-bundle signing, so users may still see operating-system security warnings on first install. Configure platform developer certificates before public distribution. See [`.github/workflows/release.yml`](.github/workflows/release.yml) for the workflow definition.
+Releases are not notarized on macOS or code-signed with Windows Authenticode; the macOS application uses ad hoc signing only. This is separate from updater-bundle signing, so the operating system may show a security warning on first install.
 
 ## Known limitations
 
