@@ -19,17 +19,21 @@ interface Props {
 export interface SearchOverlayHandle {
   /** Jump to the next match, or focus the input when there is no query yet. */
   findNext: () => void;
+  /** Focus the input and select the current query so typing replaces it. */
+  focus: () => void;
 }
 
-// Find Next while typing in the box: ⌘G on macOS, Alt+G elsewhere. The
-// window-level shortcut handler ignores key events from inputs, so the
-// shortcut is mirrored here.
-const isFindNextKey = (event: KeyboardEvent) =>
-  event.key.toLowerCase() === "g" &&
+// Find / Find Next while typing in the box: ⌘F / ⌘G on macOS, Alt+F /
+// Alt+G elsewhere. The window-level shortcut handler ignores key events
+// from inputs, so the shortcuts are mirrored here.
+const isAppShortcut = (event: KeyboardEvent, key: string) =>
+  event.key.toLowerCase() === key &&
   !event.shiftKey &&
   (IS_MAC
     ? event.metaKey && !event.ctrlKey && !event.altKey
     : event.altKey && !event.ctrlKey && !event.metaKey);
+const isFindKey = (event: KeyboardEvent) => isAppShortcut(event, "f");
+const isFindNextKey = (event: KeyboardEvent) => isAppShortcut(event, "g");
 
 export const SearchOverlay = forwardRef<SearchOverlayHandle, Props>(
   function SearchOverlay({ open, onOpenChange }, ref) {
@@ -38,8 +42,17 @@ export const SearchOverlay = forwardRef<SearchOverlayHandle, Props>(
     const [query, setQuery] = useState("");
     const inputRef = useRef<HTMLInputElement>(null);
 
+    // Select the previous query on focus so a new search (typed or pasted)
+    // replaces it instead of being appended to it.
+    const focusInput = () => {
+      const input = inputRef.current;
+      if (!input) return;
+      input.focus();
+      input.select();
+    };
+
     useEffect(() => {
-      if (open && tab?.info.kind !== "ftp") inputRef.current?.focus();
+      if (open && tab?.info.kind !== "ftp") focusInput();
     }, [open, tab?.info.id, tab?.info.kind]);
 
     const runSearch = (forward: boolean) => {
@@ -52,8 +65,9 @@ export const SearchOverlay = forwardRef<SearchOverlayHandle, Props>(
       () => ({
         findNext: () => {
           if (query) runSearch(true);
-          else inputRef.current?.focus();
+          else focusInput();
         },
+        focus: focusInput,
       }),
       [activeId, query],
     );
@@ -66,11 +80,18 @@ export const SearchOverlay = forwardRef<SearchOverlayHandle, Props>(
           ref={inputRef}
           value={query}
           placeholder="Find in buffer"
+          autoCapitalize="none"
+          autoCorrect="off"
+          spellCheck={false}
           onChange={(event) => setQuery(event.target.value)}
           onKeyDown={(event) => {
             if (event.key === "Enter") runSearch(!event.shiftKey);
             else if (event.key === "Escape") onOpenChange(false);
-            else if (isFindNextKey(event)) {
+            else if (isFindKey(event)) {
+              // ⌘F inside the box re-selects the query, like ⌘F elsewhere.
+              event.preventDefault();
+              event.currentTarget.select();
+            } else if (isFindNextKey(event)) {
               event.preventDefault();
               runSearch(true);
             }

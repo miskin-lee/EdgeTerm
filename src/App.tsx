@@ -150,9 +150,13 @@ export default function App() {
 
   const newSession = useCallback(() => setDialog({ profile: null }), []);
 
+  // Opening the box focuses it via its mount effect; when it is already
+  // open that effect does not re-run, so refocus it explicitly.
   const openSearch = useCallback(() => {
-    if (!ftpMode) setSearchOpen(true);
-  }, [ftpMode]);
+    if (ftpMode) return;
+    if (searchOpen) searchRef.current?.focus();
+    else setSearchOpen(true);
+  }, [ftpMode, searchOpen]);
 
   // Jump to the next match; with the search box closed this just opens it
   // so the user can type a query.
