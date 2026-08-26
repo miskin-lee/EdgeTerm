@@ -2,9 +2,28 @@
 
 [English](README.md) | [简体中文](README.zh-CN.md)
 
-一个仿照 [WindTerm](https://github.com/kingToolbox/WindTerm) 的终端 / SSH / FTP / 串口客户端，用 **Rust + Tauri v2** 构建，前端为 React + xterm.js。
+一个小巧、轻量的终端 / SSH / FTP / 串口客户端，用 **Rust + Tauri v2** 构建，前端为 React + xterm.js。Windows 和 macOS 安装包都不到 5 MB。
 
 整个 SSH 栈是纯 Rust 的（russh），不依赖 libssh2、OpenSSL 或 pkg-config，因此在任何装了 Rust 工具链的机器上都能直接编译。
+
+## 小巧轻量
+
+| 安装包（v0.4.1） | 下载体积 |
+| --- | --- |
+| Windows x64 安装程序（`.exe`） | **3.9 MB** |
+| macOS Apple Silicon（`.dmg`） | **4.7 MB** |
+| Linux `.deb`（x64 / ARM64） | **5.3 MB** / **5.2 MB** |
+| Linux `.AppImage`（x64 / ARM64） | 83 MB / 81 MB —— 自包含格式，内置整套 GTK / WebKit 运行时 |
+
+安装后整个程序就是一个约 5 MB 的可执行文件，前端资源直接编译在里面，没有额外的资源目录要解压。能做到这一点是因为 EdgeTerm：
+
+- 直接使用操作系统自带的 WebView 渲染界面（Windows 上是 WebView2，macOS 上是 WKWebView，Linux 上是 WebKitGTK），不像 Electron 类客户端那样自带一份 Chromium 和 Node.js 运行时；
+- 后端是单个原生 Rust 二进制，开启 LTO、`opt-level = "s"`、`panic = "abort"` 并剥离符号；
+- SSH、SFTP、FTP、串口和 ZMODEM 全部由 Rust crate 实现，不需要随包附带 OpenSSL、libssh2 等原生库。
+
+更新同样小：应用内更新下载的就是这几 MB 的安装包。
+
+唯一的运行时依赖就是系统 WebView：Windows 11 和更新过的 Windows 10 已经自带 WebView2（缺失时安装程序会自动下载），macOS 内置 WKWebView，`.deb` 则依赖发行版的 `libwebkit2gtk-4.1` 包。
 
 ## 功能
 
@@ -40,7 +59,7 @@ SSH / FTP 密码和 SSH 私钥口令保存在应用配置目录下仅当前系�
 | macOS | Windows / Linux | 动作 |
 | --- | --- | --- |
 | `⌘N` | `Alt+N` | 新建会话对话框 |
-| `⌘W` | `Ctrl+Shift+W` | 关闭当前会话（会话仍在线时会弹出确认，`Enter` 关闭，`Esc` 取消） |
+| `⌘W` | `Ctrl+Shift+W` | 关闭当前会话 |
 | `⌘F` / `⌘G` | `Ctrl+Shift+F` / `Ctrl+Shift+G` | 缓冲区内查找 / 下一个匹配 |
 | `⌘K` | `Alt+K` | 清屏 |
 | `⌘[` / `⌘]` | `Alt+[` / `Alt+]` | 切换到上一个 / 下一个已打开会话 |
@@ -49,25 +68,13 @@ SSH / FTP 密码和 SSH 私钥口令保存在应用配置目录下仅当前系�
 | `⌘C` / `⌘V` | `Ctrl+Shift+C` / `Ctrl+Shift+V` | 复制 / 粘贴（终端内） |
 | `⌘A` | `Ctrl+Shift+A` | 全选终端缓冲区 |
 
-## 自动更新
+特定场景下的按键：
 
-正式构建启动后会自动检查 GitHub 上的 Latest Release；发现更高版本时可在应用内下载、校验签名、安装并重启。也可以随时使用 **Help → Check for Updates…** 手动检查。更新源固定为仓库 Release 中由发布工作流生成的 `latest.json`，支持 Windows x64、macOS Apple Silicon，以及 Linux x64 / ARM64；Linux AppImage 和 DEB 安装会按原包格式更新。
+- **搜索框** —— `Enter` / `Shift+Enter` 跳到下一个 / 上一个匹配，`Esc` 关闭搜索；在框内输入时上表的查找 / 下一个匹配快捷键同样有效。
+- **命令补全弹窗** —— `↓` 进入列表，`↑` / `↓` 移动，`Enter` 或 `Tab` 采纳，`Esc` 关闭。弹窗只是显示、尚未选中任何一项时，其余按键仍然照常发给 Shell。
+- **终端输出中的链接** —— macOS 下 `⌘`+点击，Windows / Linux 下 `Ctrl`+点击。
 
-更新包使用 Tauri updater 密钥签名，签名校验不能关闭。公钥已经固定在 `src-tauri/tauri.conf.json`，对应私钥仅保存在发布环境中。首次使用新工作流前，仓库管理员必须把本机生成的私钥配置为 Actions Secret：
-
-```bash
-gh secret set TAURI_SIGNING_PRIVATE_KEY \
-  --repo miskin-lee/EdgeTerm \
-  < ~/.tauri/edgeterm-updater.key
-
-security find-generic-password \
-  -a EdgeTerm \
-  -s com.edgeterm.updater-signing \
-  -w | tr -d '\n' | gh secret set TAURI_SIGNING_PRIVATE_KEY_PASSWORD \
-    --repo miskin-lee/EdgeTerm
-```
-
-私钥密码保存在 macOS 登录钥匙串的 `com.edgeterm.updater-signing` 条目。务必把 `~/.tauri/edgeterm-updater.key` 和对应密码分别安全备份；丢失或替换其中任何一个后，已经安装的版本将无法验证后续更新。私钥和密码不得提交到 Git、Release 或构建 Artifact。
+Windows / Linux 下，单独的 `Ctrl+字母` 始终原样发给 Shell（`Ctrl+C` 中断、`Ctrl+W` 删词、`Ctrl+K` 删到行尾）；`Alt+字母` 留给 readline 的 Meta 键位，只占用 readline 没有绑定的 `Alt+N` 和 `Alt+K`，因此编辑和搜索类快捷键改用 `Ctrl+Shift`。macOS 下 `Ctrl` 和 `Option` 从不被占用，只有 `⌘` 组合键是应用快捷键。
 
 ## 运行
 
@@ -75,12 +82,7 @@ security find-generic-password \
 npm install
 npm run tauri dev      # 开发模式
 npm run tauri build -- --no-bundle  # 仅编译验证，不生成安装包
-
-# 维护者本地生成带 updater 签名的安装包
-TAURI_SIGNING_PRIVATE_KEY="$(< "$HOME/.tauri/edgeterm-updater.key")" \
-TAURI_SIGNING_PRIVATE_KEY_PASSWORD="$(security find-generic-password \
-  -a EdgeTerm -s com.edgeterm.updater-signing -w)" \
-  npm run tauri build
+npm run tauri build    # 生成当前平台的安装包
 ```
 
 要求：Rust 1.80.1+、Node 20.19+（推荐 Node 22 LTS）。macOS 需要 Xcode Command Line Tools。
@@ -95,7 +97,9 @@ Release 由 GitHub Actions 上的 [Release 工作流](.github/workflows/release.
 | macOS Apple Silicon | `.dmg`，以及应用内更新使用的 `.app.tar.gz` |
 | Linux x64 / ARM64 | `.AppImage` 和 `.deb` |
 
-Release 不做 macOS 公证和 Windows Authenticode 代码签名，macOS 应用只使用 ad-hoc 签名。这与 updater 包签名是两套机制，首次安装时系统仍可能弹出安全提示。
+已安装的版本启动时会检查最新 Release 并可在应用内直接更新；也可以随时用 **Help → Check for Updates…** 手动检查。
+
+Release 不做 macOS 公证和 Windows Authenticode 代码签名，macOS 应用只使用 ad-hoc 签名，首次安装时系统仍可能弹出安全提示。
 
 ## 已知限制
 
