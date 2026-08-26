@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { openSession } from "../actions";
 import * as api from "../api";
@@ -36,6 +36,9 @@ const RAW_TEXT_INPUT = {
   spellCheck: false,
 } as const;
 
+/** Column count of `.session-color-picker`; keep in sync with styles.css. */
+const COLOR_PICKER_COLUMNS = 8;
+
 const COMMON_BAUD_RATES = [
   1200, 2400, 4800, 9600, 14400, 19200, 38400, 57600, 115200, 230400,
   460800, 500000, 576000, 921600, 1000000, 1500000, 2000000, 3000000,
@@ -57,7 +60,36 @@ function validateProfile(profile: SessionProfile): string | null {
   return null;
 }
 
+function nextColorIndex(
+  key: string,
+  current: number,
+  count: number,
+  columns: number,
+): number | null {
+  switch (key) {
+    case "ArrowRight":
+      return (current + 1) % count;
+    case "ArrowLeft":
+      return (current - 1 + count) % count;
+    case "ArrowDown":
+      return current + columns < count ? current + columns : current % columns;
+    case "ArrowUp": {
+      if (current - columns >= 0) return current - columns;
+      const lastRowStart = Math.floor((count - 1) / columns) * columns;
+      const target = lastRowStart + (current % columns);
+      return target < count ? target : target - columns;
+    }
+    case "Home":
+      return 0;
+    case "End":
+      return count - 1;
+    default:
+      return null;
+  }
+}
+
 export function SessionDialog({ initial, onClose }: Props) {
+  const colorPickerRef = useRef<HTMLDivElement>(null);
   const [profile, setProfile] = useState<SessionProfile>(() =>
     initial
       ? {
@@ -222,22 +254,56 @@ export function SessionDialog({ initial, onClose }: Props) {
               <div className="session-field">
                 <span className="session-field-label">Color</span>
                 <div
+                  ref={colorPickerRef}
                   className="session-color-picker"
-                  role="group"
+                  role="radiogroup"
                   aria-label="Session color"
+                  onKeyDown={(event) => {
+                    const current = SESSION_COLORS.indexOf(
+                      (event.target as HTMLElement).dataset.color ?? "",
+                    );
+                    if (current < 0) return;
+                    const next = nextColorIndex(
+                      event.key,
+                      current,
+                      SESSION_COLORS.length,
+                      COLOR_PICKER_COLUMNS,
+                    );
+                    if (next == null) return;
+                    event.preventDefault();
+                    const color = SESSION_COLORS[next];
+                    patch({ color });
+                    colorPickerRef.current
+                      ?.querySelector<HTMLButtonElement>(
+                        `[data-color="${color}"]`,
+                      )
+                      ?.focus();
+                  }}
                 >
-                  {SESSION_COLORS.map((color) => (
-                    <button
-                      key={color}
-                      type="button"
-                      className={`session-color-option${profile.color === color ? " is-selected" : ""}`}
-                      style={{ background: color }}
-                      aria-pressed={profile.color === color}
-                      aria-label={`Use session color ${color}`}
-                      title={color}
-                      onClick={() => patch({ color })}
-                    />
-                  ))}
+                  {SESSION_COLORS.map((color, index) => {
+                    const selected = profile.color === color;
+                    // Roving tabindex: only the selected swatch is a Tab stop,
+                    // so Tab moves on to the next field and arrow keys pick colors.
+                    const tabbable =
+                      selected ||
+                      (!SESSION_COLORS.includes(profile.color ?? "") &&
+                        index === 0);
+                    return (
+                      <button
+                        key={color}
+                        type="button"
+                        role="radio"
+                        data-color={color}
+                        tabIndex={tabbable ? 0 : -1}
+                        className={`session-color-option${selected ? " is-selected" : ""}`}
+                        style={{ background: color }}
+                        aria-checked={selected}
+                        aria-label={`Use session color ${color}`}
+                        title={color}
+                        onClick={() => patch({ color })}
+                      />
+                    );
+                  })}
                 </div>
               </div>
             </div>
