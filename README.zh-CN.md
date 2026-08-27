@@ -13,7 +13,6 @@
 | Windows x64 安装程序（`.exe`） | **3.9 MB** |
 | macOS Apple Silicon（`.dmg`） | **4.7 MB** |
 | Linux `.deb`（x64 / ARM64） | **5.3 MB** / **5.2 MB** |
-| Linux `.AppImage`（x64 / ARM64） | 83 MB / 81 MB —— 自包含格式，内置整套 GTK / WebKit 运行时 |
 
 安装后整个程序就是一个约 5 MB 的可执行文件，前端资源直接编译在里面，没有额外的资源目录要解压。能做到这一点是因为 EdgeTerm：
 

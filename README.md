@@ -13,7 +13,6 @@ The entire SSH stack is written in pure Rust using `russh`. It does not depend o
 | Windows x64 installer (`.exe`) | **3.9 MB** |
 | macOS Apple Silicon (`.dmg`) | **4.7 MB** |
 | Linux `.deb` (x64 / ARM64) | **5.3 MB** / **5.2 MB** |
-| Linux `.AppImage` (x64 / ARM64) | 83 MB / 81 MB — self-contained, bundles its own GTK / WebKit runtime |
 
 Installed, the whole application is a single executable of about 5 MB; the frontend is compiled into it, so there is no separate resources folder to unpack. That is possible because EdgeTerm:
 
