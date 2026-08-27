@@ -8,6 +8,7 @@ import {
 
 import { acceptHostKey } from "./actions";
 import * as api from "./api";
+import { CloseSessionDialog } from "./components/CloseSessionDialog";
 import { FontSizeDialog } from "./components/FontSizeDialog";
 import { HostKeyDialog } from "./components/HostKeyDialog";
 import { MenuBar } from "./components/MenuBar";
@@ -50,12 +51,19 @@ export default function App() {
   const setActive = useStore((s) => s.setActive);
   const activateAdjacentTab = useStore((s) => s.activateAdjacentTab);
   const closeTab = useStore((s) => s.closeTab);
+  const requestCloseTab = useStore((s) => s.requestCloseTab);
+  const setClosePrompt = useStore((s) => s.setClosePrompt);
   const applyState = useStore((s) => s.applyState);
   const hostKeyPrompt = useStore((s) => s.hostKeyPrompt);
   const setHostKeyPrompt = useStore((s) => s.setHostKeyPrompt);
   const theme = useStore((s) => s.theme);
   const activeTab = useActiveTab();
   const ftpMode = activeTab?.info.kind === "ftp";
+  const closingTab = useStore((s) =>
+    s.closePrompt === null
+      ? undefined
+      : s.tabs.find((tab) => tab.info.id === s.closePrompt),
+  );
 
   const [dialog, setDialog] = useState<{ profile: SessionProfile | null } | null>(
     null,
@@ -176,7 +184,7 @@ export default function App() {
           return;
         case "closeSession":
           event.preventDefault();
-          if (activeId) void closeTab(activeId);
+          if (activeId) requestCloseTab(activeId);
           return;
         case "find":
           event.preventDefault();
@@ -207,11 +215,11 @@ export default function App() {
   }, [
     activateAdjacentTab,
     activeId,
-    closeTab,
     findNext,
     ftpMode,
     newSession,
     openSearch,
+    requestCloseTab,
     setActive,
     togglePanel,
   ]);
@@ -317,6 +325,19 @@ export default function App() {
         <SessionDialog
           initial={dialog.profile}
           onClose={() => setDialog(null)}
+        />
+      )}
+
+      {closingTab && (
+        <CloseSessionDialog
+          tab={closingTab}
+          onConfirm={() => {
+            // Dismiss first so a second Enter cannot re-enter closeTab while
+            // the backend close is still in flight.
+            setClosePrompt(null);
+            void closeTab(closingTab.info.id);
+          }}
+          onCancel={() => setClosePrompt(null)}
         />
       )}
 

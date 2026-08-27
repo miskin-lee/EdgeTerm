@@ -192,6 +192,12 @@ interface AppStore {
    * connection.
    */
   hostKeyPrompt: HostKeyPrompt | null;
+  /**
+   * Id of a live tab whose close is waiting for the user's confirmation.
+   * Kept in the store so every close entry point (tab ✕, menu, ⌘W) funnels
+   * into the one dialog rendered by App.
+   */
+  closePrompt: string | null;
 
   loadProfiles: () => Promise<void>;
   upsertProfile: (profile: SessionProfile) => Promise<SessionProfile>;
@@ -200,6 +206,13 @@ interface AppStore {
   addTab: (info: SessionInfo, state?: SessionState) => void;
   updateTabInfo: (id: string, info: SessionInfo) => void;
   closeTab: (id: string) => Promise<void>;
+  /**
+   * Closes a tab, asking first while its session is still connecting or
+   * connected. Tabs that already ended (closed / error) have nothing left to
+   * lose and close immediately.
+   */
+  requestCloseTab: (id: string) => void;
+  setClosePrompt: (id: string | null) => void;
   setActive: (id: string) => void;
   activateAdjacentTab: (direction: -1 | 1) => void;
 
@@ -237,6 +250,7 @@ export const useStore = create<AppStore>((set, get) => ({
   error: null,
   errorSessionId: null,
   hostKeyPrompt: null,
+  closePrompt: null,
 
   async loadProfiles() {
     set({ profiles: await api.listProfiles() });
@@ -295,7 +309,22 @@ export const useStore = create<AppStore>((set, get) => ({
       errorSessionId: clearsSessionError ? null : current.errorSessionId,
       hostKeyPrompt:
         current.hostKeyPrompt?.sessionId === id ? null : current.hostKeyPrompt,
+      closePrompt: current.closePrompt === id ? null : current.closePrompt,
     });
+  },
+
+  requestCloseTab(id) {
+    const tab = get().tabs.find((item) => item.info.id === id);
+    if (!tab) return;
+    if (tab.state === "closed" || tab.state === "error") {
+      void get().closeTab(id);
+      return;
+    }
+    set({ closePrompt: id });
+  },
+
+  setClosePrompt(id) {
+    set({ closePrompt: id });
   },
 
   setActive(id) {

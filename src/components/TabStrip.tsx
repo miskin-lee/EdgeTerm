@@ -11,7 +11,7 @@ export function TabStrip({ onNewSession }: Props) {
   const tabs = useStore((s) => s.tabs);
   const activeId = useStore((s) => s.activeId);
   const setActive = useStore((s) => s.setActive);
-  const closeTab = useStore((s) => s.closeTab);
+  const requestCloseTab = useStore((s) => s.requestCloseTab);
 
   return (
     <div className="tabstrip">
@@ -41,7 +41,7 @@ export function TabStrip({ onNewSession }: Props) {
               className="tab-close"
               onMouseDown={(event) => {
                 event.stopPropagation();
-                void closeTab(tab.info.id);
+                requestCloseTab(tab.info.id);
               }}
               title="Close session"
             >
