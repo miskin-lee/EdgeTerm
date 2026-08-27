@@ -5,6 +5,7 @@ import { commandHistory } from "./history";
 import type { GutterMode } from "./terminal";
 import { disposeController } from "./terminalRegistry";
 import type {
+  HostKeyChange,
   SessionInfo,
   SessionProfile,
   SessionState,
@@ -17,6 +18,14 @@ export interface Tab {
   message?: string;
   cols: number;
   rows: number;
+}
+
+/** A refused SSH host key, kept until the user accepts it or gives up. */
+export interface HostKeyPrompt {
+  sessionId: string;
+  /** The profile to reconnect with, secrets included. */
+  profile: SessionProfile;
+  change: HostKeyChange;
 }
 
 export type PanelName = "filer" | "sessions" | "sender";
@@ -177,6 +186,12 @@ interface AppStore {
   status: string;
   error: string | null;
   errorSessionId: string | null;
+  /**
+   * A refused SSH host key awaiting the user's decision. It lives in the
+   * store so the dialog is shown from App no matter which UI started the
+   * connection.
+   */
+  hostKeyPrompt: HostKeyPrompt | null;
 
   loadProfiles: () => Promise<void>;
   upsertProfile: (profile: SessionProfile) => Promise<SessionProfile>;
@@ -201,6 +216,7 @@ interface AppStore {
   resetSettings: () => void;
   setStatus: (status: string) => void;
   setError: (error: string | null, sessionId?: string) => void;
+  setHostKeyPrompt: (prompt: HostKeyPrompt | null) => void;
 }
 
 const patchTab = (tabs: Tab[], id: string, patch: Partial<Tab>): Tab[] =>
@@ -220,6 +236,7 @@ export const useStore = create<AppStore>((set, get) => ({
   status: "Ready",
   error: null,
   errorSessionId: null,
+  hostKeyPrompt: null,
 
   async loadProfiles() {
     set({ profiles: await api.listProfiles() });
@@ -276,6 +293,8 @@ export const useStore = create<AppStore>((set, get) => ({
       status: clearsSessionError ? "Ready" : current.status,
       error: clearsSessionError ? null : current.error,
       errorSessionId: clearsSessionError ? null : current.errorSessionId,
+      hostKeyPrompt:
+        current.hostKeyPrompt?.sessionId === id ? null : current.hostKeyPrompt,
     });
   },
 
@@ -389,6 +408,10 @@ export const useStore = create<AppStore>((set, get) => ({
 
   setError(error, sessionId) {
     set({ error, errorSessionId: error ? (sessionId ?? null) : null });
+  },
+
+  setHostKeyPrompt(prompt) {
+    set({ hostKeyPrompt: prompt });
   },
 }));
 

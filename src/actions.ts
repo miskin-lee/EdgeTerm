@@ -1,6 +1,6 @@
 import * as api from "./api";
 import { commandHistory } from "./history";
-import { useStore } from "./store";
+import { useStore, type HostKeyPrompt } from "./store";
 import { TerminalController } from "./terminal";
 import {
   disposeController,
@@ -102,27 +102,53 @@ export function ensureController(id: string): TerminalController {
 export async function openSession(
   profile: SessionProfile,
 ): Promise<string | null> {
-  const store = useStore.getState();
   const id = newSessionId();
+  useStore.getState().addTab(pendingSessionInfo(id, profile), "connecting");
+  if (profile.kind !== "ftp") ensureController(id);
+  return connectSession(id, profile);
+}
+
+/**
+ * Connects the backend session behind an existing tab. Resolves to the tab id
+ * once the tab has something to show — a live session, or a changed host key
+ * waiting on the user — and to null when the connection failed or the tab
+ * was closed meanwhile.
+ */
+async function connectSession(
+  id: string,
+  profile: SessionProfile,
+): Promise<string | null> {
+  const store = useStore.getState();
   const label = profile.name || profile.host || profile.portName || "session";
 
   store.setStatus(`Connecting to ${label}…`);
   store.setError(null);
-  store.addTab(pendingSessionInfo(id, profile), "connecting");
-  if (profile.kind !== "ftp") ensureController(id);
+  store.applyState(id, "connecting");
 
   try {
-    const info = await api.openSession(profile, id);
+    const outcome = await api.openSession(profile, id);
 
     // The user may close the optimistic tab while SSH is still negotiating.
     // In that case close the newly-created backend session immediately.
     const connectedStore = useStore.getState();
     const tab = connectedStore.tabs.find((item) => item.info.id === id);
     if (!tab) {
-      await api.closeSession(id).catch(() => undefined);
+      if (outcome.status === "connected") {
+        await api.closeSession(id).catch(() => undefined);
+      }
       return null;
     }
 
+    if (outcome.status === "hostKeyChanged") {
+      // Nothing was opened. Park the tab on the refusal and let the user
+      // decide in the host key dialog, which reconnects on accept.
+      const { change } = outcome;
+      failSession(id, change.message);
+      connectedStore.setHostKeyPrompt({ sessionId: id, profile, change });
+      return id;
+    }
+
+    const { info } = outcome;
     connectedStore.updateTabInfo(id, info);
     connectedStore.applyState(id, "connected");
     connectedStore.setStatus(`Connected to ${info.name}`);
@@ -135,18 +161,39 @@ export async function openSession(
     return id;
   } catch (e) {
     const message = String(e);
-    const failedStore = useStore.getState();
-    if (failedStore.tabs.some((tab) => tab.info.id === id)) {
-      const terminalMessage = message.replace(/[\x00-\x1f\x7f]/g, " ");
-      failedStore.applyState(id, "error", message);
-      failedStore.setError(message, id);
-      failedStore.setStatus(`Failed: ${message}`);
-      getController(id)?.writeText(
-        `\r\n\x1b[31m[connection failed: ${terminalMessage}]\x1b[0m\r\n`,
-      );
+    if (useStore.getState().tabs.some((tab) => tab.info.id === id)) {
+      failSession(id, message);
     } else {
       disposeController(id);
     }
     return null;
   }
+}
+
+/** Marks a tab's connection as failed and echoes why into its terminal. */
+function failSession(id: string, message: string): void {
+  const store = useStore.getState();
+  store.applyState(id, "error", message);
+  store.setError(message, id);
+  store.setStatus(`Failed: ${message}`);
+  const terminalMessage = message.replace(/[\x00-\x1f\x7f]/g, " ");
+  getController(id)?.writeText(
+    `\r\n\x1b[31m[connection failed: ${terminalMessage}]\x1b[0m\r\n`,
+  );
+}
+
+/**
+ * Accepts the key a host now presents — replacing every known_hosts entry for
+ * it — and reconnects the tab that was refused. Rejects when known_hosts could
+ * not be updated; a failure of the reconnect itself shows on the tab.
+ */
+export async function acceptHostKey(prompt: HostKeyPrompt): Promise<void> {
+  await api.acceptHostKey(prompt.change);
+  const store = useStore.getState();
+  store.setHostKeyPrompt(null);
+  if (!store.tabs.some((tab) => tab.info.id === prompt.sessionId)) return;
+  getController(prompt.sessionId)?.writeText(
+    `\r\n[accepted new host key ${prompt.change.fingerprint}; reconnecting]\r\n`,
+  );
+  void connectSession(prompt.sessionId, prompt.profile);
 }

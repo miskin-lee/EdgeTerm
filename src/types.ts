@@ -42,6 +42,28 @@ export interface SessionInfo {
   supportsRemoteFiles: boolean;
 }
 
+/** An SSH host whose key no longer matches the one recorded in known_hosts. */
+export interface HostKeyChange {
+  host: string;
+  port: number;
+  /** Algorithm of the presented key, e.g. "ssh-ed25519". */
+  keyType: string;
+  /** SHA256 fingerprint of the presented key, for the user to verify. */
+  fingerprint: string;
+  /** The presented key as an OpenSSH public key line; this exact key is recorded on accept. */
+  publicKey: string;
+  /** known_hosts file and line holding the conflicting entry. */
+  knownHosts: string;
+  line: number;
+  /** One-line explanation for the terminal and status bar. */
+  message: string;
+}
+
+/** What open_session produced: a live session, or a decision for the user. */
+export type OpenSessionOutcome =
+  | { status: "connected"; info: SessionInfo }
+  | { status: "hostKeyChanged"; change: HostKeyChange };
+
 export interface FileEntry {
   name: string;
   path: string;

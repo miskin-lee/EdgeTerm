@@ -2021,6 +2021,33 @@ textarea:focus {
   font-size: 11px;
 }
 
+.host-key-dialog {
+  width: min(520px, calc(100vw - 40px));
+}
+
+.host-key-facts {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 4px 12px;
+  margin: 4px 0;
+}
+
+.host-key-facts dt {
+  color: var(--fg-dim);
+}
+
+.host-key-facts dd {
+  margin: 0;
+  font-family: var(--font-mono);
+  overflow-wrap: anywhere;
+  user-select: text;
+}
+
+.host-key-dialog code {
+  font-family: var(--font-mono);
+  user-select: text;
+}
+
 .update-dialog {
   width: min(480px, calc(100vw - 40px));
 }

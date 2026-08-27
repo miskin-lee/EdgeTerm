@@ -1,10 +1,14 @@
+use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use russh::client::{self, Handle, Msg};
 use russh::keys::agent::client::{AgentClient, AgentStream};
-use russh::keys::{PrivateKeyWithHashAlg, PublicKey};
+use russh::keys::known_hosts::{
+    check_known_hosts_path, known_host_keys_path, learn_known_hosts_path,
+};
+use russh::keys::{HashAlg, PrivateKeyWithHashAlg, PublicKey};
 use russh::{Channel, ChannelMsg};
 use russh_sftp::client::error::Error as SftpError;
 use russh_sftp::client::SftpSession;
@@ -22,7 +26,7 @@ use super::{
     TransferProgress,
 };
 use crate::error::{AppError, Result};
-use crate::model::{AuthKind, DirListing, FileEntry, SessionProfile};
+use crate::model::{AuthKind, DirListing, FileEntry, HostKeyChange, SessionProfile};
 
 /// How long output may sit in the pump before it is flushed to the UI.
 const FLUSH_INTERVAL: Duration = Duration::from_millis(8);
@@ -39,35 +43,155 @@ struct Client {
     port: u16,
 }
 
+/// Why the handshake failed. Carrying the host key verdict out of the russh
+/// handler lets `connect` report a refused key to the user instead of
+/// surfacing russh's terse "Unknown server key".
+#[derive(Debug)]
+enum HandshakeError {
+    Ssh(russh::Error),
+    /// `known_hosts` line `line` records a different key of the same
+    /// algorithm for this host, so the connection was refused.
+    HostKeyChanged {
+        known_hosts: PathBuf,
+        line: usize,
+        key: PublicKey,
+    },
+}
+
+impl From<russh::Error> for HandshakeError {
+    fn from(e: russh::Error) -> Self {
+        HandshakeError::Ssh(e)
+    }
+}
+
 impl client::Handler for Client {
-    type Error = russh::Error;
+    type Error = HandshakeError;
 
     async fn check_server_key(
         &mut self,
         server_public_key: &PublicKey,
     ) -> std::result::Result<bool, Self::Error> {
-        match russh::keys::check_known_hosts(&self.host, self.port, server_public_key) {
-            Ok(true) => Ok(true),
-            Ok(false) => {
-                let _ = russh::keys::known_hosts::learn_known_hosts(
-                    &self.host,
-                    self.port,
-                    server_public_key,
-                );
-                Ok(true)
+        match known_hosts_file() {
+            Some(path) => {
+                verify_host_key(&self.host, self.port, server_public_key, &path).map(|()| true)
             }
-            Err(russh::keys::Error::KeyChanged { .. }) => Ok(false),
-            // No known_hosts file yet, or it could not be parsed: learn and continue.
-            Err(_) => {
-                let _ = russh::keys::known_hosts::learn_known_hosts(
-                    &self.host,
-                    self.port,
-                    server_public_key,
-                );
-                Ok(true)
-            }
+            // Without a home directory there is nothing to check against or
+            // to record into.
+            None => Ok(true),
         }
     }
+}
+
+fn known_hosts_file() -> Option<PathBuf> {
+    dirs::home_dir().map(|home| home.join(".ssh").join("known_hosts"))
+}
+
+/// Apply the accept-new policy against the entries in `known_hosts`.
+fn verify_host_key(
+    host: &str,
+    port: u16,
+    key: &PublicKey,
+    known_hosts: &Path,
+) -> std::result::Result<(), HandshakeError> {
+    match check_known_hosts_path(host, port, key, known_hosts) {
+        Ok(true) => Ok(()),
+        Err(russh::keys::Error::KeyChanged { line }) => Err(HandshakeError::HostKeyChanged {
+            known_hosts: known_hosts.to_path_buf(),
+            line: known_hosts_line_number(known_hosts, line),
+            key: key.clone(),
+        }),
+        // An unknown host, or a known_hosts file that is missing or cannot be
+        // parsed: learn and continue.
+        Ok(false) | Err(_) => {
+            let _ = learn_known_hosts_path(host, port, key, known_hosts);
+            Ok(())
+        }
+    }
+}
+
+/// russh numbers the line in `KeyChanged` without counting `#` comment lines,
+/// so map its index back to the real line number in the file.
+fn known_hosts_line_number(known_hosts: &Path, russh_line: usize) -> usize {
+    let Ok(content) = std::fs::read_to_string(known_hosts) else {
+        return russh_line;
+    };
+    content
+        .lines()
+        .enumerate()
+        .filter(|(_, line)| !line.starts_with('#'))
+        .nth(russh_line.saturating_sub(1))
+        .map(|(index, _)| index + 1)
+        .unwrap_or(russh_line)
+}
+
+/// Record `key` as the only key for `host:port`, dropping every entry the
+/// file held for it. Accepting a changed key means the user decided the
+/// address now belongs to a different server, so its other recorded keys are
+/// stale too: this is `ssh-keygen -R` followed by a fresh first contact.
+fn replace_host_key(host: &str, port: u16, key: &PublicKey, known_hosts: &Path) -> Result<()> {
+    let stale: HashSet<usize> = known_host_keys_path(host, port, known_hosts)
+        .map_err(|e| AppError::new(format!("cannot read {}: {e}", known_hosts.display())))?
+        .into_iter()
+        .map(|(line, _)| line)
+        .collect();
+    if !stale.is_empty() {
+        let content = std::fs::read_to_string(known_hosts)?;
+        // Walk the file the way russh numbers it: comment lines do not count.
+        let mut index = 0;
+        let mut kept = String::with_capacity(content.len());
+        for line in content.split_inclusive('\n') {
+            if !line.starts_with('#') {
+                index += 1;
+                if stale.contains(&index) {
+                    continue;
+                }
+            }
+            kept.push_str(line);
+        }
+        std::fs::write(known_hosts, kept)?;
+    }
+    learn_known_hosts_path(host, port, key, known_hosts)
+        .map_err(|e| AppError::new(format!("cannot update {}: {e}", known_hosts.display())))
+}
+
+/// Accept the key a host presented after it was refused as changed:
+/// `public_key` is the OpenSSH public key line from the reported
+/// `HostKeyChange`, and it replaces the host's `known_hosts` entries.
+pub fn accept_host_key(host: &str, port: u16, public_key: &str) -> Result<()> {
+    let key = PublicKey::from_openssh(public_key)
+        .map_err(|e| AppError::new(format!("invalid host key: {e}")))?;
+    let known_hosts = known_hosts_file()
+        .ok_or_else(|| AppError::new("cannot locate ~/.ssh/known_hosts: no home directory"))?;
+    replace_host_key(host, port, &key, &known_hosts)
+}
+
+/// Describe a refused host key for the frontend, which shows it to the user
+/// and offers to accept the new key.
+fn describe_host_key_change(
+    host: &str,
+    port: u16,
+    known_hosts: &Path,
+    line: usize,
+    key: &PublicKey,
+) -> Result<HostKeyChange> {
+    let fingerprint = key.fingerprint(HashAlg::Sha256).to_string();
+    let public_key = key
+        .to_openssh()
+        .map_err(|e| AppError::new(format!("cannot encode host key: {e}")))?;
+    Ok(HostKeyChange {
+        message: format!(
+            "host key for {host}:{port} has changed: the server now presents {fingerprint}, \
+             which does not match {} line {line}",
+            known_hosts.display()
+        ),
+        host: host.to_string(),
+        port,
+        key_type: key.algorithm().to_string(),
+        fingerprint,
+        public_key,
+        known_hosts: known_hosts.display().to_string(),
+        line,
+    })
 }
 
 pub struct SshConnection {
@@ -75,7 +199,14 @@ pub struct SshConnection {
     channel: Channel<Msg>,
 }
 
-pub async fn connect(profile: &SessionProfile) -> Result<SshConnection> {
+pub enum ConnectOutcome {
+    Ready(SshConnection),
+    /// The handshake was refused because the host's key changed; nothing was
+    /// opened. The user may accept the key and connect again.
+    HostKeyChanged(HostKeyChange),
+}
+
+pub async fn connect(profile: &SessionProfile) -> Result<ConnectOutcome> {
     let host = profile
         .host
         .clone()
@@ -96,7 +227,7 @@ pub async fn connect(profile: &SessionProfile) -> Result<SshConnection> {
         ..Default::default()
     });
 
-    let mut handle = client::connect(
+    let mut handle = match client::connect(
         config,
         (host.as_str(), port),
         Client {
@@ -105,7 +236,25 @@ pub async fn connect(profile: &SessionProfile) -> Result<SshConnection> {
         },
     )
     .await
-    .map_err(|e| AppError::new(format!("cannot reach {host}:{port}: {e}")))?;
+    {
+        Ok(handle) => handle,
+        Err(HandshakeError::HostKeyChanged {
+            known_hosts,
+            line,
+            key,
+        }) => {
+            return Ok(ConnectOutcome::HostKeyChanged(describe_host_key_change(
+                &host,
+                port,
+                &known_hosts,
+                line,
+                &key,
+            )?));
+        }
+        Err(HandshakeError::Ssh(e)) => {
+            return Err(AppError::new(format!("cannot reach {host}:{port}: {e}")));
+        }
+    };
 
     authenticate(&mut handle, profile, &username).await?;
 
@@ -120,7 +269,7 @@ pub async fn connect(profile: &SessionProfile) -> Result<SshConnection> {
     let _ = channel.set_env(false, "TERM_PROGRAM", "EdgeTerm").await;
     channel.request_shell(true).await?;
 
-    Ok(SshConnection { handle, channel })
+    Ok(ConnectOutcome::Ready(SshConnection { handle, channel }))
 }
 
 async fn authenticate(
@@ -675,7 +824,147 @@ fn expand_tilde(path: &str) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::{copy_in_chunks, TRANSFER_CHUNK_SIZE};
+    use std::path::{Path, PathBuf};
+
+    use russh::keys::PublicKey;
+
+    use super::{
+        copy_in_chunks, replace_host_key, verify_host_key, HandshakeError, TRANSFER_CHUNK_SIZE,
+    };
+
+    const HOST: &str = "192.0.2.10";
+    const ED25519_A: &str =
+        "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIIcCiNIPQD3zMS3LgYoVYM8VShLj/4dvS3+yBaPqfGSr";
+    const ED25519_B: &str =
+        "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIFqCv2Sfw6yBfnn1kVkrFEMG076iC8w+NlmGZFBs70qQ";
+    const ECDSA_A: &str = "ecdsa-sha2-nistp256 AAAAE2VjZHNhLXNoYTItbmlzdHAyNTYAAAAIbmlzdHAyNTYAAABBBN1WvqLHKYqgraIJhxCF5Wyfs5ByZSzklDNaeFRli6QJLB9MWfaa4AXNL6rX9oOgLyz/Ylv+J6q9M/fpDZmuSkU=";
+
+    fn key(openssh: &str) -> PublicKey {
+        PublicKey::from_openssh(openssh).expect("valid test key")
+    }
+
+    /// A known_hosts path inside a private temporary directory that is
+    /// removed again on drop.
+    struct KnownHosts(PathBuf);
+
+    impl KnownHosts {
+        fn new() -> Self {
+            let dir = std::env::temp_dir().join(format!("edgeterm-test-{}", uuid::Uuid::new_v4()));
+            std::fs::create_dir_all(&dir).expect("create temp dir");
+            KnownHosts(dir.join("known_hosts"))
+        }
+
+        fn path(&self) -> &Path {
+            &self.0
+        }
+
+        fn write(&self, content: &str) {
+            std::fs::write(&self.0, content).expect("write known_hosts");
+        }
+
+        fn read(&self) -> String {
+            std::fs::read_to_string(&self.0).unwrap_or_default()
+        }
+
+        /// The recorded entries. russh may start a freshly created file with
+        /// a blank line, which OpenSSH ignores, so blank lines are dropped.
+        fn entries(&self) -> Vec<String> {
+            self.read()
+                .lines()
+                .filter(|line| !line.is_empty())
+                .map(str::to_owned)
+                .collect()
+        }
+    }
+
+    impl Drop for KnownHosts {
+        fn drop(&mut self) {
+            if let Some(dir) = self.0.parent() {
+                let _ = std::fs::remove_dir_all(dir);
+            }
+        }
+    }
+
+    #[test]
+    fn unknown_host_is_learned_and_then_recognised() {
+        let file = KnownHosts::new();
+
+        verify_host_key(HOST, 22, &key(ED25519_A), file.path()).expect("first contact is accepted");
+        assert_eq!(file.entries(), [format!("{HOST} {ED25519_A}")]);
+
+        verify_host_key(HOST, 22, &key(ED25519_A), file.path()).expect("known key is accepted");
+        assert_eq!(file.entries().len(), 1, "a known key is not recorded twice");
+    }
+
+    #[test]
+    fn changed_key_of_the_same_algorithm_is_refused() {
+        let file = KnownHosts::new();
+        // The comment and blank line make sure the reported line number is
+        // the real one in the file, not russh's index over entry lines.
+        let before = format!("# leading comment\n\n{HOST} {ED25519_A}\n");
+        file.write(&before);
+
+        let err = verify_host_key(HOST, 22, &key(ED25519_B), file.path())
+            .expect_err("a different key of the same algorithm is a change");
+        match err {
+            HandshakeError::HostKeyChanged {
+                known_hosts,
+                line,
+                key: presented,
+            } => {
+                assert_eq!(known_hosts, file.path());
+                assert_eq!(line, 3);
+                assert_eq!(presented, key(ED25519_B));
+            }
+            other => panic!("unexpected error: {other:?}"),
+        }
+        assert_eq!(file.read(), before, "a refused key is never recorded");
+    }
+
+    #[test]
+    fn new_algorithm_for_a_known_host_is_learned() {
+        let file = KnownHosts::new();
+        file.write(&format!("{HOST} {ECDSA_A}\n"));
+
+        verify_host_key(HOST, 22, &key(ED25519_A), file.path())
+            .expect("a key of another algorithm is not a change");
+        assert_eq!(
+            file.entries(),
+            [format!("{HOST} {ECDSA_A}"), format!("{HOST} {ED25519_A}")]
+        );
+    }
+
+    #[test]
+    fn accepting_a_changed_key_replaces_every_entry_for_the_host() {
+        let file = KnownHosts::new();
+        file.write(&format!(
+            "# comment\nother.example {ED25519_B}\n{HOST} {ECDSA_A}\n\n{HOST} {ED25519_A}\n"
+        ));
+
+        replace_host_key(HOST, 22, &key(ED25519_B), file.path()).expect("replace");
+        assert_eq!(
+            file.entries(),
+            [
+                "# comment".to_string(),
+                format!("other.example {ED25519_B}"),
+                format!("{HOST} {ED25519_B}"),
+            ]
+        );
+        verify_host_key(HOST, 22, &key(ED25519_B), file.path())
+            .expect("the accepted key is now the known one");
+    }
+
+    #[test]
+    fn non_default_port_is_recorded_in_bracket_form() {
+        let file = KnownHosts::new();
+
+        verify_host_key(HOST, 2222, &key(ED25519_A), file.path()).expect("first contact");
+        assert_eq!(file.entries(), [format!("[{HOST}]:2222 {ED25519_A}")]);
+
+        // The same host on the default port is a different entry, not a change.
+        verify_host_key(HOST, 22, &key(ED25519_B), file.path()).expect("other port is unrelated");
+        assert_eq!(file.entries().len(), 2);
+    }
 
     #[tokio::test]
     async fn copy_in_chunks_streams_large_inputs_with_a_bounded_buffer() {

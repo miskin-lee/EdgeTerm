@@ -3,6 +3,8 @@ import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 
 import type {
   DirListing,
+  HostKeyChange,
+  OpenSessionOutcome,
   SavedCommand,
   SerialPortDesc,
   SessionInfo,
@@ -77,7 +79,15 @@ export const clearCommandHistory = () =>
 // --- sessions ---------------------------------------------------------------
 
 export const openSession = (profile: SessionProfile, sessionId: string) =>
-  invoke<SessionInfo>("open_session", { profile, sessionId });
+  invoke<OpenSessionOutcome>("open_session", { profile, sessionId });
+
+/** Records the key from a reported change as the host's only known key. */
+export const acceptHostKey = (change: HostKeyChange) =>
+  invoke<void>("accept_host_key", {
+    host: change.host,
+    port: change.port,
+    publicKey: change.publicKey,
+  });
 
 export const closeSession = (id: string) => invoke<void>("close_session", { id });
 

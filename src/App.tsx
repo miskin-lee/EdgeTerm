@@ -6,8 +6,10 @@ import {
   type CSSProperties,
 } from "react";
 
+import { acceptHostKey } from "./actions";
 import * as api from "./api";
 import { FontSizeDialog } from "./components/FontSizeDialog";
+import { HostKeyDialog } from "./components/HostKeyDialog";
 import { MenuBar } from "./components/MenuBar";
 import {
   SearchOverlay,
@@ -49,6 +51,8 @@ export default function App() {
   const activateAdjacentTab = useStore((s) => s.activateAdjacentTab);
   const closeTab = useStore((s) => s.closeTab);
   const applyState = useStore((s) => s.applyState);
+  const hostKeyPrompt = useStore((s) => s.hostKeyPrompt);
+  const setHostKeyPrompt = useStore((s) => s.setHostKeyPrompt);
   const theme = useStore((s) => s.theme);
   const activeTab = useActiveTab();
   const ftpMode = activeTab?.info.kind === "ftp";
@@ -313,6 +317,14 @@ export default function App() {
         <SessionDialog
           initial={dialog.profile}
           onClose={() => setDialog(null)}
+        />
+      )}
+
+      {hostKeyPrompt && (
+        <HostKeyDialog
+          prompt={hostKeyPrompt}
+          onAccept={() => acceptHostKey(hostKeyPrompt)}
+          onCancel={() => setHostKeyPrompt(null)}
         />
       )}
 

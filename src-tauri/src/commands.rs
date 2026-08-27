@@ -8,9 +8,10 @@ use tokio::sync::mpsc;
 use crate::error::{err, AppError, Result};
 use crate::fs_local;
 use crate::model::{
-    CommandHistoryEntry, DirListing, SavedCommand, SerialPortDesc, SessionInfo, SessionKind,
-    SessionProfile, ZmodemFileInfo,
+    CommandHistoryEntry, DirListing, OpenSessionOutcome, SavedCommand, SerialPortDesc, SessionInfo,
+    SessionKind, SessionProfile, ZmodemFileInfo,
 };
+use crate::session::ssh::ConnectOutcome;
 use crate::session::{
     self, SessionCommand, SessionHandle, SessionManager, SftpRequest, SftpResponse,
     TransferProgress,
@@ -86,7 +87,7 @@ pub async fn open_session(
     // The frontend mints the id so it can have a terminal listening before the
     // first byte of output arrives.
     session_id: String,
-) -> Result<SessionInfo> {
+) -> Result<OpenSessionOutcome> {
     // A profile may arrive by id (from the tree) or inline (quick connect).
     let profile = if !profile.id.is_empty() {
         match state.store.get(&profile.id)? {
@@ -125,11 +126,17 @@ pub async fn open_session(
             &profile,
             rx,
         )?),
-        SessionKind::Ssh => {
-            let conn = session::ssh::connect(&profile).await?;
-            session::ssh::spawn(app.clone(), id.clone(), conn, rx);
-            None
-        }
+        SessionKind::Ssh => match session::ssh::connect(&profile).await? {
+            ConnectOutcome::Ready(conn) => {
+                session::ssh::spawn(app.clone(), id.clone(), conn, rx);
+                None
+            }
+            // Nothing was opened; the user decides whether to trust the new
+            // key and the frontend retries with the same session id.
+            ConnectOutcome::HostKeyChanged(change) => {
+                return Ok(OpenSessionOutcome::HostKeyChanged { change });
+            }
+        },
     };
 
     state.sessions.insert(SessionHandle {
@@ -137,7 +144,14 @@ pub async fn open_session(
         tx,
         owner_thread,
     });
-    Ok(info)
+    Ok(OpenSessionOutcome::Connected { info })
+}
+
+/// Record the key a host now presents, replacing every `known_hosts` entry
+/// the file held for it, after the user accepted a reported `HostKeyChange`.
+#[tauri::command]
+pub fn accept_host_key(host: String, port: u16, public_key: String) -> Result<()> {
+    session::ssh::accept_host_key(&host, port, &public_key)
 }
 
 #[tauri::command]

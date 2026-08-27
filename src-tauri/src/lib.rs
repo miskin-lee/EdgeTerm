@@ -65,6 +65,7 @@ pub fn run() {
             commands::record_command,
             commands::clear_command_history,
             commands::open_session,
+            commands::accept_host_key,
             commands::close_session,
             commands::list_sessions,
             commands::write_session,

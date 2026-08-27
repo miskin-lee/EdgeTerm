@@ -126,6 +126,38 @@ pub struct SessionInfo {
     pub supports_remote_files: bool,
 }
 
+/// An SSH host whose key no longer matches the one recorded for it in
+/// `known_hosts`. The frontend shows this to the user, who may accept the new
+/// key (see `accept_host_key`) and reconnect.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct HostKeyChange {
+    pub host: String,
+    pub port: u16,
+    /// Algorithm name of the key the server presented, e.g. `ssh-ed25519`.
+    pub key_type: String,
+    /// `SHA256:…` fingerprint of that key, for the user to verify.
+    pub fingerprint: String,
+    /// The presented key as an OpenSSH public key line; accepting records
+    /// exactly this key, not whatever the server sends next time.
+    pub public_key: String,
+    /// Path of the `known_hosts` file holding the conflicting entry.
+    pub known_hosts: String,
+    /// Line of the conflicting entry in that file.
+    pub line: usize,
+    /// One-line explanation for the terminal and status bar.
+    pub message: String,
+}
+
+/// What `open_session` produced: a live session, or a decision the user has
+/// to make before one can be opened.
+#[derive(Debug, Clone, Serialize)]
+#[serde(tag = "status", rename_all = "camelCase")]
+pub enum OpenSessionOutcome {
+    Connected { info: SessionInfo },
+    HostKeyChanged { change: HostKeyChange },
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum SenderFormat {
