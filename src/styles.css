@@ -366,6 +366,30 @@ textarea:focus {
   color: var(--accent);
 }
 
+/* Menubar dropdowns: checkable entries show a box, filled with a tick when
+   on (see MenuCheck in MenuBar.tsx). Context menus keep the bare tick. */
+.menu-check.is-box {
+  height: 12px;
+  border: 1px solid var(--fg-faint);
+  border-radius: 2px;
+}
+
+.menu-entry.is-checked .menu-check.is-box {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: var(--accent-contrast);
+}
+
+.menu-check svg {
+  width: 8px;
+  height: 8px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.6;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
 .menu-entry-label {
   flex: 1;
 }
