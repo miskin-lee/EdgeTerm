@@ -32,9 +32,10 @@ const LETTER_SHORTCUTS: Record<string, AppShortcut> = {
   k: { kind: "clear" },
 };
 
+/** Each arrow points at the edge its panel docks on. */
 const PANEL_BY_ARROW_CODE: Partial<Record<string, PanelName>> = {
-  ArrowLeft: "filer",
-  ArrowRight: "sessions",
+  ArrowLeft: "sessions",
+  ArrowRight: "filer",
   ArrowDown: "sender",
 };
 

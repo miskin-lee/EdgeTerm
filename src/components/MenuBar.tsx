@@ -318,16 +318,16 @@ export function MenuBar(props: Props) {
       title: "View",
       entries: [
         {
-          label: "Filer",
-          shortcut: sc("⌘⌥←", "Ctrl+Alt+←"),
-          checked: panels.filer,
-          action: () => togglePanel("filer"),
-        },
-        {
           label: "Session",
-          shortcut: sc("⌘⌥→", "Ctrl+Alt+→"),
+          shortcut: sc("⌘⌥←", "Ctrl+Alt+←"),
           checked: panels.sessions,
           action: () => togglePanel("sessions"),
+        },
+        {
+          label: "Filer",
+          shortcut: sc("⌘⌥→", "Ctrl+Alt+→"),
+          checked: panels.filer,
+          action: () => togglePanel("filer"),
         },
         {
           label: "Sender",

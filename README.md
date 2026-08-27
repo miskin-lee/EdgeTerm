@@ -43,9 +43,9 @@ Standard FTP does not encrypt credentials or file contents. Use FTP only on a tr
 
 - **Timestamp and line-number gutter** — WindTerm's most recognizable feature. Every output line includes `[HH:MM:SS.SSS]` and a cumulative line number, with the cursor line highlighted. Four display modes are available from the `Session` menu.
 - **Rich color rendering** — Supports ANSI 16-color, 256-color, and 24-bit true color, plus warm semantic highlighting for unstyled output that goes beyond WindTerm: prompts, options, operators and rainbow brackets, `ls -l` permission bits and owner columns, table headers, log levels and Kubernetes/Docker/systemd states, network addresses and domains, paths, Git diffs, HTTP, JSON/YAML, and more — with subtle line bands for errors/warnings, diffs and headers, and underlined links.
-- **Filer** (left): a file browser that automatically switches to SFTP for SSH sessions, with file and folder upload (including drag & drop), file and folder download, create-directory, and delete operations. Other terminal sessions browse the local filesystem.
+- **Session** (left): saved connection profiles in a collapsible tree; double-click to connect. Right-click a heading or a group to create (nested) groups, rename or delete them; right-click a session to connect, edit, move it to another group, or delete it. The New Session dialog lets you choose which group a session is saved to.
+- **Filer** (right): a file browser that automatically switches to SFTP for SSH sessions, with file and folder upload (including drag & drop), file and folder download, create-directory, and delete operations. Other terminal sessions browse the local filesystem.
 - **FTP workspace**: FTP sessions open a dedicated dual-pane file manager, with the FTP server on the left and the local computer on the right. It supports two-way streaming transfers of files and whole folders plus create, rename, and non-recursive delete operations.
-- **Session** (right): saved connection profiles in a collapsible tree; double-click to connect. Right-click a heading or a group to create (nested) groups, rename or delete them; right-click a session to connect, edit, move it to another group, or delete it. The New Session dialog lets you choose which group a session is saved to.
 - **Sender** (bottom): batch sending with text or hexadecimal input, line-by-line or character-by-character modes, repeat counts, configurable intervals, and targeting of the current session or all sessions. Saved commands are scoped — to one session, a Session panel group, a session kind (serial / SSH / shell) or everywhere — and the Sender lists the ones that apply to the active tab, most specific first.
 - Tabs, an address bar (`ssh › host:port`), and a status bar showing the terminal dimensions, cursor Ln/Ch, and protocol. The Session panel header carries a power toggle for the active tab (also **Session → Disconnect / Reconnect Session**): click it to disconnect the session while keeping the tab and its scrollback, and click again to reconnect in place.
 
@@ -67,7 +67,7 @@ Local shell, SSH, and serial terminals automatically detect ZMODEM sessions. Run
 | `⌘K` | `Alt+K` | Clear the screen |
 | `⌘[` / `⌘]` | `Alt+[` / `Alt+]` | Switch to the previous / next open session |
 | `⌘1`–`⌘9` | `Alt+1`–`Alt+9` | Switch to tab N |
-| `⌘⌥←` / `⌘⌥→` / `⌘⌥↓` | `Ctrl+Alt+←` / `Ctrl+Alt+→` / `Ctrl+Alt+↓` | Show or hide Filer / Session / Sender |
+| `⌘⌥←` / `⌘⌥→` / `⌘⌥↓` | `Ctrl+Alt+←` / `Ctrl+Alt+→` / `Ctrl+Alt+↓` | Show or hide Session / Filer / Sender |
 | `⌘C` / `⌘V` | `Ctrl+Shift+C` / `Ctrl+Shift+V` | Copy / paste inside the terminal |
 | `⌘A` | `Ctrl+Shift+A` | Select the whole terminal buffer |
 

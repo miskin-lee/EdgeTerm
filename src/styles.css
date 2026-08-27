@@ -607,7 +607,7 @@ textarea:focus {
   overflow-y: auto;
 }
 
-/* Near the right edge (where the Session panel lives) submenus open leftwards. */
+/* Near the right edge (where the Filer lives) submenus open leftwards. */
 .context-menu.is-flipped .menu-submenu {
   left: auto;
   right: 100%;

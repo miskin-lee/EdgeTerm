@@ -71,8 +71,8 @@ export function ContextMenu({
     const anchorLeft = align === "right" ? x - width : x;
     const left = Math.max(EDGE_MARGIN, Math.min(anchorLeft, maxLeft));
     const top = Math.max(EDGE_MARGIN, Math.min(y, maxTop));
-    // The Session panel sits on the right edge, so submenus usually have to
-    // open leftwards to stay visible.
+    // Menus opened from the Filer sit at the right edge, so their submenus
+    // have to open leftwards to stay visible.
     const flipped = left + width + SUBMENU_WIDTH > window.innerWidth;
     setPlacement({ left, top, flipped });
   }, [x, y, items, align]);

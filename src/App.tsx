@@ -226,8 +226,10 @@ export default function App() {
 
   // --- layout ---------------------------------------------------------------
 
-  const showLeft = panels.filer && !ftpMode;
-  const showRight = panels.sessions;
+  // Session panel docks on the left, Filer on the right; FTP tabs bring
+  // their own dual-pane file manager, so the Filer stays hidden there.
+  const showLeft = panels.sessions;
+  const showRight = panels.filer && !ftpMode;
 
   return (
     <div
@@ -255,7 +257,10 @@ export default function App() {
               className="sidebar sidebar-left"
               style={{ width: leftWidth, flex: `0 0 ${leftWidth}px` }}
             >
-              <FilerPanel />
+              <SessionPanel
+                onNewSession={newSession}
+                onEditProfile={(profile) => setDialog({ profile })}
+              />
             </div>
             <Splitter
               orientation="vertical"
@@ -289,10 +294,7 @@ export default function App() {
               className="sidebar sidebar-right"
               style={{ width: rightWidth, flex: `0 0 ${rightWidth}px` }}
             >
-              <SessionPanel
-                onNewSession={newSession}
-                onEditProfile={(profile) => setDialog({ profile })}
-              />
+              <FilerPanel />
             </div>
           </>
         )}

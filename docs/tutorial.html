@@ -140,8 +140,8 @@
       </p>
       <div class="table-wrap"><table>
         <tr><th><span data-i18n="en">Area</span><span data-i18n="zh">区域</span></th><th><span data-i18n="en">What it does</span><span data-i18n="zh">作用</span></th><th><span data-i18n="en">Toggle</span><span data-i18n="zh">开关</span></th></tr>
-        <tr><td><strong>Filer</strong> <span data-i18n="en">(left)</span><span data-i18n="zh">（左侧）</span></td><td><span data-i18n="en">File browser — local files, or SFTP for SSH sessions</span><span data-i18n="zh">文件浏览器 —— 本地文件；SSH 会话下自动切换为 SFTP</span></td><td><kbd>⌘⌥←</kbd></td></tr>
-        <tr><td><strong>Session</strong> <span data-i18n="en">(right)</span><span data-i18n="zh">（右侧）</span></td><td><span data-i18n="en">Saved connection profiles, double-click to connect</span><span data-i18n="zh">已保存的连接配置，双击连接</span></td><td><kbd>⌘⌥→</kbd></td></tr>
+        <tr><td><strong>Session</strong> <span data-i18n="en">(left)</span><span data-i18n="zh">（左侧）</span></td><td><span data-i18n="en">Saved connection profiles, double-click to connect</span><span data-i18n="zh">已保存的连接配置，双击连接</span></td><td><kbd>⌘⌥←</kbd></td></tr>
+        <tr><td><strong>Filer</strong> <span data-i18n="en">(right)</span><span data-i18n="zh">（右侧）</span></td><td><span data-i18n="en">File browser — local files, or SFTP for SSH sessions</span><span data-i18n="zh">文件浏览器 —— 本地文件；SSH 会话下自动切换为 SFTP</span></td><td><kbd>⌘⌥→</kbd></td></tr>
         <tr><td><strong>Sender</strong> <span data-i18n="en">(bottom)</span><span data-i18n="zh">（底部）</span></td><td><span data-i18n="en">Send commands or hex bytes to one or all sessions</span><span data-i18n="zh">向当前或全部会话发送命令 / 十六进制数据</span></td><td><kbd>⌘⌥↓</kbd></td></tr>
       </table></div>
       <ul>
@@ -205,8 +205,8 @@
     <section id="session-panel">
       <h2><span class="sec-icon">📇</span><span data-i18n="en">Session Panel</span><span data-i18n="zh">Session 面板</span></h2>
       <p>
-        <span data-i18n="en">The Session panel on the right (<kbd>⌘⌥→</kbd>) lists all saved profiles, grouped by type — Local, SSH, FTP and Serial — in collapsible groups. A built-in Local Shell entry is always available.</span>
-        <span data-i18n="zh">右侧的 Session 面板（<kbd>⌘⌥→</kbd>）按类型分组列出所有已保存的配置 —— Local、SSH、FTP、Serial，分组可折叠展开。内置的本地 Shell 项始终可用。</span>
+        <span data-i18n="en">The Session panel on the left (<kbd>⌘⌥←</kbd>) lists all saved profiles, grouped by type — Local, SSH, FTP and Serial — in collapsible groups. A built-in Local Shell entry is always available.</span>
+        <span data-i18n="zh">左侧的 Session 面板（<kbd>⌘⌥←</kbd>）按类型分组列出所有已保存的配置 —— Local、SSH、FTP、Serial，分组可折叠展开。内置的本地 Shell 项始终可用。</span>
       </p>
       <ul>
         <li><span data-i18n="en"><strong>Connect</strong> — double-click a profile to open it in a new tab.</span><span data-i18n="zh"><strong>连接</strong> —— 双击配置即可在新标签中打开。</span></li>
@@ -248,8 +248,8 @@
     <section id="filer">
       <h2><span class="sec-icon">🗂️</span><span data-i18n="en">Filer &amp; SFTP</span><span data-i18n="zh">Filer 与 SFTP</span></h2>
       <p>
-        <span data-i18n="en">The Filer on the left (<kbd>⌘⌥←</kbd>) is a file browser that follows the active session: for SSH sessions it automatically switches to <strong>SFTP over the same connection</strong> (no separate login); for other sessions it browses the local filesystem.</span>
-        <span data-i18n="zh">左侧的 Filer（<kbd>⌘⌥←</kbd>）是跟随当前会话的文件浏览器：SSH 会话下自动切换为 <strong>SFTP（复用同一条连接，无需再次登录）</strong>；其他会话下浏览本地文件系统。</span>
+        <span data-i18n="en">The Filer on the right (<kbd>⌘⌥→</kbd>) is a file browser that follows the active session: for SSH sessions it automatically switches to <strong>SFTP over the same connection</strong> (no separate login); for other sessions it browses the local filesystem.</span>
+        <span data-i18n="zh">右侧的 Filer（<kbd>⌘⌥→</kbd>）是跟随当前会话的文件浏览器：SSH 会话下自动切换为 <strong>SFTP（复用同一条连接，无需再次登录）</strong>；其他会话下浏览本地文件系统。</span>
       </p>
       <p><span data-i18n="en">Toolbar actions:</span><span data-i18n="zh">工具栏操作：</span></p>
       <ul>
@@ -375,7 +375,7 @@
         <tr><td><kbd>⌘K</kbd></td><td><kbd>Alt+K</kbd></td><td><span data-i18n="en">Clear the screen and scrollback</span><span data-i18n="zh">清屏并清空回滚缓冲区</span></td></tr>
         <tr><td><kbd>⌘[</kbd> / <kbd>⌘]</kbd></td><td><kbd>Alt+[</kbd> / <kbd>Alt+]</kbd></td><td><span data-i18n="en">Previous / next open session</span><span data-i18n="zh">上一个 / 下一个已打开会话</span></td></tr>
         <tr><td><kbd>⌘1</kbd>–<kbd>⌘9</kbd></td><td><kbd>Alt+1</kbd>–<kbd>Alt+9</kbd></td><td><span data-i18n="en">Jump to tab N</span><span data-i18n="zh">跳转到第 N 个标签</span></td></tr>
-        <tr><td><kbd>⌘⌥←</kbd> / <kbd>⌘⌥→</kbd> / <kbd>⌘⌥↓</kbd></td><td><kbd>Ctrl+Alt+←</kbd> / <kbd>Ctrl+Alt+→</kbd> / <kbd>Ctrl+Alt+↓</kbd></td><td><span data-i18n="en">Toggle Filer / Session / Sender</span><span data-i18n="zh">显示或隐藏 Filer / Session / Sender</span></td></tr>
+        <tr><td><kbd>⌘⌥←</kbd> / <kbd>⌘⌥→</kbd> / <kbd>⌘⌥↓</kbd></td><td><kbd>Ctrl+Alt+←</kbd> / <kbd>Ctrl+Alt+→</kbd> / <kbd>Ctrl+Alt+↓</kbd></td><td><span data-i18n="en">Toggle Session / Filer / Sender</span><span data-i18n="zh">显示或隐藏 Session / Filer / Sender</span></td></tr>
         <tr><td><kbd>⌘C</kbd> / <kbd>⌘V</kbd></td><td><kbd>Ctrl+Shift+C</kbd> / <kbd>Ctrl+Shift+V</kbd></td><td><span data-i18n="en">Copy / paste inside the terminal</span><span data-i18n="zh">终端内复制 / 粘贴</span></td></tr>
         <tr><td><kbd>⌘A</kbd></td><td><kbd>Ctrl+Shift+A</kbd></td><td><span data-i18n="en">Select the whole terminal buffer</span><span data-i18n="zh">全选终端缓冲区</span></td></tr>
       </table></div>
