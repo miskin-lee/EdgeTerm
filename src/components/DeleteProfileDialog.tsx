@@ -6,6 +6,8 @@ interface Props {
   profile: SessionProfile;
   /** One-line summary of the connection target, shown under the name. */
   target: string;
+  /** Saved Sender commands scoped to this profile alone; they go with it. */
+  scopedCommands: number;
   onConfirm: () => void;
   onCancel: () => void;
 }
@@ -13,11 +15,13 @@ interface Props {
 /**
  * Confirmation shown before a saved session profile is deleted. Enter
  * confirms and Esc cancels, so a stray click on the ✕ button no longer
- * silently drops a saved host and its credentials.
+ * silently drops a saved host and its credentials. Everything that belongs
+ * to the profile goes with it, so the dialog spells out what that is.
  */
 export function DeleteProfileDialog({
   profile,
   target,
+  scopedCommands,
   onConfirm,
   onCancel,
 }: Props) {
@@ -46,6 +50,13 @@ export function DeleteProfileDialog({
     return () => window.removeEventListener("keydown", onKeyDown, true);
   }, [onCancel, onConfirm]);
 
+  const commands =
+    scopedCommands === 0
+      ? ""
+      : scopedCommands === 1
+        ? " and its 1 saved Sender command"
+        : ` and its ${scopedCommands} saved Sender commands`;
+
   return (
     <div className="dialog-backdrop" onMouseDown={onCancel}>
       <div
@@ -65,8 +76,8 @@ export function DeleteProfileDialog({
             {profile.kind} · {target}
           </span>
           <span className="confirm-dialog-hint">
-            The saved session and any stored credentials for it will be
-            removed. This cannot be undone.
+            The saved session, any stored credentials for it{commands} will
+            be removed. This cannot be undone.
           </span>
         </div>
         <div className="dialog-footer confirm-dialog-footer">

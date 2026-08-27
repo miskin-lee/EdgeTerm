@@ -204,6 +204,26 @@ pub struct CommandHistoryEntry {
     pub last_used: i64,
 }
 
+/// Where a saved Sender command is listed. The Sender shows the union of
+/// `Global`, the active tab's session kind, its group chain and its profile;
+/// a scope only decides what is listed, never where a command may be sent.
+/// A command scoped to a profile or group belongs to it and is deleted with
+/// it (`Store::delete` / `Store::delete_group`).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "type", rename_all = "camelCase")]
+pub enum CommandScope {
+    Global,
+    Kind { kind: SessionKind },
+    Group { id: String },
+    Profile { id: String },
+}
+
+impl Default for CommandScope {
+    fn default() -> Self {
+        CommandScope::Global
+    }
+}
+
 /// A reusable command shown as a tag in the Sender pane.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -214,6 +234,9 @@ pub struct SavedCommand {
     pub text: String,
     pub format: SenderFormat,
     pub ending: LineEnding,
+    /// Missing in files written before scopes existed: those tags are global.
+    #[serde(default)]
+    pub scope: CommandScope,
 }
 
 /// Marker every exported data file carries, so a stray JSON file is refused
@@ -221,7 +244,8 @@ pub struct SavedCommand {
 pub const APP_DATA_APP: &str = "EdgeTerm";
 /// Layout version of the export file. Bump it when a change would make an
 /// older build misread a newer file; builds refuse files newer than they know.
-pub const APP_DATA_FORMAT: u32 = 1;
+/// 1: initial layout. 2: Sender commands carry a `scope`.
+pub const APP_DATA_FORMAT: u32 = 2;
 /// File extension (without the dot) every data file carries. Export appends
 /// it and import refuses anything else, so a data file is recognisable before
 /// it is opened; the contents are still plain JSON.

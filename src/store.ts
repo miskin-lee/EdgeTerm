@@ -234,21 +234,23 @@ interface AppStore {
   closePrompt: string | null;
   /**
    * Bumped whenever saved Sender tags change outside the Sender panel (a data
-   * import), so the panel reloads its library.
+   * import, a deleted profile or group moving their scoped commands), so the
+   * panel reloads its library.
    */
   senderLibraryVersion: number;
 
   /** Fetches saved profiles and their groups together. */
   loadProfiles: () => Promise<void>;
   upsertProfile: (profile: SessionProfile) => Promise<SessionProfile>;
+  /** Deletes a saved profile with everything that belongs to it. */
   removeProfile: (id: string) => Promise<void>;
   /** Moves a saved profile into a group (null = its kind's root). */
   moveProfileToGroup: (id: string, groupId: string | null) => Promise<void>;
 
   upsertGroup: (group: SessionGroup) => Promise<SessionGroup>;
   /**
-   * Deletes a group with its subgroups. Profiles inside are lifted to the
-   * deleted group's parent by the backend, so profiles are reloaded too.
+   * Deletes a group with everything in it (subgroups, their sessions and
+   * scoped Sender commands); profiles are reloaded to drop the removed ones.
    */
   removeGroup: (id: string) => Promise<void>;
 
@@ -335,6 +337,8 @@ export const useStore = create<AppStore>((set, get) => ({
   async removeProfile(id) {
     await api.deleteProfile(id);
     set({ profiles: get().profiles.filter((p) => p.id !== id) });
+    // Sender commands scoped to the profile went with it.
+    get().bumpSenderLibrary();
   },
 
   async moveProfileToGroup(id, groupId) {
@@ -359,6 +363,8 @@ export const useStore = create<AppStore>((set, get) => ({
   async removeGroup(id) {
     await api.deleteSessionGroup(id);
     await get().loadProfiles();
+    // Sender commands scoped to the subtree moved up a level in the backend.
+    get().bumpSenderLibrary();
   },
 
   addTab(info, profile, state = "connected") {

@@ -1,9 +1,21 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import * as api from "../../api";
+import {
+  loadSaveLevel,
+  sameScope,
+  scopeChain,
+  scopeForLevel,
+  scopeKey,
+  scopeLabel,
+  storeSaveLevel,
+  type ScopeLevel,
+} from "../../senderScope";
+import { byName } from "../../sessionGroups";
 import { useStore } from "../../store";
 import { getController } from "../../terminalRegistry";
 import type {
+  CommandScope,
   LineEnding,
   SavedCommand,
   SenderFormat,
@@ -16,6 +28,12 @@ type CommandContextMenu = {
   x: number;
   y: number;
 };
+type CommandTooltip = {
+  text: string;
+  details: string;
+  x: number;
+  y: number;
+};
 /** What the inputs held before Edit replaced them, restored on Cancel. */
 type Draft = {
   text: string;
@@ -23,15 +41,14 @@ type Draft = {
   format: SenderFormat;
   ending: LineEnding;
 };
+/** The scope picker hanging off the Save / Update button. */
+type SavePicker = {
+  x: number;
+  y: number;
+};
 type Editing = {
   command: SavedCommand;
   draft: Draft;
-};
-type CommandTooltip = {
-  text: string;
-  details: string;
-  x: number;
-  y: number;
 };
 
 const MAX_SAVED_COMMANDS = 1000;
@@ -45,6 +62,8 @@ const LINE_ENDINGS: [LineEnding, string][] = [
 export function SenderPanel() {
   const tabs = useStore((s) => s.tabs);
   const activeId = useStore((s) => s.activeId);
+  const profiles = useStore((s) => s.profiles);
+  const groups = useStore((s) => s.groups);
   const setStatus = useStore((s) => s.setStatus);
   const libraryVersion = useStore((s) => s.senderLibraryVersion);
 
@@ -62,10 +81,16 @@ export function SenderPanel() {
   const [running, setRunning] = useState(false);
   const [commandsLoading, setCommandsLoading] = useState(true);
   const [libraryBusy, setLibraryBusy] = useState(false);
+  // Save / Update open a picker for the scope; the last choice's level is
+  // preselected in it.
+  const [savePicker, setSavePicker] = useState<SavePicker | null>(null);
+  const [saveLevel, setSaveLevel] = useState<ScopeLevel>(loadSaveLevel);
+  const saveButtonRef = useRef<HTMLButtonElement>(null);
   const tooltipTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Loads the library on mount and again after a data import replaces it;
-  // an edit in progress would then update stale contents, so it is dropped.
+  // Loads the library on mount and again after it changed outside this
+  // panel (a data import, a deleted profile or group); an edit in progress
+  // would then update stale contents, so it is dropped.
   useEffect(() => {
     let cancelled = false;
     setCommandsLoading(true);
@@ -75,12 +100,6 @@ export function SenderPanel() {
         if (cancelled) return;
         setSavedCommands(commands);
         setEditing(null);
-        setPage((current) =>
-          Math.min(
-            current,
-            Math.max(1, Math.ceil(commands.length / COMMANDS_PER_PAGE)),
-          ),
-        );
       })
       .catch((error) => {
         if (!cancelled) setStatus(`Sender: failed to load saved commands: ${error}`);
@@ -98,14 +117,33 @@ export function SenderPanel() {
   }, []);
 
   const closeContextMenu = useCallback(() => setContextMenu(null), []);
+  const closeSavePicker = useCallback(() => setSavePicker(null), []);
+
+  const activeTab = tabs.find((tab) => tab.info.id === activeId);
+  const chain = useMemo(
+    () => scopeChain(activeTab, profiles, groups),
+    [activeTab, profiles, groups],
+  );
+  const labelOf = (scope: CommandScope) => scopeLabel(scope, profiles, groups);
+
+  // Commands the active tab sees, in one alphabetical list regardless of
+  // scope; the tooltip names each tag's scope.
+  const visibleCommands = useMemo(() => {
+    const keys = new Set(chain.map(scopeKey));
+    return savedCommands
+      .filter((command) => keys.has(scopeKey(command.scope)))
+      .sort(byName);
+  }, [chain, savedCommands]);
 
   const pageCount = Math.max(
     1,
-    Math.ceil(savedCommands.length / COMMANDS_PER_PAGE),
+    Math.ceil(visibleCommands.length / COMMANDS_PER_PAGE),
   );
-  const pageCommands = savedCommands.slice(
-    (page - 1) * COMMANDS_PER_PAGE,
-    page * COMMANDS_PER_PAGE,
+  // Switching tabs can shrink the list under the current page.
+  const currentPage = Math.min(page, pageCount);
+  const pageCommands = visibleCommands.slice(
+    (currentPage - 1) * COMMANDS_PER_PAGE,
+    currentPage * COMMANDS_PER_PAGE,
   );
 
   const hideCommandTooltip = () => {
@@ -124,8 +162,10 @@ export function SenderPanel() {
     const rect = element.getBoundingClientRect();
     tooltipTimer.current = setTimeout(() => {
       setCommandTooltip({
+        // Format and line ending are in the Edit view; the tooltip answers
+        // "what does this send, and where is it listed".
         text: command.text,
-        details: `${command.format.toUpperCase()} · ${endingLabel(command.ending)}`,
+        details: labelOf(command.scope),
         x: Math.max(8, Math.min(rect.left, window.innerWidth - 428)),
         y: rect.top - 8,
       });
@@ -146,7 +186,37 @@ export function SenderPanel() {
       : [];
   };
 
-  const saveCommand = async () => {
+  /**
+   * Save and Update both go through the picker: it checks the input first
+   * so an empty command is reported instead of asking where to file it.
+   */
+  const openSavePicker = () => {
+    if (commandsLoading || libraryBusy) return;
+    if (text.length === 0) {
+      setStatus(
+        editing
+          ? "Sender: enter a command before updating"
+          : "Sender: enter a command before saving",
+      );
+      return;
+    }
+    if (!editing && savedCommands.length >= MAX_SAVED_COMMANDS) {
+      setStatus(`Sender: saved command limit is ${MAX_SAVED_COMMANDS}`);
+      return;
+    }
+    const rect = saveButtonRef.current?.getBoundingClientRect();
+    if (!rect) return;
+    setSavePicker({ x: rect.right, y: rect.bottom + 2 });
+  };
+
+  const pickSaveScope = (scope: CommandScope) => {
+    setSaveLevel(scope.type);
+    storeSaveLevel(scope.type);
+    if (editing) void updateCommand(scope);
+    else void saveCommand(scope);
+  };
+
+  const saveCommand = async (scope: CommandScope) => {
     if (commandsLoading || libraryBusy) return;
     if (text.length === 0) {
       setStatus("Sender: enter a command before saving");
@@ -163,6 +233,7 @@ export function SenderPanel() {
       text,
       format,
       ending,
+      scope,
     };
     const nextLength = savedCommands.length + 1;
     setLibraryBusy(true);
@@ -170,9 +241,10 @@ export function SenderPanel() {
       const saved = await api.saveSenderCommand(newCommand);
       setSavedCommands((current) => [...current, saved]);
       setSelectedCommandId(saved.id);
-      setPage(Math.ceil(nextLength / COMMANDS_PER_PAGE));
       setTagName("");
-      setStatus(`Sender: saved command ${nextLength}/${MAX_SAVED_COMMANDS}`);
+      setStatus(
+        `Sender: saved command ${nextLength}/${MAX_SAVED_COMMANDS} (${labelOf(saved.scope)})`,
+      );
     } catch (error) {
       setStatus(`Sender: failed to save command: ${error}`);
     } finally {
@@ -187,19 +259,22 @@ export function SenderPanel() {
       ),
     );
 
-  const updateSavedEnding = async (command: SavedCommand, value: LineEnding) => {
-    if (libraryBusy || command.ending === value) return;
+  /** Saves `command` with `patch` applied, keeping an open edit in step. */
+  const updateSaved = async (
+    command: SavedCommand,
+    patch: Partial<Pick<SavedCommand, "ending" | "scope">>,
+  ) => {
+    if (libraryBusy) return;
     setLibraryBusy(true);
     try {
-      const saved = await api.saveSenderCommand({ ...command, ending: value });
+      const saved = await api.saveSenderCommand({ ...command, ...patch });
       replaceSaved(saved);
-      // Keep an in-progress edit of the same tag in step with the new ending.
       setEditing((current) =>
         current?.command.id === saved.id
           ? { ...current, command: saved }
           : current,
       );
-      if (editing?.command.id === saved.id) setEnding(value);
+      if (editing?.command.id === saved.id) setEnding(saved.ending);
     } catch (error) {
       setStatus(`Sender: failed to update command: ${error}`);
     } finally {
@@ -231,7 +306,7 @@ export function SenderPanel() {
     setEnding(draft.ending);
   };
 
-  const updateCommand = async () => {
+  const updateCommand = async (scope: CommandScope) => {
     if (!editing || libraryBusy) return;
     if (text.length === 0) {
       setStatus("Sender: enter a command before updating");
@@ -245,12 +320,13 @@ export function SenderPanel() {
         text,
         format,
         ending,
+        scope,
       });
       replaceSaved(saved);
       setSelectedCommandId(saved.id);
       setEditing(null);
       setTagName("");
-      setStatus("Sender: updated saved command");
+      setStatus(`Sender: updated saved command (${labelOf(saved.scope)})`);
     } catch (error) {
       setStatus(`Sender: failed to update command: ${error}`);
     } finally {
@@ -260,7 +336,6 @@ export function SenderPanel() {
 
   const removeCommand = async (id: string) => {
     if (libraryBusy) return;
-    const nextLength = savedCommands.length - 1;
     setLibraryBusy(true);
     try {
       await api.deleteSenderCommand(id);
@@ -270,9 +345,6 @@ export function SenderPanel() {
       if (selectedCommandId === id) setSelectedCommandId(null);
       if (contextMenu?.commandId === id) setContextMenu(null);
       if (editing?.command.id === id) cancelEdit();
-      setPage((current) =>
-        Math.min(current, Math.max(1, Math.ceil(nextLength / COMMANDS_PER_PAGE))),
-      );
     } catch (error) {
       setStatus(`Sender: failed to delete command: ${error}`);
     } finally {
@@ -330,6 +402,12 @@ export function SenderPanel() {
       setRunning(false);
     }
   };
+
+  const emptyMessage = commandsLoading
+    ? "Loading saved commands…"
+    : savedCommands.length === 0
+      ? "Save a command to add it here."
+      : "No saved commands apply to this session; they are listed under the sessions, groups or kinds they were saved to.";
 
   return (
     <>
@@ -441,9 +519,9 @@ export function SenderPanel() {
             setTagName(event.target.value.replace(/[\r\n]+/g, ""))
           }
           onKeyDown={(event) => {
-            if (event.key === "Enter" && editing) {
+            if (event.key === "Enter") {
               event.preventDefault();
-              void updateCommand();
+              openSavePicker();
             } else if (event.key === "Escape" && editing) {
               event.preventDefault();
               cancelEdit();
@@ -455,9 +533,12 @@ export function SenderPanel() {
             <button
               className="sender-save-btn"
               type="button"
+              ref={saveButtonRef}
               disabled={libraryBusy || text.length === 0}
-              title={`Update "${editing.command.name}"`}
-              onClick={() => void updateCommand()}
+              title={`Update "${editing.command.name}" — asks where to list it`}
+              aria-haspopup="menu"
+              aria-expanded={savePicker !== null}
+              onClick={openSavePicker}
             >
               Update
             </button>
@@ -474,18 +555,48 @@ export function SenderPanel() {
           <button
             className="sender-save-btn"
             type="button"
+            ref={saveButtonRef}
             disabled={
               commandsLoading ||
               libraryBusy ||
               text.length === 0 ||
               savedCommands.length >= MAX_SAVED_COMMANDS
             }
-            onClick={() => void saveCommand()}
+            title="Save the command — asks where to list it"
+            aria-haspopup="menu"
+            aria-expanded={savePicker !== null}
+            onClick={openSavePicker}
           >
             Save
           </button>
         )}
       </div>
+
+      {savePicker && (() => {
+        // Broadest first, like every scope list. The check marks the current
+        // scope of the tag being edited, or the level picked last time.
+        const preselected = editing
+          ? editing.command.scope
+          : scopeForLevel(chain, saveLevel);
+        const items: MenuItem[] = [
+          { label: editing ? "Update and list under" : "Save and list under", disabled: true },
+          "separator",
+          ...chain.map((scope) => ({
+            label: labelOf(scope),
+            checked: sameScope(scope, preselected),
+            action: () => pickSaveScope(scope),
+          })),
+        ];
+        return (
+          <ContextMenu
+            x={savePicker.x}
+            y={savePicker.y}
+            align="right"
+            items={items}
+            onClose={closeSavePicker}
+          />
+        );
+      })()}
 
       <div className="sender-library">
         {pageCount > 1 && (
@@ -493,16 +604,16 @@ export function SenderPanel() {
             <div className="sender-pagination">
               <button
                 type="button"
-                disabled={page === 1}
-                onClick={() => setPage((current) => current - 1)}
+                disabled={currentPage === 1}
+                onClick={() => setPage(currentPage - 1)}
               >
                 ‹
               </button>
-              <span>{page} / {pageCount}</span>
+              <span>{currentPage} / {pageCount}</span>
               <button
                 type="button"
-                disabled={page === pageCount}
-                onClick={() => setPage((current) => current + 1)}
+                disabled={currentPage === pageCount}
+                onClick={() => setPage(currentPage + 1)}
               >
                 ›
               </button>
@@ -511,11 +622,7 @@ export function SenderPanel() {
         )}
 
         {pageCommands.length === 0 ? (
-          <div className="sender-library-empty">
-            {commandsLoading
-              ? "Loading saved commands…"
-              : "Save a command to add it here."}
-          </div>
+          <div className="sender-library-empty">{emptyMessage}</div>
         ) : (
           <div className="sender-command-tags">
             {pageCommands.map((command) => (
@@ -583,7 +690,16 @@ export function SenderPanel() {
               label,
               checked: command.ending === value,
               disabled: libraryBusy,
-              action: () => void updateSavedEnding(command, value),
+              action: () => void updateSaved(command, { ending: value }),
+            })),
+          },
+          {
+            label: "Scope",
+            children: chain.map((scope) => ({
+              label: labelOf(scope),
+              checked: sameScope(command.scope, scope),
+              disabled: libraryBusy,
+              action: () => void updateSaved(command, { scope }),
             })),
           },
           "separator",

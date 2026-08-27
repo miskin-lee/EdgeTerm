@@ -2,6 +2,7 @@ import { useCallback, useMemo, useState, type MouseEvent } from "react";
 import { ask } from "@tauri-apps/plugin-dialog";
 
 import { openSession, toggleSessionConnection } from "../../actions";
+import * as api from "../../api";
 import {
   byName,
   childGroups,
@@ -14,6 +15,7 @@ import {
 import { useStore } from "../../store";
 import {
   colorForSession,
+  type SavedCommand,
   type SessionGroup,
   type SessionKind,
   type SessionProfile,
@@ -130,10 +132,15 @@ export function SessionPanel({ onEditProfile, onNewSession }: Props) {
   const [filter, setFilter] = useState("");
   /** Keys are `kind:<kind>` for headings and `group:<id>` for groups. */
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
-  /** Profile awaiting the user's answer in the delete-confirmation dialog. */
-  const [pendingDelete, setPendingDelete] = useState<SessionProfile | null>(
-    null,
-  );
+  /**
+   * Profile awaiting the user's answer in the delete-confirmation dialog,
+   * with how many Sender commands are scoped to it alone (they go with it,
+   * and the dialog says so).
+   */
+  const [pendingDelete, setPendingDelete] = useState<{
+    profile: SessionProfile;
+    scopedCommands: number;
+  } | null>(null);
   const [menu, setMenu] = useState<MenuState | null>(null);
   const [groupDialog, setGroupDialog] = useState<GroupDialogState | null>(
     null,
@@ -212,9 +219,22 @@ export function SessionPanel({ onEditProfile, onNewSession }: Props) {
   const report = (what: string, error: unknown) =>
     setStatus(`${what}: ${error}`);
 
+  const listSenderCommands = () =>
+    api.listSenderCommands().catch((): SavedCommand[] => []);
+
+  /** Opens the delete dialog, counting the Sender commands that go with it. */
+  const askDeleteProfile = async (profile: SessionProfile) => {
+    const commands = await listSenderCommands();
+    const scopedCommands = commands.filter(
+      (command) =>
+        command.scope.type === "profile" && command.scope.id === profile.id,
+    ).length;
+    setPendingDelete({ profile, scopedCommands });
+  };
+
   const confirmDeleteGroup = async (group: SessionGroup) => {
-    const inside = profiles.filter((p) => {
-      let cursor = effectiveGroupId(groups, p);
+    const inSubtree = (groupId: string | null) => {
+      let cursor = groupId;
       const seen = new Set<string>();
       while (cursor && !seen.has(cursor)) {
         if (cursor === group.id) return true;
@@ -222,16 +242,30 @@ export function SessionPanel({ onEditProfile, onNewSession }: Props) {
         cursor = groups.find((g) => g.id === cursor)?.parentId ?? null;
       }
       return false;
-    }).length;
-    const parent = groups.find((g) => g.id === group.parentId);
-    const destination = parent ? `"${parent.name}"` : KIND_LABELS[group.kind];
-    const noun = inside === 1 ? "session" : `${inside} sessions`;
-    const sessions =
-      inside === 0
+    };
+    const insideProfiles = profiles.filter((p) =>
+      inSubtree(effectiveGroupId(groups, p)),
+    );
+    const insideIds = new Set(insideProfiles.map((p) => p.id));
+    // Everything scoped to the subtree goes with it: commands of the groups
+    // and commands of the sessions in them.
+    const scopedCommands = (await listSenderCommands()).filter(
+      (command) =>
+        (command.scope.type === "group" && inSubtree(command.scope.id)) ||
+        (command.scope.type === "profile" && insideIds.has(command.scope.id)),
+    ).length;
+    const plural = (count: number, noun: string) =>
+      `${count} ${noun}${count === 1 ? "" : "s"}`;
+    const contents = [
+      insideProfiles.length > 0 && plural(insideProfiles.length, "session"),
+      scopedCommands > 0 && plural(scopedCommands, "saved Sender command"),
+    ].filter((part): part is string => typeof part === "string");
+    const consequence =
+      contents.length === 0
         ? "It contains no sessions."
-        : `Its ${noun} (subgroups included) will be moved to ${destination}.`;
+        : `Its subgroups, ${contents.join(" and ")} will be deleted with it. This cannot be undone.`;
     const confirmed = await ask(
-      `Delete the group "${group.name}" and its subgroups? ${sessions}`,
+      `Delete the group "${group.name}" and everything in it? ${consequence}`,
       {
         title: "Delete Group",
         kind: "warning",
@@ -320,7 +354,7 @@ export function SessionPanel({ onEditProfile, onNewSession }: Props) {
       {
         label: "Delete…",
         danger: true,
-        action: () => setPendingDelete(profile),
+        action: () => void askDeleteProfile(profile),
       },
     ];
   };
@@ -358,7 +392,7 @@ export function SessionPanel({ onEditProfile, onNewSession }: Props) {
             className="panel-action"
             onMouseDown={(event) => {
               event.stopPropagation();
-              setPendingDelete(profile);
+              void askDeleteProfile(profile);
             }}
             title="Delete"
           >
@@ -530,13 +564,14 @@ export function SessionPanel({ onEditProfile, onNewSession }: Props) {
 
       {pendingDelete && (
         <DeleteProfileDialog
-          profile={pendingDelete}
-          target={describeProfile(pendingDelete)}
+          profile={pendingDelete.profile}
+          target={describeProfile(pendingDelete.profile)}
+          scopedCommands={pendingDelete.scopedCommands}
           onConfirm={() => {
             // Dismiss first so a second Enter cannot re-enter removeProfile
             // while the backend delete is still in flight.
             setPendingDelete(null);
-            void removeProfile(pendingDelete.id);
+            void removeProfile(pendingDelete.profile.id);
           }}
           onCancel={() => setPendingDelete(null)}
         />

@@ -109,12 +109,24 @@ export type SessionState = "connecting" | "connected" | "closed" | "error";
 export type SenderFormat = "text" | "hex";
 export type LineEnding = "none" | "lf" | "crlf";
 
+/**
+ * Where a saved Sender command is listed: everywhere, for one session kind,
+ * for a Session panel group (and everything nested in it), or for one saved
+ * session. See `senderScope.ts` for how a tab's chain of scopes is resolved.
+ */
+export type CommandScope =
+  | { type: "global" }
+  | { type: "kind"; kind: SessionKind }
+  | { type: "group"; id: string }
+  | { type: "profile"; id: string };
+
 export interface SavedCommand {
   id: string;
   name: string;
   text: string;
   format: SenderFormat;
   ending: LineEnding;
+  scope: CommandScope;
 }
 
 /**

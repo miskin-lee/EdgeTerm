@@ -36,6 +36,8 @@ pub fn save_profile(state: State<'_, AppState>, profile: SessionProfile) -> Resu
     state.store.save(profile)
 }
 
+/// Deletes a saved session with its credentials and the Sender commands
+/// scoped to it.
 #[tauri::command]
 pub fn delete_profile(state: State<'_, AppState>, id: String) -> Result<()> {
     state.store.delete(&id)
@@ -53,8 +55,8 @@ pub fn save_session_group(state: State<'_, AppState>, group: SessionGroup) -> Re
     state.store.save_group(group)
 }
 
-/// Removes a group and every group nested in it. Profiles inside move up to
-/// the deleted group's parent rather than being deleted with it.
+/// Removes a group with everything in it: nested groups, their sessions
+/// (credentials included) and the Sender commands scoped to any of them.
 #[tauri::command]
 pub fn delete_session_group(state: State<'_, AppState>, id: String) -> Result<()> {
     state.store.delete_group(&id)

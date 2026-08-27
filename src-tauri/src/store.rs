@@ -6,8 +6,8 @@ use serde::{Deserialize, Serialize};
 
 use crate::error::{AppError, Result};
 use crate::model::{
-    AppData, AuthKind, CommandHistoryEntry, DataSummary, SavedCommand, SessionGroup, SessionKind,
-    SessionProfile, APP_DATA_APP, APP_DATA_EXTENSION, APP_DATA_FORMAT,
+    AppData, AuthKind, CommandHistoryEntry, CommandScope, DataSummary, SavedCommand, SessionGroup,
+    SessionKind, SessionProfile, APP_DATA_APP, APP_DATA_EXTENSION, APP_DATA_FORMAT,
 };
 
 const MAX_SAVED_COMMANDS: usize = 1000;
@@ -162,10 +162,25 @@ impl Store {
         Ok(profile)
     }
 
+    /// Removes a profile together with everything that belongs to it: its
+    /// stored credentials and the Sender commands scoped to it alone.
     pub fn delete(&self, id: &str) -> Result<()> {
         self.credentials.lock().remove(id);
         self.profiles.lock().retain(|p| p.id != id);
-        self.persist()
+        self.persist()?;
+
+        let removed_commands = {
+            let mut commands = self.sender_commands.lock();
+            let before = commands.len();
+            commands.retain(
+                |command| !matches!(&command.scope, CommandScope::Profile { id: scoped } if scoped == id),
+            );
+            commands.len() != before
+        };
+        if removed_commands {
+            self.persist_sender_commands()?;
+        }
+        Ok(())
     }
 
     pub fn list_groups(&self) -> Vec<SessionGroup> {
@@ -222,36 +237,56 @@ impl Store {
         Ok(group)
     }
 
-    /// Removes a group and all groups nested in it. Profiles anywhere in that
-    /// subtree move to the deleted group's parent (or the kind root) instead
-    /// of being deleted with it.
+    /// Removes a group with everything in it: the groups nested below it,
+    /// the profiles in any of them (with their credentials) and the Sender
+    /// commands scoped to any of those groups or profiles.
     pub fn delete_group(&self, id: &str) -> Result<()> {
-        let (removed, parent_id) = {
+        let removed_groups = {
             let mut groups = self.groups.lock();
-            let Some(target) = groups.iter().find(|g| g.id == id) else {
+            if !groups.iter().any(|g| g.id == id) {
                 return Ok(());
-            };
-            let parent_id = target.parent_id.clone();
+            }
             let removed = subtree_ids(&groups, id);
             groups.retain(|g| !removed.contains(&g.id));
-            (removed, parent_id)
+            removed
         };
         self.persist_groups()?;
 
-        let mut moved = false;
-        {
+        let removed_profiles: Vec<String> = {
             let mut profiles = self.profiles.lock();
-            for profile in profiles.iter_mut() {
-                if let Some(group_id) = &profile.group_id {
-                    if removed.contains(group_id) {
-                        profile.group_id = parent_id.clone();
-                        moved = true;
-                    }
-                }
+            let removed: Vec<String> = profiles
+                .iter()
+                .filter(|p| {
+                    p.group_id
+                        .as_ref()
+                        .is_some_and(|group_id| removed_groups.contains(group_id))
+                })
+                .map(|p| p.id.clone())
+                .collect();
+            profiles.retain(|p| !removed.contains(&p.id));
+            removed
+        };
+        if !removed_profiles.is_empty() {
+            let mut credentials = self.credentials.lock();
+            for profile_id in &removed_profiles {
+                credentials.remove(profile_id);
             }
-        }
-        if moved {
+            drop(credentials);
             self.persist()?;
+        }
+
+        let removed_commands = {
+            let mut commands = self.sender_commands.lock();
+            let before = commands.len();
+            commands.retain(|command| match &command.scope {
+                CommandScope::Group { id } => !removed_groups.contains(id),
+                CommandScope::Profile { id } => !removed_profiles.contains(id),
+                CommandScope::Global | CommandScope::Kind { .. } => true,
+            });
+            commands.len() != before
+        };
+        if removed_commands {
+            self.persist_sender_commands()?;
         }
         Ok(())
     }
@@ -260,10 +295,14 @@ impl Store {
         self.sender_commands.lock().clone()
     }
 
+    /// Creates or updates a Sender command. A scope pointing at a group or
+    /// profile that does not exist falls back to `Global`, the one level that
+    /// always exists.
     pub fn save_sender_command(&self, mut command: SavedCommand) -> Result<SavedCommand> {
         if command.id.is_empty() {
             command.id = uuid::Uuid::new_v4().to_string();
         }
+        command.scope = self.resolve_scope(command.scope);
 
         {
             let mut commands = self.sender_commands.lock();
@@ -286,6 +325,19 @@ impl Store {
             .lock()
             .retain(|command| command.id != id);
         self.persist_sender_commands()
+    }
+
+    fn resolve_scope(&self, scope: CommandScope) -> CommandScope {
+        let exists = match &scope {
+            CommandScope::Global | CommandScope::Kind { .. } => true,
+            CommandScope::Group { id } => self.groups.lock().iter().any(|g| &g.id == id),
+            CommandScope::Profile { id } => self.profiles.lock().iter().any(|p| &p.id == id),
+        };
+        if exists {
+            scope
+        } else {
+            CommandScope::Global
+        }
     }
 
     pub fn list_command_history(&self) -> Vec<CommandHistoryEntry> {
@@ -422,8 +474,18 @@ impl Store {
         }
 
         {
+            // Groups and profiles are in place by now, so a scope can be
+            // checked against the merged lists.
+            let resolved: Vec<SavedCommand> = data
+                .sender_commands
+                .into_iter()
+                .map(|mut command| {
+                    command.scope = self.resolve_scope(command.scope);
+                    command
+                })
+                .collect();
             let mut commands = self.sender_commands.lock();
-            for mut command in data.sender_commands {
+            for mut command in resolved {
                 if command.id.is_empty() {
                     command.id = uuid::Uuid::new_v4().to_string();
                 }

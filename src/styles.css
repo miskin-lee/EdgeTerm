@@ -1648,9 +1648,11 @@ textarea:focus {
   pointer-events: none;
 }
 
+/* One line, cut with an ellipsis: a hover hint, not a place to read code. */
 .sender-command-tooltip div {
-  overflow-wrap: anywhere;
-  white-space: pre-wrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .sender-command-tooltip span {

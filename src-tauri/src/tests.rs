@@ -8,8 +8,8 @@ use crate::commands::{
 };
 use crate::fs_local;
 use crate::model::{
-    AppData, AuthKind, FileEntry, LineEnding, SavedCommand, SenderFormat, SessionGroup,
-    SessionKind, SessionProfile, APP_DATA_APP, APP_DATA_EXTENSION, APP_DATA_FORMAT,
+    AppData, AuthKind, CommandScope, FileEntry, LineEnding, SavedCommand, SenderFormat,
+    SessionGroup, SessionKind, SessionProfile, APP_DATA_APP, APP_DATA_EXTENSION, APP_DATA_FORMAT,
 };
 use crate::session::{join_remote, sort_entries};
 use crate::store::{is_data_file_path, Store};
@@ -181,6 +181,7 @@ fn store_persists_sender_commands_across_restarts() {
             text: "ls -la".into(),
             format: SenderFormat::Text,
             ending: LineEnding::Lf,
+            scope: CommandScope::Global,
         })
         .expect("save sender command");
     assert!(!saved.id.is_empty());
@@ -211,7 +212,159 @@ fn command(name: &str, text: &str) -> SavedCommand {
         text: text.into(),
         format: SenderFormat::Text,
         ending: LineEnding::Lf,
+        scope: CommandScope::Global,
     }
+}
+
+fn scoped(name: &str, scope: CommandScope) -> SavedCommand {
+    SavedCommand {
+        scope,
+        ..command(name, "ls")
+    }
+}
+
+#[test]
+fn sender_command_scopes_fall_back_and_follow_their_targets() {
+    let dir = temp_dir("scopes");
+    let path = dir.join("sessions.json");
+    let store = Store::load_from(path.clone());
+
+    // Files written before scopes existed load as global.
+    let legacy: SavedCommand =
+        serde_json::from_str(r#"{"id":"l","name":"x","text":"x","format":"text","ending":"lf"}"#)
+            .expect("legacy command");
+    assert_eq!(legacy.scope, CommandScope::Global);
+
+    let parent = store
+        .save_group(group("Prod", SessionKind::Ssh, None))
+        .expect("parent");
+    let child = store
+        .save_group(group("EU", SessionKind::Ssh, Some(&parent.id)))
+        .expect("child");
+    let mut ssh = profile(SessionKind::Ssh);
+    ssh.group_id = Some(child.id.clone());
+    let ssh = store.save(ssh).expect("ssh");
+    let serial = store.save(profile(SessionKind::Serial)).expect("serial");
+
+    // Dangling references fall back to global at save time.
+    let dangling = store
+        .save_sender_command(scoped(
+            "dangling",
+            CommandScope::Profile { id: "nope".into() },
+        ))
+        .expect("save dangling");
+    assert_eq!(dangling.scope, CommandScope::Global);
+
+    let on_ssh = store
+        .save_sender_command(scoped("ssh", CommandScope::Profile { id: ssh.id.clone() }))
+        .expect("save ssh");
+    let on_serial = store
+        .save_sender_command(scoped(
+            "serial",
+            CommandScope::Profile {
+                id: serial.id.clone(),
+            },
+        ))
+        .expect("save serial");
+    let on_child = store
+        .save_sender_command(scoped(
+            "child",
+            CommandScope::Group {
+                id: child.id.clone(),
+            },
+        ))
+        .expect("save child");
+    let on_parent = store
+        .save_sender_command(scoped(
+            "parent",
+            CommandScope::Group {
+                id: parent.id.clone(),
+            },
+        ))
+        .expect("save parent");
+    let scope_of = |store: &Store, id: &str| {
+        store
+            .list_sender_commands()
+            .into_iter()
+            .find(|c| c.id == id)
+            .expect("command")
+            .scope
+    };
+
+    // A deleted profile takes its own commands with it; the rest stay put.
+    let count_before = store.list_sender_commands().len();
+    store.delete(&ssh.id).expect("delete ssh");
+    store.delete(&serial.id).expect("delete serial");
+    let commands = store.list_sender_commands();
+    assert_eq!(commands.len(), count_before - 2);
+    assert!(commands
+        .iter()
+        .all(|c| c.id != on_ssh.id && c.id != on_serial.id));
+    assert_eq!(
+        scope_of(&store, &on_child.id),
+        CommandScope::Group {
+            id: child.id.clone()
+        }
+    );
+
+    // A deleted group takes its subtree along: nested groups, their sessions
+    // and the commands scoped to any of them. Global commands stay.
+    let ids = |store: &Store| -> Vec<String> {
+        store
+            .list_sender_commands()
+            .into_iter()
+            .map(|c| c.id)
+            .collect()
+    };
+    store.delete_group(&child.id).expect("delete child");
+    assert!(!ids(&store).contains(&on_child.id));
+    assert!(ids(&store).contains(&on_parent.id));
+    store.delete_group(&parent.id).expect("delete parent");
+    assert!(!ids(&store).contains(&on_parent.id));
+    assert!(ids(&store).contains(&dangling.id));
+
+    // The removals were persisted.
+    let reloaded = Store::load_from(path);
+    let remaining = ids(&reloaded);
+    assert!(!remaining.contains(&on_ssh.id));
+    assert!(!remaining.contains(&on_parent.id));
+    assert!(remaining.contains(&dangling.id));
+
+    // An import resolves scopes against the merged lists: a profile that
+    // arrives in the same file is a valid target, an unknown one is not.
+    let mut imported = profile(SessionKind::Local);
+    imported.id = "imported-profile".into();
+    let summary = reloaded
+        .import_data(AppData {
+            app: APP_DATA_APP.into(),
+            format: APP_DATA_FORMAT,
+            exported_at: None,
+            settings: None,
+            profiles: vec![imported],
+            groups: vec![],
+            sender_commands: vec![
+                scoped(
+                    "known",
+                    CommandScope::Profile {
+                        id: "imported-profile".into(),
+                    },
+                ),
+                scoped("unknown", CommandScope::Group { id: "gone".into() }),
+            ],
+        })
+        .expect("import");
+    assert_eq!(summary.sender_commands, 2);
+    let commands = reloaded.list_sender_commands();
+    let find = |name: &str| commands.iter().find(|c| c.name == name).expect(name);
+    assert_eq!(
+        find("known").scope,
+        CommandScope::Profile {
+            id: "imported-profile".into()
+        }
+    );
+    assert_eq!(find("unknown").scope, CommandScope::Global);
+
+    std::fs::remove_dir_all(&dir).ok();
 }
 
 #[test]
@@ -616,6 +769,7 @@ fn store_files_are_owner_readable_only() {
             text: "secret command".into(),
             format: SenderFormat::Text,
             ending: LineEnding::Lf,
+            scope: CommandScope::Global,
         })
         .expect("save sender command");
 
@@ -822,7 +976,7 @@ fn store_rejects_invalid_group_shapes() {
 }
 
 #[test]
-fn deleting_a_group_removes_its_subtree_and_lifts_profiles_to_the_parent() {
+fn deleting_a_group_removes_everything_in_it() {
     let dir = temp_dir("groups-delete");
     let path = dir.join("sessions.json");
     let store = Store::load_from(path.clone());
@@ -842,6 +996,8 @@ fn deleting_a_group_removes_its_subtree_and_lifts_profiles_to_the_parent() {
 
     let mut in_mid = profile(SessionKind::Ssh);
     in_mid.group_id = Some(mid.id.clone());
+    in_mid.auth = Some(AuthKind::Password);
+    in_mid.password = Some("hunter2".into());
     let in_mid = store.save(in_mid).expect("save in_mid");
     let mut in_leaf = profile(SessionKind::Ssh);
     in_leaf.group_id = Some(leaf.id.clone());
@@ -849,6 +1005,34 @@ fn deleting_a_group_removes_its_subtree_and_lifts_profiles_to_the_parent() {
     let mut in_sibling = profile(SessionKind::Ssh);
     in_sibling.group_id = Some(sibling.id.clone());
     let in_sibling = store.save(in_sibling).expect("save in_sibling");
+
+    let on_leaf = store
+        .save_sender_command(scoped(
+            "leaf",
+            CommandScope::Group {
+                id: leaf.id.clone(),
+            },
+        ))
+        .expect("save on_leaf");
+    let on_in_leaf = store
+        .save_sender_command(scoped(
+            "in_leaf",
+            CommandScope::Profile {
+                id: in_leaf.id.clone(),
+            },
+        ))
+        .expect("save on_in_leaf");
+    let on_sibling = store
+        .save_sender_command(scoped(
+            "sibling",
+            CommandScope::Group {
+                id: sibling.id.clone(),
+            },
+        ))
+        .expect("save on_sibling");
+    let everywhere = store
+        .save_sender_command(command("everywhere", "ls"))
+        .expect("save everywhere");
 
     store.delete_group(&mid.id).expect("delete mid");
 
@@ -858,30 +1042,41 @@ fn deleting_a_group_removes_its_subtree_and_lifts_profiles_to_the_parent() {
     assert!(!remaining.contains(&mid.id));
     assert!(!remaining.contains(&leaf.id));
 
-    let find = |id: &str| {
-        store
-            .list()
-            .into_iter()
-            .find(|p| p.id == id)
-            .expect("profile still exists")
-    };
-    // Both the direct member and the nested one move up to mid's parent.
-    assert_eq!(find(&in_mid.id).group_id.as_deref(), Some(root.id.as_str()));
-    assert_eq!(
-        find(&in_leaf.id).group_id.as_deref(),
-        Some(root.id.as_str())
-    );
-    assert_eq!(
-        find(&in_sibling.id).group_id.as_deref(),
-        Some(sibling.id.as_str())
-    );
+    // The direct member and the nested one are gone, credentials included;
+    // the sibling's member is untouched.
+    let profiles: Vec<String> = store.list().into_iter().map(|p| p.id).collect();
+    assert!(!profiles.contains(&in_mid.id));
+    assert!(!profiles.contains(&in_leaf.id));
+    assert!(profiles.contains(&in_sibling.id));
+    assert!(store.get(&in_mid.id).expect("get").is_none());
+    assert!(!std::fs::read_to_string(dir.join("credentials.json"))
+        .expect("credentials file")
+        .contains("hunter2"));
 
-    // Deleting a top-level group puts its profiles at the kind root, and the
-    // result is what a fresh process reads back.
+    let commands: Vec<String> = store
+        .list_sender_commands()
+        .into_iter()
+        .map(|c| c.id)
+        .collect();
+    assert!(!commands.contains(&on_leaf.id));
+    assert!(!commands.contains(&on_in_leaf.id));
+    assert!(commands.contains(&on_sibling.id));
+    assert!(commands.contains(&everywhere.id));
+
+    // Deleting the top-level group empties the tree, and the result is what
+    // a fresh process reads back.
     store.delete_group(&root.id).expect("delete root");
     let reloaded = Store::load_from(path);
     assert!(reloaded.list_groups().is_empty());
-    assert!(reloaded.list().iter().all(|p| p.group_id.is_none()));
+    assert!(reloaded.list().is_empty());
+    assert_eq!(
+        reloaded
+            .list_sender_commands()
+            .into_iter()
+            .map(|c| c.id)
+            .collect::<Vec<_>>(),
+        vec![everywhere.id]
+    );
 
     // Unknown ids are a no-op rather than an error.
     reloaded.delete_group("nope").expect("delete unknown");
