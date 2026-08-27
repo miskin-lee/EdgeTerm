@@ -6,7 +6,8 @@ use serde::{Deserialize, Serialize};
 
 use crate::error::{AppError, Result};
 use crate::model::{
-    AuthKind, CommandHistoryEntry, SavedCommand, SessionGroup, SessionKind, SessionProfile,
+    AppData, AuthKind, CommandHistoryEntry, DataSummary, SavedCommand, SessionGroup, SessionKind,
+    SessionProfile, APP_DATA_APP, APP_DATA_EXTENSION, APP_DATA_FORMAT,
 };
 
 const MAX_SAVED_COMMANDS: usize = 1000;
@@ -337,6 +338,113 @@ impl Store {
         self.persist_command_history()
     }
 
+    /// Everything the backend contributes to a data export: saved sessions,
+    /// their groups and Sender tags. Profiles are already credential-free in
+    /// memory; `redact_profile` guards against that ever changing. The
+    /// caller fills in the frontend's settings and the timestamp.
+    pub fn snapshot(&self) -> AppData {
+        AppData {
+            app: APP_DATA_APP.to_string(),
+            format: APP_DATA_FORMAT,
+            exported_at: None,
+            settings: None,
+            profiles: self
+                .profiles
+                .lock()
+                .iter()
+                .cloned()
+                .map(redact_profile)
+                .collect(),
+            groups: self.groups.lock().clone(),
+            sender_commands: self.sender_commands.lock().clone(),
+        }
+    }
+
+    /// Merges an exported file into the store. Entries are matched by id: a
+    /// known id replaces the local entry, everything else is added, and
+    /// nothing local is deleted. Credentials in the file are ignored — an
+    /// export never carries any, so a value here was hand-written — and
+    /// `credentials.json` keeps whatever it already holds for a replaced
+    /// profile. Group parents and profile group ids that point nowhere, to a
+    /// group of another kind or around a cycle are detached so the Session
+    /// panel tree stays finite.
+    pub fn import_data(&self, data: AppData) -> Result<DataSummary> {
+        validate_app_data(&data)?;
+        let mut summary = DataSummary::default();
+
+        {
+            let mut groups = self.groups.lock();
+            for mut group in data.groups {
+                group.name = group.name.trim().to_string();
+                if group.name.is_empty() {
+                    continue;
+                }
+                if group.id.is_empty() {
+                    group.id = uuid::Uuid::new_v4().to_string();
+                }
+                if group.parent_id.as_deref() == Some("") {
+                    group.parent_id = None;
+                }
+                match groups.iter_mut().find(|g| g.id == group.id) {
+                    // A group cannot change kind: its profiles would no longer
+                    // belong under it.
+                    Some(existing) if existing.kind != group.kind => continue,
+                    Some(existing) => *existing = group,
+                    None => groups.push(group),
+                }
+                summary.groups += 1;
+            }
+            detach_invalid_parents(&mut groups);
+        }
+
+        {
+            let groups = self.groups.lock().clone();
+            let mut profiles = self.profiles.lock();
+            for profile in data.profiles {
+                let mut profile = redact_profile(profile);
+                if profile.id.is_empty() {
+                    profile.id = uuid::Uuid::new_v4().to_string();
+                }
+                if let Some(group_id) = &profile.group_id {
+                    let valid = groups
+                        .iter()
+                        .any(|group| &group.id == group_id && group.kind == profile.kind);
+                    if !valid {
+                        profile.group_id = None;
+                    }
+                }
+                match profiles.iter_mut().find(|p| p.id == profile.id) {
+                    Some(existing) => *existing = profile,
+                    None => profiles.push(profile),
+                }
+                summary.profiles += 1;
+            }
+        }
+
+        {
+            let mut commands = self.sender_commands.lock();
+            for mut command in data.sender_commands {
+                if command.id.is_empty() {
+                    command.id = uuid::Uuid::new_v4().to_string();
+                }
+                if let Some(index) = commands.iter().position(|saved| saved.id == command.id) {
+                    commands[index] = command;
+                } else if commands.len() < MAX_SAVED_COMMANDS {
+                    commands.push(command);
+                } else {
+                    summary.skipped_sender_commands += 1;
+                    continue;
+                }
+                summary.sender_commands += 1;
+            }
+        }
+
+        self.persist_groups()?;
+        self.persist()?;
+        self.persist_sender_commands()?;
+        Ok(summary)
+    }
+
     fn persist(&self) -> Result<()> {
         let parent = self
             .path
@@ -384,6 +492,58 @@ impl Store {
         // every executed command, so keep the write as small as possible.
         let entries = serde_json::to_string(&*self.command_history.lock())?;
         write_owner_only(&self.command_history_path, &entries)
+    }
+}
+
+/// Whether `path` carries the data-file extension (`.edgeterm`, any case).
+pub fn is_data_file_path(path: &Path) -> bool {
+    path.extension()
+        .and_then(|extension| extension.to_str())
+        .is_some_and(|extension| extension.eq_ignore_ascii_case(APP_DATA_EXTENSION))
+}
+
+/// Refuses files that are not EdgeTerm exports or come from a newer layout.
+pub fn validate_app_data(data: &AppData) -> Result<()> {
+    if data.app != APP_DATA_APP {
+        return Err(AppError::new("not an EdgeTerm data file"));
+    }
+    if data.format == 0 {
+        return Err(AppError::new("not an EdgeTerm data file: missing format"));
+    }
+    if data.format > APP_DATA_FORMAT {
+        return Err(AppError::new(format!(
+            "this data file was written by a newer EdgeTerm (format {} > {})",
+            data.format, APP_DATA_FORMAT
+        )));
+    }
+    Ok(())
+}
+
+/// Strips the secrets a profile may carry; every profile that leaves the
+/// store in an export, or enters it from an import, passes through here.
+pub fn redact_profile(mut profile: SessionProfile) -> SessionProfile {
+    profile.password = None;
+    profile.passphrase = None;
+    profile
+}
+
+/// Drops parent links that point nowhere, to a group of another kind, to the
+/// group itself or around a cycle. Detaching one link never invalidates
+/// another, so a single pass is enough.
+fn detach_invalid_parents(groups: &mut [SessionGroup]) {
+    for index in 0..groups.len() {
+        let Some(parent_id) = groups[index].parent_id.clone() else {
+            continue;
+        };
+        let group_id = groups[index].id.clone();
+        let kind = groups[index].kind;
+        let valid_parent = parent_id != group_id
+            && groups
+                .iter()
+                .any(|group| group.id == parent_id && group.kind == kind);
+        if !valid_parent || subtree_ids(groups, &group_id).contains(&parent_id) {
+            groups[index].parent_id = None;
+        }
     }
 }
 

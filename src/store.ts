@@ -67,35 +67,46 @@ const loadSuggestionsEnabled = (): boolean => {
   }
 };
 
+// The parse* helpers validate a stored or imported value and return null for
+// anything unknown, so both localStorage and a data file get the same checks.
+const parseTheme = (value: unknown): ThemeMode | null =>
+  value === "dark" || value === "light" ? value : null;
+
+const parseGutterMode = (value: unknown): GutterMode | null =>
+  value === "both" || value === "line" || value === "time" || value === "off"
+    ? value
+    : null;
+
+/** Fills fields missing from `value` with `base`; null if it is no object. */
+const parsePanels = (
+  value: unknown,
+  base: Record<PanelName, boolean>,
+): Record<PanelName, boolean> | null => {
+  if (!value || typeof value !== "object") return null;
+  const parsed = value as Partial<Record<PanelName, unknown>>;
+  return {
+    filer: typeof parsed.filer === "boolean" ? parsed.filer : base.filer,
+    sessions:
+      typeof parsed.sessions === "boolean" ? parsed.sessions : base.sessions,
+    sender: typeof parsed.sender === "boolean" ? parsed.sender : base.sender,
+  };
+};
+
 export const loadTheme = (): ThemeMode => {
   try {
-    const stored = localStorage.getItem(THEME_KEY);
-    if (stored === "dark" || stored === "light") return stored;
+    return parseTheme(localStorage.getItem(THEME_KEY)) ?? "dark";
   } catch {
     // Use the default when storage is unavailable.
+    return "dark";
   }
-  return "dark";
 };
 
 const loadPanels = (): Record<PanelName, boolean> => {
   try {
     const stored = localStorage.getItem(PANELS_KEY);
     if (stored) {
-      const parsed = JSON.parse(stored) as Partial<Record<PanelName, unknown>>;
-      return {
-        filer:
-          typeof parsed.filer === "boolean"
-            ? parsed.filer
-            : DEFAULT_PANELS.filer,
-        sessions:
-          typeof parsed.sessions === "boolean"
-            ? parsed.sessions
-            : DEFAULT_PANELS.sessions,
-        sender:
-          typeof parsed.sender === "boolean"
-            ? parsed.sender
-            : DEFAULT_PANELS.sender,
-      };
+      const panels = parsePanels(JSON.parse(stored), DEFAULT_PANELS);
+      if (panels) return panels;
     }
   } catch {
     // Use the defaults when storage is unavailable or malformed.
@@ -103,21 +114,21 @@ const loadPanels = (): Record<PanelName, boolean> => {
   return { ...DEFAULT_PANELS };
 };
 
+const savePanels = (panels: Record<PanelName, boolean>) => {
+  try {
+    localStorage.setItem(PANELS_KEY, JSON.stringify(panels));
+  } catch {
+    // The setting still applies for this run when storage is unavailable.
+  }
+};
+
 const loadGutterMode = (): GutterMode => {
   try {
-    const stored = localStorage.getItem(GUTTER_MODE_KEY);
-    if (
-      stored === "both" ||
-      stored === "line" ||
-      stored === "time" ||
-      stored === "off"
-    ) {
-      return stored;
-    }
+    return parseGutterMode(localStorage.getItem(GUTTER_MODE_KEY)) ?? "both";
   } catch {
     // Use the default when storage is unavailable.
+    return "both";
   }
-  return "both";
 };
 
 const normalizeFontSize = (
@@ -177,6 +188,21 @@ const saveScrollback = (value: number) => {
   }
 };
 
+/**
+ * The preferences a data export carries (Session → Export Data…). Everything
+ * here lives in localStorage; saved sessions and Sender tags come from the
+ * backend instead.
+ */
+export interface AppSettings {
+  panels: Record<PanelName, boolean>;
+  gutterMode: GutterMode;
+  theme: ThemeMode;
+  panelFontSize: number;
+  bufferFontSize: number;
+  terminalScrollback: number;
+  suggestionsEnabled: boolean;
+}
+
 interface AppStore {
   profiles: SessionProfile[];
   /** User-defined folders of the Session panel; see `SessionGroup`. */
@@ -206,6 +232,11 @@ interface AppStore {
    * into the one dialog rendered by App.
    */
   closePrompt: string | null;
+  /**
+   * Bumped whenever saved Sender tags change outside the Sender panel (a data
+   * import), so the panel reloads its library.
+   */
+  senderLibraryVersion: number;
 
   /** Fetches saved profiles and their groups together. */
   loadProfiles: () => Promise<void>;
@@ -245,6 +276,14 @@ interface AppStore {
   setTerminalScrollback: (rows: number) => void;
   setSuggestionsEnabled: (enabled: boolean) => void;
   resetSettings: () => void;
+  /** The preferences a data export carries; see `applySettings`. */
+  exportSettings: () => AppSettings;
+  /**
+   * Applies settings from a data import. Unknown or malformed fields are
+   * ignored; fields the file does not mention keep their current value.
+   */
+  applySettings: (settings: unknown) => void;
+  bumpSenderLibrary: () => void;
   setStatus: (status: string) => void;
   setError: (error: string | null, sessionId?: string) => void;
   setHostKeyPrompt: (prompt: HostKeyPrompt | null) => void;
@@ -270,6 +309,7 @@ export const useStore = create<AppStore>((set, get) => ({
   errorSessionId: null,
   hostKeyPrompt: null,
   closePrompt: null,
+  senderLibraryVersion: 0,
 
   async loadProfiles() {
     const [profiles, groups] = await Promise.all([
@@ -404,11 +444,7 @@ export const useStore = create<AppStore>((set, get) => ({
     const panels = get().panels;
     const nextPanels = { ...panels, [panel]: !panels[panel] };
     set({ panels: nextPanels });
-    try {
-      localStorage.setItem(PANELS_KEY, JSON.stringify(nextPanels));
-    } catch {
-      // The setting still applies for this run when storage is unavailable.
-    }
+    savePanels(nextPanels);
   },
 
   setGutterMode(mode) {
@@ -480,6 +516,52 @@ export const useStore = create<AppStore>((set, get) => ({
     } catch {
       // The defaults still apply for this run when storage is unavailable.
     }
+  },
+
+  exportSettings() {
+    const state = get();
+    return {
+      panels: { ...state.panels },
+      gutterMode: state.gutterMode,
+      theme: state.theme,
+      panelFontSize: state.panelFontSize,
+      bufferFontSize: state.bufferFontSize,
+      terminalScrollback: state.terminalScrollback,
+      suggestionsEnabled: state.suggestionsEnabled,
+    };
+  },
+
+  applySettings(settings) {
+    if (!settings || typeof settings !== "object") return;
+    const values = settings as Partial<Record<keyof AppSettings, unknown>>;
+    const state = get();
+    // Each setter validates and persists the way the menus do, so a partial
+    // or hand-edited file can only ever change the fields it names.
+    const theme = parseTheme(values.theme);
+    if (theme) state.setTheme(theme);
+    const gutterMode = parseGutterMode(values.gutterMode);
+    if (gutterMode) state.setGutterMode(gutterMode);
+    const panels = parsePanels(values.panels, state.panels);
+    if (panels) {
+      set({ panels });
+      savePanels(panels);
+    }
+    if (typeof values.panelFontSize === "number") {
+      state.setPanelFontSize(values.panelFontSize);
+    }
+    if (typeof values.bufferFontSize === "number") {
+      state.setBufferFontSize(values.bufferFontSize);
+    }
+    if (typeof values.terminalScrollback === "number") {
+      state.setTerminalScrollback(values.terminalScrollback);
+    }
+    if (typeof values.suggestionsEnabled === "boolean") {
+      state.setSuggestionsEnabled(values.suggestionsEnabled);
+    }
+  },
+
+  bumpSenderLibrary() {
+    set({ senderLibraryVersion: get().senderLibraryVersion + 1 });
   },
 
   setStatus(status) {

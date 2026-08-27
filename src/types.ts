@@ -117,6 +117,30 @@ export interface SavedCommand {
   ending: LineEnding;
 }
 
+/**
+ * One export / import file (Session → Export / Import Data…). `settings` is
+ * the frontend's own `AppSettings`, carried through the backend untouched;
+ * passwords and passphrases are never part of a data file.
+ */
+export interface AppData {
+  app: string;
+  format: number;
+  exportedAt?: string | null;
+  settings?: unknown;
+  profiles: SessionProfile[];
+  groups: SessionGroup[];
+  senderCommands: SavedCommand[];
+}
+
+/** How many entries an export wrote or an import merged. */
+export interface DataSummary {
+  profiles: number;
+  groups: number;
+  senderCommands: number;
+  /** Sender tags an import left out because the library was already full. */
+  skippedSenderCommands: number;
+}
+
 /** Colours used for session dots, mirroring WindTerm's per-session markers. */
 export const SESSION_COLORS = [
   "#4ea1f3",

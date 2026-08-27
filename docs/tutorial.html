@@ -97,6 +97,7 @@
     <a href="#sender"><span data-i18n="en">Sender</span><span data-i18n="zh">Sender 发送器</span></a>
     <a href="#zmodem"><span data-i18n="en">ZMODEM Transfers</span><span data-i18n="zh">ZMODEM 传输</span></a>
     <a href="#display"><span data-i18n="en">Display Settings</span><span data-i18n="zh">显示设置</span></a>
+    <a href="#data"><span data-i18n="en">Export &amp; Import</span><span data-i18n="zh">数据导出与导入</span></a>
     <a href="#updates"><span data-i18n="en">Updates</span><span data-i18n="zh">自动更新</span></a>
     <a href="#shortcuts"><span data-i18n="en">Keyboard Shortcuts</span><span data-i18n="zh">快捷键一览</span></a>
     <a href="#faq"><span data-i18n="en">Limitations &amp; FAQ</span><span data-i18n="zh">限制与常见问题</span></a>
@@ -329,6 +330,22 @@
       <p>
         <span data-i18n="en">These settings persist across restarts. The <span class="menu-path">View</span> menu also toggles the three panels, and <span class="menu-path">Help → Restore Default Settings…</span> resets everything to defaults.</span>
         <span data-i18n="zh">这些设置会持久保存。<span class="menu-path">View</span> 菜单还可以显示 / 隐藏三个面板；<span class="menu-path">Help → Restore Default Settings…</span> 可一键恢复默认设置。</span>
+      </p>
+    </section>
+
+    <section id="data">
+      <h2><span class="sec-icon">💾</span><span data-i18n="en">Export &amp; Import</span><span data-i18n="zh">数据导出与导入</span></h2>
+      <p>
+        <span data-i18n="en"><span class="menu-path">Session → Export Data…</span> saves everything you have set up into one <code>.edgeterm</code> file (plain JSON inside): saved sessions with their groups, the Sender's saved commands, and the display settings (panels, gutter mode, theme, font sizes, scrollback, command suggestions). Use it as a backup or to move to another computer.</span>
+        <span data-i18n="zh"><span class="menu-path">Session → Export Data…</span> 把你配置好的一切保存为一个 <code>.edgeterm</code> 文件（内容为 JSON）：保存的会话及其分组、Sender 的常用命令，以及显示设置（面板显示、侧栏模式、主题、字号、回滚行数、命令建议）。可用于备份或迁移到另一台电脑。</span>
+      </p>
+      <p>
+        <span data-i18n="en"><span class="menu-path">Session → Import Data…</span> accepts only <code>.edgeterm</code> files, checks that the contents really are an EdgeTerm export of a known version, shows what the file contains, and merges it after you confirm: entries with the same id replace the local ones, everything else is added, and nothing already on this machine is deleted. Settings in the file are applied immediately.</span>
+        <span data-i18n="zh"><span class="menu-path">Session → Import Data…</span> 只接受 <code>.edgeterm</code> 文件，并校验内容确实是已知版本的 EdgeTerm 导出，先显示其中的内容，确认后再合并：同 id 的条目覆盖本地，其余追加，本机已有的数据一律不会被删除。文件中的设置会立即生效。</span>
+      </p>
+      <p class="dim">
+        <span data-i18n="en">Passwords and private-key passphrases are never written to a data file, and any found in one are ignored on import — imported SSH / FTP sessions ask for their credentials again. Host names, user names and key paths are included, so treat the file as you would any configuration backup.</span>
+        <span data-i18n="zh">密码和私钥口令永远不会写入数据文件，文件里即使有也会在导入时被忽略 —— 导入的 SSH / FTP 会话连接时需要重新输入凭据。文件包含主机名、用户名和私钥路径，请像对待其他配置备份一样妥善保管。</span>
       </p>
     </section>
 

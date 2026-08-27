@@ -8,6 +8,7 @@ import { openUrl } from "@tauri-apps/plugin-opener";
 
 import appIcon from "../../src-tauri/icons/32x32.png";
 import { toggleSessionConnection } from "../actions";
+import { exportAppData, importAppData } from "../dataTransfer";
 import { commandHistory } from "../history";
 import { IS_MAC, IS_WINDOWS, shortcutLabel as sc } from "../platform";
 import { useActiveTab, useStore } from "../store";
@@ -239,6 +240,9 @@ export function MenuBar(props: Props) {
             gutterEntry("No Gutter", "off"),
           ],
         },
+        "separator",
+        { label: "Export Data…", action: () => void exportAppData() },
+        { label: "Import Data…", action: () => void importAppData() },
       ],
     },
     {

@@ -1,17 +1,18 @@
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use base64::{engine::general_purpose::STANDARD as B64, Engine as _};
 
 use crate::commands::{
-    zmodem_create_file, zmodem_file_info, zmodem_finish_file, zmodem_read_chunk, zmodem_write_chunk,
+    read_app_data, zmodem_create_file, zmodem_file_info, zmodem_finish_file, zmodem_read_chunk,
+    zmodem_write_chunk,
 };
 use crate::fs_local;
 use crate::model::{
-    AuthKind, FileEntry, LineEnding, SavedCommand, SenderFormat, SessionGroup, SessionKind,
-    SessionProfile,
+    AppData, AuthKind, FileEntry, LineEnding, SavedCommand, SenderFormat, SessionGroup,
+    SessionKind, SessionProfile, APP_DATA_APP, APP_DATA_EXTENSION, APP_DATA_FORMAT,
 };
 use crate::session::{join_remote, sort_entries};
-use crate::store::Store;
+use crate::store::{is_data_file_path, Store};
 
 fn temp_dir(tag: &str) -> PathBuf {
     let dir = std::env::temp_dir().join(format!("edgeterm-test-{tag}-{}", uuid::Uuid::new_v4()));
@@ -199,6 +200,270 @@ fn store_persists_sender_commands_across_restarts() {
     assert!(Store::load_from(dir.join("sessions.json"))
         .list_sender_commands()
         .is_empty());
+
+    std::fs::remove_dir_all(&dir).ok();
+}
+
+fn command(name: &str, text: &str) -> SavedCommand {
+    SavedCommand {
+        id: String::new(),
+        name: name.into(),
+        text: text.into(),
+        format: SenderFormat::Text,
+        ending: LineEnding::Lf,
+    }
+}
+
+#[test]
+fn store_snapshot_never_carries_credentials() {
+    let dir = temp_dir("export");
+    let store = Store::load_from(dir.join("sessions.json"));
+
+    let mut ssh = profile(SessionKind::Ssh);
+    ssh.auth = Some(AuthKind::Password);
+    ssh.password = Some("hunter2".into());
+    let ssh = store.save(ssh).expect("save ssh");
+    let mut key = profile(SessionKind::Ssh);
+    key.auth = Some(AuthKind::PublicKey);
+    key.private_key_path = Some("/home/me/.ssh/id_ed25519".into());
+    key.passphrase = Some("secret".into());
+    store.save(key).expect("save key");
+    let group = store
+        .save_group(group("Prod", SessionKind::Ssh, None))
+        .expect("save group");
+    store
+        .save_sender_command(command("List", "ls"))
+        .expect("save command");
+
+    let data = store.snapshot();
+    assert_eq!(data.app, APP_DATA_APP);
+    assert_eq!(data.format, APP_DATA_FORMAT);
+    assert_eq!(data.profiles.len(), 2);
+    assert!(data
+        .profiles
+        .iter()
+        .all(|p| p.password.is_none() && p.passphrase.is_none()));
+    assert_eq!(data.profiles[0].id, ssh.id);
+    assert_eq!(
+        data.profiles[1].private_key_path.as_deref(),
+        Some("/home/me/.ssh/id_ed25519")
+    );
+    assert_eq!(data.groups, vec![group]);
+    assert_eq!(data.sender_commands.len(), 1);
+
+    let json = serde_json::to_string(&data).expect("serialize");
+    assert!(!json.contains("hunter2"));
+    assert!(!json.contains("secret"));
+    // The local secrets stay usable for reconnects.
+    assert_eq!(
+        store.get(&ssh.id).expect("get").and_then(|p| p.password),
+        Some("hunter2".into())
+    );
+
+    std::fs::remove_dir_all(&dir).ok();
+}
+
+#[test]
+fn store_import_merges_by_id_and_drops_secrets_and_bad_links() {
+    let dir = temp_dir("import");
+    let path = dir.join("sessions.json");
+    let store = Store::load_from(path.clone());
+
+    let mut local = profile(SessionKind::Ssh);
+    local.name = "before".into();
+    local.auth = Some(AuthKind::Password);
+    local.password = Some("keep-me".into());
+    let local = store.save(local).expect("save local");
+    let existing_group = store
+        .save_group(group("Existing", SessionKind::Ssh, None))
+        .expect("save group");
+    let existing_command = store
+        .save_sender_command(command("Old", "ls"))
+        .expect("save command");
+
+    let mut replaced = local.clone();
+    replaced.name = "after".into();
+    replaced.password = Some("from-file".into());
+    replaced.group_id = Some(existing_group.id.clone());
+    let mut orphan = profile(SessionKind::Serial);
+    orphan.id = "serial-1".into();
+    // A serial profile cannot live in an SSH group.
+    orphan.group_id = Some(existing_group.id.clone());
+    let mut stray = profile(SessionKind::Ssh);
+    stray.id = "ssh-2".into();
+    stray.group_id = Some("no-such-group".into());
+    let mut fresh = profile(SessionKind::Local);
+    fresh.passphrase = Some("x".into());
+
+    let mut renamed_command = existing_command.clone();
+    renamed_command.name = "Renamed".into();
+
+    let data = AppData {
+        app: APP_DATA_APP.into(),
+        format: APP_DATA_FORMAT,
+        exported_at: None,
+        settings: None,
+        profiles: vec![replaced, orphan, stray, fresh],
+        groups: vec![
+            SessionGroup {
+                id: "a".into(),
+                name: "  A  ".into(),
+                kind: SessionKind::Ssh,
+                parent_id: Some("b".into()),
+            },
+            SessionGroup {
+                id: "b".into(),
+                name: "B".into(),
+                kind: SessionKind::Ssh,
+                parent_id: Some("a".into()),
+            },
+            SessionGroup {
+                id: "c".into(),
+                name: "C".into(),
+                kind: SessionKind::Serial,
+                parent_id: Some("a".into()),
+            },
+            SessionGroup {
+                id: "d".into(),
+                name: "D".into(),
+                kind: SessionKind::Ssh,
+                parent_id: Some("missing".into()),
+            },
+            group("   ", SessionKind::Ssh, None),
+            // Same id as an existing group of another kind: refused.
+            SessionGroup {
+                id: existing_group.id.clone(),
+                name: "Existing".into(),
+                kind: SessionKind::Ftp,
+                parent_id: None,
+            },
+        ],
+        sender_commands: vec![renamed_command.clone(), command("New", "pwd")],
+    };
+
+    let summary = store.import_data(data).expect("import");
+    assert_eq!(summary.profiles, 4);
+    assert_eq!(summary.groups, 4);
+    assert_eq!(summary.sender_commands, 2);
+    assert_eq!(summary.skipped_sender_commands, 0);
+
+    let profiles = store.list();
+    assert_eq!(profiles.len(), 4);
+    assert!(profiles
+        .iter()
+        .all(|p| p.password.is_none() && p.passphrase.is_none()));
+    let after = profiles
+        .iter()
+        .find(|p| p.id == local.id)
+        .expect("replaced");
+    assert_eq!(after.name, "after");
+    assert_eq!(after.group_id.as_deref(), Some(existing_group.id.as_str()));
+    // Local credentials survive a same-id import; the file's password is ignored.
+    assert_eq!(
+        store.get(&local.id).expect("get").and_then(|p| p.password),
+        Some("keep-me".into())
+    );
+    assert_eq!(
+        profiles
+            .iter()
+            .find(|p| p.id == "serial-1")
+            .unwrap()
+            .group_id,
+        None
+    );
+    assert_eq!(
+        profiles.iter().find(|p| p.id == "ssh-2").unwrap().group_id,
+        None
+    );
+    assert!(profiles.iter().all(|p| !p.id.is_empty()));
+
+    let groups = store.list_groups();
+    // The blank-named group and the kind-changing one were refused.
+    assert_eq!(groups.len(), 5);
+    let find = |id: &str| groups.iter().find(|g| g.id == id).expect(id);
+    assert_eq!(find(&existing_group.id).kind, SessionKind::Ssh);
+    assert_eq!(find("a").name, "A");
+    // The a ↔ b cycle is broken at one end, "c" cannot hang under another
+    // kind, and "d" pointed nowhere.
+    let linked: Vec<_> = ["a", "b"]
+        .iter()
+        .filter(|id| find(id).parent_id.is_some())
+        .collect();
+    assert_eq!(linked.len(), 1);
+    assert_eq!(find("c").parent_id, None);
+    assert_eq!(find("d").parent_id, None);
+
+    let commands = store.list_sender_commands();
+    assert_eq!(commands.len(), 2);
+    assert_eq!(commands[0], renamed_command);
+    assert_eq!(commands[1].name, "New");
+
+    // Everything was persisted, and reopening is safe.
+    let reloaded = Store::load_from(path);
+    assert_eq!(reloaded.list().len(), 4);
+    assert_eq!(reloaded.list_groups().len(), 5);
+    assert_eq!(reloaded.list_sender_commands().len(), 2);
+
+    std::fs::remove_dir_all(&dir).ok();
+}
+
+#[test]
+fn store_import_refuses_foreign_or_newer_files() {
+    let dir = temp_dir("import-refuse");
+    let store = Store::load_from(dir.join("sessions.json"));
+    let mut data = store.snapshot();
+    data.app = "Other".into();
+    assert!(store.import_data(data.clone()).is_err());
+    data.app = APP_DATA_APP.into();
+    data.format = APP_DATA_FORMAT + 1;
+    assert!(store.import_data(data.clone()).is_err());
+    data.format = 0;
+    assert!(store.import_data(data).is_err());
+    std::fs::remove_dir_all(&dir).ok();
+}
+
+#[test]
+fn data_files_are_recognised_by_extension_and_contents() {
+    assert_eq!(APP_DATA_EXTENSION, "edgeterm");
+    assert!(is_data_file_path(Path::new("backup.edgeterm")));
+    assert!(is_data_file_path(Path::new("/tmp/A.EDGETERM")));
+    assert!(!is_data_file_path(Path::new("backup.json")));
+    assert!(!is_data_file_path(Path::new("edgeterm")));
+    assert!(!is_data_file_path(Path::new("backup.edgeterm.json")));
+
+    let dir = temp_dir("data-file");
+    let store = Store::load_from(dir.join("sessions.json"));
+    let mut ssh = profile(SessionKind::Ssh);
+    ssh.auth = Some(AuthKind::Password);
+    ssh.password = Some("hunter2".into());
+    store.save(ssh).expect("save");
+    let valid = serde_json::to_string(&store.snapshot()).expect("serialize");
+
+    // Right contents, wrong name: refused before the file is even read.
+    let json = dir.join("backup.json");
+    std::fs::write(&json, &valid).expect("write json");
+    let error = read_app_data(json.display().to_string()).expect_err("json refused");
+    assert!(error.to_string().contains(".edgeterm"), "{error}");
+
+    // Right name, wrong contents.
+    let garbage = dir.join("garbage.edgeterm");
+    std::fs::write(&garbage, "not json").expect("write garbage");
+    assert!(read_app_data(garbage.display().to_string()).is_err());
+    let foreign = dir.join("foreign.edgeterm");
+    std::fs::write(&foreign, r#"{"app":"Other","format":1}"#).expect("write foreign");
+    assert!(read_app_data(foreign.display().to_string()).is_err());
+    let missing = dir.join("missing.edgeterm");
+    assert!(read_app_data(missing.display().to_string()).is_err());
+
+    // Right name and contents; a password smuggled into the file is dropped.
+    let good = dir.join("backup.edgeterm");
+    let smuggled = valid.replace("\"password\":null", "\"password\":\"x\"");
+    assert_ne!(smuggled, valid, "the snapshot serialises an empty password");
+    std::fs::write(&good, smuggled).expect("write");
+    let data = read_app_data(good.display().to_string()).expect("read");
+    assert_eq!(data.app, APP_DATA_APP);
+    assert_eq!(data.profiles.len(), 1);
+    assert!(data.profiles[0].password.is_none());
 
     std::fs::remove_dir_all(&dir).ok();
 }

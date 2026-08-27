@@ -46,6 +46,7 @@ export function SenderPanel() {
   const tabs = useStore((s) => s.tabs);
   const activeId = useStore((s) => s.activeId);
   const setStatus = useStore((s) => s.setStatus);
+  const libraryVersion = useStore((s) => s.senderLibraryVersion);
 
   const [text, setText] = useState("");
   const [tagName, setTagName] = useState("");
@@ -63,12 +64,23 @@ export function SenderPanel() {
   const [libraryBusy, setLibraryBusy] = useState(false);
   const tooltipTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  // Loads the library on mount and again after a data import replaces it;
+  // an edit in progress would then update stale contents, so it is dropped.
   useEffect(() => {
     let cancelled = false;
+    setCommandsLoading(true);
     void api
       .listSenderCommands()
       .then((commands) => {
-        if (!cancelled) setSavedCommands(commands);
+        if (cancelled) return;
+        setSavedCommands(commands);
+        setEditing(null);
+        setPage((current) =>
+          Math.min(
+            current,
+            Math.max(1, Math.ceil(commands.length / COMMANDS_PER_PAGE)),
+          ),
+        );
       })
       .catch((error) => {
         if (!cancelled) setStatus(`Sender: failed to load saved commands: ${error}`);
@@ -79,7 +91,7 @@ export function SenderPanel() {
     return () => {
       cancelled = true;
     };
-  }, [setStatus]);
+  }, [setStatus, libraryVersion]);
 
   useEffect(() => () => {
     if (tooltipTimer.current) clearTimeout(tooltipTimer.current);

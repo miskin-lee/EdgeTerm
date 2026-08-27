@@ -49,6 +49,10 @@ Standard FTP does not encrypt credentials or file contents. Use FTP only on a tr
 - **Sender** (bottom): batch sending with text or hexadecimal input, line-by-line or character-by-character modes, repeat counts, configurable intervals, and targeting of the current session or all sessions.
 - Tabs, an address bar (`ssh › host:port`), and a status bar showing the terminal dimensions, cursor Ln/Ch, and protocol. The Session panel header carries a power toggle for the active tab (also **Session → Disconnect / Reconnect Session**): click it to disconnect the session while keeping the tab and its scrollback, and click again to reconnect in place.
 
+**Data export and import**
+
+**Session → Export Data…** writes the saved sessions and their groups, the Sender's saved commands, and the display settings to a single `.edgeterm` file (plain JSON inside); **Session → Import Data…** accepts only `.edgeterm` files, checks the file header, and merges the data back on another machine or after a reinstall (entries with the same id replace the local ones, nothing else is removed). Passwords and key passphrases are never exported — imported sessions ask for them again.
+
 **ZMODEM transfers**
 
 Local shell, SSH, and serial terminals automatically detect ZMODEM sessions. Run `rz` in the terminal to choose and send one or more local files, or run `sz <file>` to choose where each incoming file is saved. The peer must provide a compatible `rz`/`sz` implementation such as `lrzsz`. File I/O and terminal output remain binary-safe and files are read or written through fixed 1 MiB application chunks. Use **Session → Cancel ZMODEM Transfer** to stop an active transfer.

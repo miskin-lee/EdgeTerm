@@ -216,6 +216,49 @@ pub struct SavedCommand {
     pub ending: LineEnding,
 }
 
+/// Marker every exported data file carries, so a stray JSON file is refused
+/// before anything is merged.
+pub const APP_DATA_APP: &str = "EdgeTerm";
+/// Layout version of the export file. Bump it when a change would make an
+/// older build misread a newer file; builds refuse files newer than they know.
+pub const APP_DATA_FORMAT: u32 = 1;
+/// File extension (without the dot) every data file carries. Export appends
+/// it and import refuses anything else, so a data file is recognisable before
+/// it is opened; the contents are still plain JSON.
+pub const APP_DATA_EXTENSION: &str = "edgeterm";
+
+/// One export / import file: the frontend's settings, saved sessions with
+/// their groups, and Sender tags. Session passwords and key passphrases are
+/// never part of it — see `Store::snapshot` and `Store::import_data`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AppData {
+    pub app: String,
+    pub format: u32,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub exported_at: Option<String>,
+    /// Frontend preferences (theme, fonts, panels…); opaque to the backend.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub settings: Option<serde_json::Value>,
+    #[serde(default)]
+    pub profiles: Vec<SessionProfile>,
+    #[serde(default)]
+    pub groups: Vec<SessionGroup>,
+    #[serde(default)]
+    pub sender_commands: Vec<SavedCommand>,
+}
+
+/// How many entries an export wrote or an import merged.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DataSummary {
+    pub profiles: usize,
+    pub groups: usize,
+    pub sender_commands: usize,
+    /// Sender tags an import left out because the library was already full.
+    pub skipped_sender_commands: usize,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct FileEntry {

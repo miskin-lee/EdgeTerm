@@ -2,6 +2,8 @@ import { Channel, invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 
 import type {
+  AppData,
+  DataSummary,
   DirListing,
   HostKeyChange,
   OpenSessionOutcome,
@@ -71,6 +73,23 @@ export const saveSenderCommand = (command: SavedCommand) =>
 
 export const deleteSenderCommand = (id: string) =>
   invoke<void>("delete_sender_command", { id });
+
+// --- data export / import ---------------------------------------------------
+
+/** Writes sessions, groups, Sender tags and `settings` to `path` (no secrets). */
+export const exportAppData = (
+  path: string,
+  settings: unknown,
+  exportedAt: string,
+) => invoke<DataSummary>("export_app_data", { path, settings, exportedAt });
+
+/** Parses a data file for preview; credentials in it are dropped by the backend. */
+export const readAppData = (path: string) =>
+  invoke<AppData>("read_app_data", { path });
+
+/** Merges a file from `readAppData` into the saved data (same id replaces). */
+export const importAppData = (data: AppData) =>
+  invoke<DataSummary>("import_app_data", { data });
 
 // --- command history ---------------------------------------------------------
 

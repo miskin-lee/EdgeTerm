@@ -8,15 +8,16 @@ use tokio::sync::mpsc;
 use crate::error::{err, AppError, Result};
 use crate::fs_local;
 use crate::model::{
-    CommandHistoryEntry, DirListing, OpenSessionOutcome, SavedCommand, SerialPortDesc,
-    SessionGroup, SessionInfo, SessionKind, SessionProfile, ZmodemFileInfo,
+    AppData, CommandHistoryEntry, DataSummary, DirListing, OpenSessionOutcome, SavedCommand,
+    SerialPortDesc, SessionGroup, SessionInfo, SessionKind, SessionProfile, ZmodemFileInfo,
+    APP_DATA_EXTENSION,
 };
 use crate::session::ssh::ConnectOutcome;
 use crate::session::{
     self, SessionCommand, SessionHandle, SessionManager, SftpRequest, SftpResponse,
     TransferProgress,
 };
-use crate::store::Store;
+use crate::store::{self, Store};
 
 pub struct AppState {
     pub sessions: SessionManager,
@@ -94,6 +95,70 @@ pub fn record_command(state: State<'_, AppState>, command: String, host: String)
 #[tauri::command]
 pub fn clear_command_history(state: State<'_, AppState>) -> Result<()> {
     state.store.clear_command_history()
+}
+
+// --- data export / import ---------------------------------------------------
+
+/// Writes saved sessions, their groups, Sender tags and the frontend's
+/// settings to `path` as pretty JSON. Passwords and passphrases are never
+/// included, so the file needs no special permissions. The path must carry
+/// the `.edgeterm` extension (the UI appends it), so every data file is
+/// recognisable by name.
+#[tauri::command]
+pub fn export_app_data(
+    state: State<'_, AppState>,
+    path: String,
+    settings: serde_json::Value,
+    exported_at: String,
+) -> Result<DataSummary> {
+    require_data_file_path(&path)?;
+    let mut data = state.store.snapshot();
+    data.exported_at = Some(exported_at);
+    data.settings = Some(settings);
+    std::fs::write(&path, serde_json::to_string_pretty(&data)?)?;
+    Ok(DataSummary {
+        profiles: data.profiles.len(),
+        groups: data.groups.len(),
+        sender_commands: data.sender_commands.len(),
+        skipped_sender_commands: 0,
+    })
+}
+
+/// Parses an EdgeTerm data file so the UI can show what an import would
+/// bring in before anything is merged: the name must end in `.edgeterm`, the
+/// contents must be JSON with the EdgeTerm marker and a known layout
+/// version. Credentials in the file are dropped here so they never reach
+/// the webview.
+#[tauri::command]
+pub fn read_app_data(path: String) -> Result<AppData> {
+    require_data_file_path(&path)?;
+    let raw = std::fs::read_to_string(&path)?;
+    let mut data: AppData = serde_json::from_str(&raw)
+        .map_err(|error| AppError::new(format!("not an EdgeTerm data file: {error}")))?;
+    store::validate_app_data(&data)?;
+    data.profiles = data
+        .profiles
+        .into_iter()
+        .map(store::redact_profile)
+        .collect();
+    Ok(data)
+}
+
+fn require_data_file_path(path: &str) -> Result<()> {
+    if store::is_data_file_path(Path::new(path)) {
+        Ok(())
+    } else {
+        Err(AppError::new(format!(
+            "not an EdgeTerm data file: expected a .{APP_DATA_EXTENSION} file"
+        )))
+    }
+}
+
+/// Merges a file returned by `read_app_data` into the store; see
+/// `Store::import_data` for the rules. The frontend applies `settings` itself.
+#[tauri::command]
+pub fn import_app_data(state: State<'_, AppState>, data: AppData) -> Result<DataSummary> {
+    state.store.import_data(data)
 }
 
 // --- sessions ---------------------------------------------------------------
