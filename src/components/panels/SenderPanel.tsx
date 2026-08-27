@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import * as api from "../../api";
 import { useStore } from "../../store";
@@ -8,12 +8,24 @@ import type {
   SavedCommand,
   SenderFormat,
 } from "../../types";
+import { ContextMenu, type MenuItem } from "../ContextMenu";
 
 type Target = "current" | "all";
 type CommandContextMenu = {
   commandId: string;
   x: number;
   y: number;
+};
+/** What the inputs held before Edit replaced them, restored on Cancel. */
+type Draft = {
+  text: string;
+  tagName: string;
+  format: SenderFormat;
+  ending: LineEnding;
+};
+type Editing = {
+  command: SavedCommand;
+  draft: Draft;
 };
 type CommandTooltip = {
   text: string;
@@ -24,6 +36,11 @@ type CommandTooltip = {
 
 const MAX_SAVED_COMMANDS = 1000;
 const COMMANDS_PER_PAGE = 24;
+const LINE_ENDINGS: [LineEnding, string][] = [
+  ["none", "None"],
+  ["lf", "LF (\\n)"],
+  ["crlf", "CRLF (\\r\\n)"],
+];
 
 export function SenderPanel() {
   const tabs = useStore((s) => s.tabs);
@@ -36,6 +53,7 @@ export function SenderPanel() {
   const [savedCommands, setSavedCommands] = useState<SavedCommand[]>([]);
   const [selectedCommandId, setSelectedCommandId] = useState<string | null>(null);
   const [contextMenu, setContextMenu] = useState<CommandContextMenu | null>(null);
+  const [editing, setEditing] = useState<Editing | null>(null);
   const [commandTooltip, setCommandTooltip] = useState<CommandTooltip | null>(null);
   const [page, setPage] = useState(1);
   const [format, setFormat] = useState<SenderFormat>("text");
@@ -67,23 +85,7 @@ export function SenderPanel() {
     if (tooltipTimer.current) clearTimeout(tooltipTimer.current);
   }, []);
 
-  useEffect(() => {
-    if (!contextMenu) return;
-    const close = () => setContextMenu(null);
-    const closeOnEscape = (event: KeyboardEvent) => {
-      if (event.key === "Escape") close();
-    };
-    window.addEventListener("resize", close);
-    window.addEventListener("blur", close);
-    document.addEventListener("pointerdown", close);
-    document.addEventListener("keydown", closeOnEscape);
-    return () => {
-      window.removeEventListener("resize", close);
-      window.removeEventListener("blur", close);
-      document.removeEventListener("pointerdown", close);
-      document.removeEventListener("keydown", closeOnEscape);
-    };
-  }, [contextMenu]);
+  const closeContextMenu = useCallback(() => setContextMenu(null), []);
 
   const pageCount = Math.max(
     1,
@@ -166,20 +168,77 @@ export function SenderPanel() {
     }
   };
 
-  const updateSavedEnding = async (id: string, value: LineEnding) => {
-    if (libraryBusy) return;
-    setContextMenu(null);
-    const command = savedCommands.find((candidate) => candidate.id === id);
-    if (!command) return;
+  const replaceSaved = (saved: SavedCommand) =>
+    setSavedCommands((current) =>
+      current.map((candidate) =>
+        candidate.id === saved.id ? saved : candidate,
+      ),
+    );
 
+  const updateSavedEnding = async (command: SavedCommand, value: LineEnding) => {
+    if (libraryBusy || command.ending === value) return;
     setLibraryBusy(true);
     try {
       const saved = await api.saveSenderCommand({ ...command, ending: value });
-      setSavedCommands((current) =>
-        current.map((candidate) =>
-          candidate.id === id ? saved : candidate,
-        ),
+      replaceSaved(saved);
+      // Keep an in-progress edit of the same tag in step with the new ending.
+      setEditing((current) =>
+        current?.command.id === saved.id
+          ? { ...current, command: saved }
+          : current,
       );
+      if (editing?.command.id === saved.id) setEnding(value);
+    } catch (error) {
+      setStatus(`Sender: failed to update command: ${error}`);
+    } finally {
+      setLibraryBusy(false);
+    }
+  };
+
+  /** Loads a saved tag into the inputs; Save becomes Update until done. */
+  const beginEdit = (command: SavedCommand) => {
+    if (libraryBusy) return;
+    // The first Edit remembers whatever was typed; switching tags mid-edit
+    // keeps that original draft so Cancel still restores it.
+    const draft = editing?.draft ?? { text, tagName, format, ending };
+    setEditing({ command, draft });
+    setSelectedCommandId(command.id);
+    setText(command.text);
+    setTagName(command.name === command.text ? "" : command.name);
+    setFormat(command.format);
+    setEnding(command.ending);
+  };
+
+  const cancelEdit = () => {
+    if (!editing) return;
+    const { draft } = editing;
+    setEditing(null);
+    setText(draft.text);
+    setTagName(draft.tagName);
+    setFormat(draft.format);
+    setEnding(draft.ending);
+  };
+
+  const updateCommand = async () => {
+    if (!editing || libraryBusy) return;
+    if (text.length === 0) {
+      setStatus("Sender: enter a command before updating");
+      return;
+    }
+    setLibraryBusy(true);
+    try {
+      const saved = await api.saveSenderCommand({
+        ...editing.command,
+        name: tagName.trim() || text,
+        text,
+        format,
+        ending,
+      });
+      replaceSaved(saved);
+      setSelectedCommandId(saved.id);
+      setEditing(null);
+      setTagName("");
+      setStatus("Sender: updated saved command");
     } catch (error) {
       setStatus(`Sender: failed to update command: ${error}`);
     } finally {
@@ -198,6 +257,7 @@ export function SenderPanel() {
       );
       if (selectedCommandId === id) setSelectedCommandId(null);
       if (contextMenu?.commandId === id) setContextMenu(null);
+      if (editing?.command.id === id) cancelEdit();
       setPage((current) =>
         Math.min(current, Math.max(1, Math.ceil(nextLength / COMMANDS_PER_PAGE))),
       );
@@ -342,13 +402,16 @@ export function SenderPanel() {
               : `Type a command (${endingLabel(ending)})`
           }
           onChange={(event) => {
-            setSelectedCommandId(null);
+            if (!editing) setSelectedCommandId(null);
             setText(event.target.value.replace(/[\r\n]+/g, ""));
           }}
           onKeyDown={(event) => {
             if (event.key === "Enter") {
               event.preventDefault();
               void sendCommand(text, format, ending);
+            } else if (event.key === "Escape" && editing) {
+              event.preventDefault();
+              cancelEdit();
             }
           }}
         />
@@ -365,20 +428,51 @@ export function SenderPanel() {
           onChange={(event) =>
             setTagName(event.target.value.replace(/[\r\n]+/g, ""))
           }
+          onKeyDown={(event) => {
+            if (event.key === "Enter" && editing) {
+              event.preventDefault();
+              void updateCommand();
+            } else if (event.key === "Escape" && editing) {
+              event.preventDefault();
+              cancelEdit();
+            }
+          }}
         />
-        <button
-          className="sender-save-btn"
-          type="button"
-          disabled={
-            commandsLoading ||
-            libraryBusy ||
-            text.length === 0 ||
-            savedCommands.length >= MAX_SAVED_COMMANDS
-          }
-          onClick={() => void saveCommand()}
-        >
-          Save
-        </button>
+        {editing ? (
+          <>
+            <button
+              className="sender-save-btn"
+              type="button"
+              disabled={libraryBusy || text.length === 0}
+              title={`Update "${editing.command.name}"`}
+              onClick={() => void updateCommand()}
+            >
+              Update
+            </button>
+            <button
+              className="sender-save-btn is-secondary"
+              type="button"
+              disabled={libraryBusy}
+              onClick={cancelEdit}
+            >
+              Cancel
+            </button>
+          </>
+        ) : (
+          <button
+            className="sender-save-btn"
+            type="button"
+            disabled={
+              commandsLoading ||
+              libraryBusy ||
+              text.length === 0 ||
+              savedCommands.length >= MAX_SAVED_COMMANDS
+            }
+            onClick={() => void saveCommand()}
+          >
+            Save
+          </button>
+        )}
       </div>
 
       <div className="sender-library">
@@ -414,17 +508,23 @@ export function SenderPanel() {
           <div className="sender-command-tags">
             {pageCommands.map((command) => (
               <div
-                className={`sender-command-tag${selectedCommandId === command.id ? " is-selected" : ""}`}
+                className={[
+                  "sender-command-tag",
+                  selectedCommandId === command.id ? "is-selected" : "",
+                  editing?.command.id === command.id ? "is-editing" : "",
+                ]
+                  .filter(Boolean)
+                  .join(" ")}
                 key={command.id}
                 onContextMenu={(event) => {
                   event.preventDefault();
-                  if (libraryBusy) return;
+                  event.stopPropagation();
                   hideCommandTooltip();
                   setSelectedCommandId(command.id);
                   setContextMenu({
                     commandId: command.id,
-                    x: Math.min(event.clientX, window.innerWidth - 150),
-                    y: Math.min(event.clientY, window.innerHeight - 118),
+                    x: event.clientX,
+                    y: event.clientY,
                   });
                 }}
               >
@@ -448,15 +548,6 @@ export function SenderPanel() {
                 >
                   {command.name}
                 </button>
-                <button
-                  className="sender-command-remove"
-                  type="button"
-                  title="Delete saved command"
-                  disabled={libraryBusy}
-                  onClick={() => void removeCommand(command.id)}
-                >
-                  ×
-                </button>
               </div>
             ))}
           </div>
@@ -468,30 +559,36 @@ export function SenderPanel() {
           (candidate) => candidate.id === contextMenu.commandId,
         );
         if (!command) return null;
+        const items: MenuItem[] = [
+          {
+            label: "Edit",
+            disabled: libraryBusy,
+            action: () => beginEdit(command),
+          },
+          {
+            label: "Line ending",
+            children: LINE_ENDINGS.map(([value, label]) => ({
+              label,
+              checked: command.ending === value,
+              disabled: libraryBusy,
+              action: () => void updateSavedEnding(command, value),
+            })),
+          },
+          "separator",
+          {
+            label: "Delete",
+            danger: true,
+            disabled: libraryBusy,
+            action: () => void removeCommand(command.id),
+          },
+        ];
         return (
-          <div
-            className="sender-context-menu"
-            style={{ left: contextMenu.x, top: contextMenu.y }}
-            onPointerDown={(event) => event.stopPropagation()}
-          >
-            <div className="sender-context-title">Line ending</div>
-            {([
-              ["none", "None"],
-              ["lf", "\\n"],
-              ["crlf", "\\r\\n"],
-            ] as const).map(([value, label]) => (
-              <button
-                className={command.ending === value ? "is-checked" : ""}
-                type="button"
-                disabled={libraryBusy}
-                key={value}
-                onClick={() => void updateSavedEnding(command.id, value)}
-              >
-                <span>{command.ending === value ? "✓" : ""}</span>
-                {label}
-              </button>
-            ))}
-          </div>
+          <ContextMenu
+            x={contextMenu.x}
+            y={contextMenu.y}
+            items={items}
+            onClose={closeContextMenu}
+          />
         );
       })()}
 
