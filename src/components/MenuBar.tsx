@@ -208,8 +208,8 @@ export function MenuBar(props: Props) {
         },
         "separator",
         {
-          // One entry that mirrors the tab's power toggle: it names whichever
-          // side of the switch applies to the active session right now.
+          // One entry that mirrors the Session panel's power toggle: it names
+          // whichever side of the switch applies to the active session now.
           label:
             activeState === "closed" || activeState === "error"
               ? "Reconnect Session"

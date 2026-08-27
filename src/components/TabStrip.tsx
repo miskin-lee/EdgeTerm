@@ -7,18 +7,9 @@ import {
   type CSSProperties,
 } from "react";
 
-import { toggleSessionConnection } from "../actions";
 import { useStore } from "../store";
-import { colorForSession, type SessionState } from "../types";
+import { colorForSession } from "../types";
 import { ContextMenu, type MenuItem } from "./ContextMenu";
-
-/** Tooltip of a tab's power toggle, by the state it would act on. */
-const POWER_TITLES: Record<SessionState, string> = {
-  connected: "Disconnect",
-  connecting: "Connecting…",
-  closed: "Reconnect",
-  error: "Reconnect",
-};
 
 export function TabStrip() {
   const tabs = useStore((s) => s.tabs);
@@ -131,22 +122,6 @@ export function TabStrip() {
             <span className="tab-index">{index + 1}.</span>
             <span className="tab-dot" aria-hidden="true" />
             <span className="tab-label">{tab.info.name}</span>
-            <button
-              className="tab-power"
-              disabled={tab.state === "connecting"}
-              onMouseDown={(event) => {
-                event.stopPropagation();
-                toggleSessionConnection(tab.info.id);
-              }}
-              title={POWER_TITLES[tab.state]}
-              aria-label={POWER_TITLES[tab.state]}
-            >
-              {/* Power symbol: an open ring with a bar through the gap. */}
-              <svg viewBox="0 0 10 10" aria-hidden="true">
-                <path d="M3.1 2.9A3.3 3.3 0 1 0 6.9 2.9" />
-                <path d="M5 0.9v4.3" />
-              </svg>
-            </button>
             <button
               className="tab-close"
               onMouseDown={(event) => {

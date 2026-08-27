@@ -1,7 +1,7 @@
 import { useCallback, useMemo, useState, type MouseEvent } from "react";
 import { ask } from "@tauri-apps/plugin-dialog";
 
-import { openSession } from "../../actions";
+import { openSession, toggleSessionConnection } from "../../actions";
 import {
   byName,
   childGroups,
@@ -17,6 +17,7 @@ import {
   type SessionGroup,
   type SessionKind,
   type SessionProfile,
+  type SessionState,
 } from "../../types";
 import { ContextMenu, type MenuItem } from "../ContextMenu";
 import { DeleteProfileDialog } from "../DeleteProfileDialog";
@@ -27,6 +28,14 @@ export const LOCAL_SHELL_PROFILE: SessionProfile = {
   name: "Local Shell",
   kind: "local",
   color: "#3fb950",
+};
+
+/** Tooltip of the power toggle, by the active tab's state. */
+const POWER_TITLES: Record<SessionState, string> = {
+  connected: "Disconnect",
+  connecting: "Connecting…",
+  closed: "Reconnect",
+  error: "Reconnect",
 };
 
 /** Horizontal step per tree level; the kind headings sit at level 0. */
@@ -112,6 +121,11 @@ export function SessionPanel({ onEditProfile, onNewSession }: Props) {
   const upsertGroup = useStore((s) => s.upsertGroup);
   const removeGroup = useStore((s) => s.removeGroup);
   const setStatus = useStore((s) => s.setStatus);
+  // The header's power toggle acts on the active tab, like Session →
+  // Disconnect / Reconnect Session.
+  const activeTab = useStore((s) =>
+    s.tabs.find((tab) => tab.info.id === s.activeId),
+  );
 
   const [filter, setFilter] = useState("");
   /** Keys are `kind:<kind>` for headings and `group:<id>` for groups. */
@@ -385,6 +399,27 @@ export function SessionPanel({ onEditProfile, onNewSession }: Props) {
           <span className="panel-dot" style={{ background: "#e3b341" }} />
           Session
         </div>
+        <button
+          className={`panel-action panel-power${
+            activeTab?.state === "connected" ? " is-connected" : ""
+          }`}
+          disabled={!activeTab || activeTab.state === "connecting"}
+          onClick={() => {
+            if (activeTab) toggleSessionConnection(activeTab.info.id);
+          }}
+          title={
+            activeTab
+              ? `${POWER_TITLES[activeTab.state]} · ${activeTab.info.name}`
+              : "No active session"
+          }
+          aria-label={activeTab ? POWER_TITLES[activeTab.state] : "Disconnect"}
+        >
+          {/* Power symbol: an open ring with a bar through the gap. */}
+          <svg viewBox="0 0 10 10" aria-hidden="true">
+            <path d="M3.1 2.9A3.3 3.3 0 1 0 6.9 2.9" />
+            <path d="M5 0.9v4.3" />
+          </svg>
+        </button>
         <button
           className="panel-action"
           onClick={onNewSession}

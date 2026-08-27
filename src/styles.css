@@ -474,6 +474,41 @@ textarea:focus {
   background: var(--bg-hover);
 }
 
+/* Power toggle for the active session, next to ＋ in the Session panel header.
+   Drawn from the same 10px caption-glyph grid as the window controls so it
+   reads as a control, not text. */
+.panel-power {
+  display: flex;
+  align-items: center;
+  height: 16px;
+}
+
+.panel-power svg {
+  width: 10px;
+  height: 10px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.2;
+  stroke-linecap: round;
+}
+
+/* Green while the active session is live ("powered on"); an ended session
+   keeps a neutral icon so its colour never reads as "connected". */
+.panel-power.is-connected {
+  color: var(--green);
+}
+
+.panel-power.is-connected:hover {
+  color: var(--green);
+}
+
+.panel-power:disabled {
+  opacity: 0.35;
+  cursor: default;
+  background: none;
+  color: var(--fg-faint);
+}
+
 .panel-body {
   flex: 1;
   min-height: 0;
@@ -725,8 +760,7 @@ textarea:focus {
   text-overflow: ellipsis;
 }
 
-.tab-close,
-.tab-power {
+.tab-close {
   color: var(--fg-faint);
   padding: 0 2px;
   border-radius: 2px;
@@ -734,66 +768,14 @@ textarea:focus {
   visibility: hidden;
 }
 
-/* The power toggle sits between the label and ✕; drawn from the same 10px
-   caption-glyph grid as the window controls so it reads as a control, not
-   text. */
-.tab-power {
-  display: flex;
-  align-items: center;
-  height: 16px;
-  /* Tighten the trailing controls into one compact cluster: pull the toggle
-     toward the session name, and the ✕ in against the toggle. */
-  margin-left: -4px;
-  margin-right: -5px;
-}
-
-.tab-power svg {
-  width: 10px;
-  height: 10px;
-  fill: none;
-  stroke: currentColor;
-  stroke-width: 1.2;
-  stroke-linecap: round;
-}
-
 .tab:hover .tab-close,
-.tab.is-active .tab-close,
-.tab:hover .tab-power,
-.tab.is-active .tab-power,
-/* An ended session keeps its toggle in view so the way back is obvious. */
-.tab.is-closed .tab-power,
-.tab.is-error .tab-power {
+.tab.is-active .tab-close {
   visibility: visible;
 }
 
 .tab-close:hover {
   background: var(--bg-hover);
   color: var(--red);
-}
-
-.tab-power:hover:not(:disabled) {
-  background: var(--bg-hover);
-}
-
-/* Green while the session is live ("powered on"); an ended session keeps a
-   neutral icon so its colour never reads as "connected". */
-.tab.is-connected .tab-power {
-  color: var(--green);
-}
-
-.tab.is-closed .tab-power,
-.tab.is-error .tab-power {
-  color: var(--fg-faint);
-}
-
-.tab.is-closed .tab-power:hover,
-.tab.is-error .tab-power:hover {
-  color: var(--fg);
-}
-
-.tab-power:disabled {
-  opacity: 0.35;
-  cursor: default;
 }
 
 .tabstrip-actions {
