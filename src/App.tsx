@@ -268,11 +268,12 @@ export default function App() {
 
         <div className="center">
           <TabStrip />
-          <SearchOverlay
-            ref={searchRef}
-            open={searchOpen}
-            onOpenChange={setSearchOpen}
-          />
+          {searchOpen && (
+            <SearchOverlay
+              ref={searchRef}
+              onClose={() => setSearchOpen(false)}
+            />
+          )}
           <TerminalPane onNewSession={newSession} />
         </div>
 

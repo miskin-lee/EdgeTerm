@@ -6,6 +6,7 @@ import {
   useState,
   type KeyboardEvent,
 } from "react";
+import { flushSync } from "react-dom";
 
 import { matchAppShortcut } from "../shortcuts";
 import { useActiveTab, useStore } from "../store";
@@ -13,14 +14,16 @@ import { SEARCH_HIGHLIGHT_LIMIT, type SearchResults } from "../terminal";
 import { getController } from "../terminalRegistry";
 
 interface Props {
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
+  onClose: () => void;
 }
 
 export interface SearchOverlayHandle {
   /** Jump to the next match, or focus the input when there is no query yet. */
   findNext: () => void;
-  /** Focus the input and select the current query so typing replaces it. */
+  /**
+   * Focus the input and select the query so typing replaces it. A new
+   * single-line terminal selection is searched instead, as when the box opens.
+   */
   focus: () => void;
 }
 
@@ -32,6 +35,16 @@ const isFindKey = (event: KeyboardEvent) =>
 const isFindNextKey = (event: KeyboardEvent) =>
   matchAppShortcut(event)?.kind === "findNext";
 
+/**
+ * The terminal's current selection, which opening the box (or pressing ⌘F
+ * again) searches for. Multi-line selections cannot match, so they yield "".
+ */
+const selectedText = (sessionId: string | null) => {
+  if (!sessionId) return "";
+  const text = getController(sessionId)?.term.getSelection() ?? "";
+  return text.includes("\n") ? "" : text;
+};
+
 /** "3/12", "1000+" past the highlight limit, or "No results". */
 const formatResults = ({ resultIndex, resultCount }: SearchResults) => {
   if (resultCount === 0) return "No results";
@@ -42,11 +55,16 @@ const formatResults = ({ resultIndex, resultCount }: SearchResults) => {
   return resultIndex >= 0 ? `${resultIndex + 1}/${total}` : total;
 };
 
+/**
+ * The find box above the terminal. It is mounted only while open, so every
+ * opening starts from the terminal selection (or empty) rather than from
+ * the previous query.
+ */
 export const SearchOverlay = forwardRef<SearchOverlayHandle, Props>(
-  function SearchOverlay({ open, onOpenChange }, ref) {
+  function SearchOverlay({ onClose }, ref) {
     const tab = useActiveTab();
     const activeId = useStore((s) => s.activeId);
-    const [query, setQuery] = useState("");
+    const [query, setQuery] = useState(() => selectedText(activeId));
     const [results, setResults] = useState<SearchResults | null>(null);
     const inputRef = useRef<HTMLInputElement>(null);
     // The session whose buffer currently carries match highlights, so they
@@ -54,12 +72,15 @@ export const SearchOverlay = forwardRef<SearchOverlayHandle, Props>(
     const searchedRef = useRef<string | null>(null);
 
     // Select the previous query on focus so a new search (typed or pasted)
-    // replaces it instead of being appended to it.
-    const focusInput = () => {
+    // replaces it instead of being appended to it. A query taken from the
+    // terminal selection is already being searched, so the caret just sits
+    // after it.
+    const focusInput = (selectQuery = true) => {
       const input = inputRef.current;
       if (!input) return;
       input.focus();
-      input.select();
+      if (selectQuery) input.select();
+      else input.setSelectionRange(input.value.length, input.value.length);
     };
 
     const clearSearch = () => {
@@ -67,24 +88,6 @@ export const SearchOverlay = forwardRef<SearchOverlayHandle, Props>(
       searchedRef.current = null;
       setResults(null);
     };
-
-    useEffect(() => {
-      if (open && tab?.info.kind !== "ftp") focusInput();
-    }, [open, tab?.info.id, tab?.info.kind]);
-
-    // Highlights and the counter belong to one session; switching tabs or
-    // closing the box ends that search rather than showing stale numbers.
-    useEffect(() => {
-      if (!open || (searchedRef.current && searchedRef.current !== activeId)) {
-        clearSearch();
-      }
-    }, [open, activeId]);
-
-    useEffect(() => {
-      if (!activeId) return;
-      const listener = getController(activeId)?.onSearchResults(setResults);
-      return () => listener?.dispose();
-    }, [activeId]);
 
     const runSearch = (forward: boolean, incremental = false, term = query) => {
       if (!activeId) return;
@@ -97,6 +100,47 @@ export const SearchOverlay = forwardRef<SearchOverlayHandle, Props>(
       getController(activeId)?.search(term, forward, incremental);
     };
 
+    // Highlights and the counter belong to one session; switching tabs ends
+    // that search rather than showing stale numbers.
+    useEffect(() => {
+      if (searchedRef.current && searchedRef.current !== activeId) clearSearch();
+    }, [activeId]);
+
+    // Subscribed before the initial search below so its count is not missed:
+    // the addon reports results synchronously.
+    useEffect(() => {
+      if (!activeId) return;
+      const listener = getController(activeId)?.onSearchResults(setResults);
+      return () => listener?.dispose();
+    }, [activeId]);
+
+    // Search the seeded selection right away; the search starts at the
+    // selection, so it stays the current match. Closing the box drops the
+    // highlights.
+    useEffect(() => {
+      if (query) runSearch(true, true);
+      return clearSearch;
+    }, []);
+
+    // The tab the box opened in. Its seeded query is left unselected there;
+    // after a tab switch the query is selected so typing replaces it. (Kept
+    // as state, not a mutable ref, so StrictMode's repeated effects agree.)
+    const [openedIn] = useState({ tab: tab?.info.id, seeded: query !== "" });
+    useEffect(() => {
+      if (tab?.info.kind === "ftp") return;
+      focusInput(!(openedIn.seeded && tab?.info.id === openedIn.tab));
+    }, [tab?.info.id, tab?.info.kind]);
+
+    // Adopt a fresh terminal selection as the query and search it. The input
+    // is updated synchronously so the focus that follows sees the new text.
+    const adoptSelection = () => {
+      const term = selectedText(activeId);
+      if (!term || term === query) return false;
+      flushSync(() => setQuery(term));
+      runSearch(true, true, term);
+      return true;
+    };
+
     useImperativeHandle(
       ref,
       () => ({
@@ -104,12 +148,15 @@ export const SearchOverlay = forwardRef<SearchOverlayHandle, Props>(
           if (query) runSearch(true);
           else focusInput();
         },
-        focus: focusInput,
+        focus: () => {
+          const adopted = adoptSelection();
+          focusInput(!adopted);
+        },
       }),
       [activeId, query],
     );
 
-    if (!open || !tab || tab.info.kind === "ftp") return null;
+    if (!tab || tab.info.kind === "ftp") return null;
 
     return (
       <div className="terminal-search" role="search">
@@ -128,7 +175,7 @@ export const SearchOverlay = forwardRef<SearchOverlayHandle, Props>(
           }}
           onKeyDown={(event) => {
             if (event.key === "Enter") runSearch(!event.shiftKey);
-            else if (event.key === "Escape") onOpenChange(false);
+            else if (event.key === "Escape") onClose();
             else if (isFindKey(event)) {
               // ⌘F inside the box re-selects the query, like ⌘F elsewhere.
               event.preventDefault();
@@ -163,7 +210,7 @@ export const SearchOverlay = forwardRef<SearchOverlayHandle, Props>(
         </button>
         <button
           className="panel-action"
-          onClick={() => onOpenChange(false)}
+          onClick={onClose}
           title="Close search"
         >
           ✕
