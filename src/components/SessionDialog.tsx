@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 
 import { openSession } from "../actions";
 import * as api from "../api";
+import { flattenGroups, groupPath, KIND_LABELS } from "../sessionGroups";
 import { useStore } from "../store";
 import {
   colorForSession,
@@ -35,6 +36,9 @@ const RAW_TEXT_INPUT = {
   autoCorrect: "off",
   spellCheck: false,
 } as const;
+
+const defaultPort = (kind: SessionKind, current?: number | null) =>
+  kind === "ssh" ? (current ?? 22) : kind === "ftp" ? (current ?? 21) : current;
 
 /** Column count of `.session-color-picker`; keep in sync with styles.css. */
 const COLOR_PICKER_COLUMNS = 8;
@@ -104,6 +108,8 @@ export function SessionDialog({ initial, onClose }: Props) {
   const [busy, setBusy] = useState(false);
 
   const upsertProfile = useStore((s) => s.upsertProfile);
+  const groups = useStore((s) => s.groups);
+  const groupChoices = flattenGroups(groups, profile.kind);
 
   useEffect(() => {
     if (profile.kind !== "serial") return;
@@ -216,16 +222,14 @@ export function SessionDialog({ initial, onClose }: Props) {
                       onClick={() =>
                         patch({
                           kind,
-                          port:
-                            kind === "ssh"
-                              ? profile.kind === "ssh"
-                                ? (profile.port ?? 22)
-                                : 22
-                              : kind === "ftp"
-                                ? profile.kind === "ftp"
-                                  ? (profile.port ?? 21)
-                                  : 21
-                                : profile.port,
+                          port: defaultPort(
+                            kind,
+                            profile.kind === kind ? profile.port : null,
+                          ),
+                          // Groups belong to one kind; keep the choice only
+                          // while the kind stays the same.
+                          groupId:
+                            profile.kind === kind ? profile.groupId : null,
                         })
                       }
                     >
@@ -305,6 +309,33 @@ export function SessionDialog({ initial, onClose }: Props) {
                     );
                   })}
                 </div>
+              </div>
+              <div className="session-field is-wide">
+                <label className="session-field-label" htmlFor="session-group">
+                  Group
+                </label>
+                <select
+                  id="session-group"
+                  value={profile.groupId ?? ""}
+                  onChange={(event) =>
+                    patch({ groupId: event.target.value || null })
+                  }
+                >
+                  <option value="">
+                    {KIND_LABELS[profile.kind]} (no group)
+                  </option>
+                  {groupChoices.map(({ group }) => (
+                    <option key={group.id} value={group.id}>
+                      {groupPath(groups, group.id).join(" / ")}
+                    </option>
+                  ))}
+                </select>
+                {groupChoices.length === 0 && (
+                  <small className="session-field-hint">
+                    Right-click a heading in the Session panel to create
+                    groups.
+                  </small>
+                )}
               </div>
             </div>
           </section>

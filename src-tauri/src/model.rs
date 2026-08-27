@@ -35,6 +35,10 @@ pub struct SessionProfile {
     /// Tab / tree dot colour, as a CSS colour string.
     #[serde(default)]
     pub color: Option<String>,
+    /// Session panel group holding this profile; `None` lists it directly
+    /// under its kind's top-level heading.
+    #[serde(default)]
+    pub group_id: Option<String>,
 
     // --- local ---
     #[serde(default)]
@@ -109,6 +113,20 @@ impl SessionProfile {
             SessionKind::Serial => "serial",
         }
     }
+}
+
+/// A user-defined folder in the Session panel. Groups belong to one session
+/// kind and may nest under another group of the same kind.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SessionGroup {
+    #[serde(default)]
+    pub id: String,
+    pub name: String,
+    pub kind: SessionKind,
+    /// Enclosing group, or `None` for a group directly under the kind heading.
+    #[serde(default)]
+    pub parent_id: Option<String>,
 }
 
 /// A live session, as the frontend sees it.

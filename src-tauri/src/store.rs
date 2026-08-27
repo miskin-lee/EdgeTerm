@@ -5,7 +5,9 @@ use parking_lot::Mutex;
 use serde::{Deserialize, Serialize};
 
 use crate::error::{AppError, Result};
-use crate::model::{AuthKind, CommandHistoryEntry, SavedCommand, SessionKind, SessionProfile};
+use crate::model::{
+    AuthKind, CommandHistoryEntry, SavedCommand, SessionGroup, SessionKind, SessionProfile,
+};
 
 const MAX_SAVED_COMMANDS: usize = 1000;
 const MAX_COMMAND_HISTORY: usize = 5000;
@@ -32,16 +34,21 @@ struct StoredSecrets {
 /// solely while opening a saved session.  Keeping credentials app-local avoids
 /// the macOS Keychain authorization dialog that otherwise reappears when an
 /// unsigned development build changes identity between restarts.
+/// `session_groups.json` holds the user-defined folders of the Session panel;
+/// it is a separate file so older builds keep reading `sessions.json` as a
+/// plain profile list.
 /// `sender_commands.json` keeps reusable Sender tags across restarts and upgrades.
 /// `command_history.json` remembers executed commands for inline suggestions;
 /// like credentials it may contain sensitive text, so it is owner-only too.
 pub struct Store {
     path: PathBuf,
     credentials_path: PathBuf,
+    groups_path: PathBuf,
     sender_commands_path: PathBuf,
     command_history_path: PathBuf,
     profiles: Mutex<Vec<SessionProfile>>,
     credentials: Mutex<HashMap<String, StoredSecrets>>,
+    groups: Mutex<Vec<SessionGroup>>,
     sender_commands: Mutex<Vec<SavedCommand>>,
     command_history: Mutex<Vec<CommandHistoryEntry>>,
 }
@@ -57,6 +64,8 @@ impl Store {
         // private credential map when loading, then keep the UI copy redacted.
         let mut credentials: HashMap<String, StoredSecrets> =
             read_json(&credentials_path_for(&path)).unwrap_or_default();
+        let groups_path = groups_path_for(&path);
+        let groups = read_json(&groups_path).unwrap_or_default();
         let sender_commands_path = sender_commands_path_for(&path);
         let sender_commands = read_json(&sender_commands_path).unwrap_or_default();
         let command_history_path = command_history_path_for(&path);
@@ -79,11 +88,13 @@ impl Store {
 
         let store = Store {
             credentials_path: credentials_path_for(&path),
+            groups_path,
             sender_commands_path,
             command_history_path,
             path,
             profiles: Mutex::new(profiles),
             credentials: Mutex::new(credentials),
+            groups: Mutex::new(groups),
             sender_commands: Mutex::new(sender_commands),
             command_history: Mutex::new(command_history),
         };
@@ -126,6 +137,19 @@ impl Store {
         profile.password = None;
         profile.passphrase = None;
 
+        // A stale or foreign group id (deleted group, kind switched in the
+        // editor) must not strand the profile: fall back to the kind root.
+        if let Some(group_id) = &profile.group_id {
+            let valid = self
+                .groups
+                .lock()
+                .iter()
+                .any(|group| &group.id == group_id && group.kind == profile.kind);
+            if !valid {
+                profile.group_id = None;
+            }
+        }
+
         {
             let mut profiles = self.profiles.lock();
             match profiles.iter_mut().find(|p| p.id == profile.id) {
@@ -141,6 +165,94 @@ impl Store {
         self.credentials.lock().remove(id);
         self.profiles.lock().retain(|p| p.id != id);
         self.persist()
+    }
+
+    pub fn list_groups(&self) -> Vec<SessionGroup> {
+        self.groups.lock().clone()
+    }
+
+    /// Creates or renames / re-parents a group. The parent must be an
+    /// existing group of the same kind and must not be the group itself or
+    /// one of its descendants, so the tree can never form a cycle.
+    pub fn save_group(&self, mut group: SessionGroup) -> Result<SessionGroup> {
+        group.name = group.name.trim().to_string();
+        if group.name.is_empty() {
+            return Err(AppError::new("group name cannot be empty"));
+        }
+        if group.id.is_empty() {
+            group.id = uuid::Uuid::new_v4().to_string();
+        }
+        if group.parent_id.as_deref() == Some("") {
+            group.parent_id = None;
+        }
+
+        {
+            let mut groups = self.groups.lock();
+            if let Some(existing) = groups.iter().find(|g| g.id == group.id) {
+                if existing.kind != group.kind {
+                    return Err(AppError::new("a group cannot change its session kind"));
+                }
+            }
+            if let Some(parent_id) = &group.parent_id {
+                if *parent_id == group.id {
+                    return Err(AppError::new("a group cannot contain itself"));
+                }
+                match groups.iter().find(|g| &g.id == parent_id) {
+                    None => return Err(AppError::new("parent group does not exist")),
+                    Some(parent) if parent.kind != group.kind => {
+                        return Err(AppError::new(
+                            "a group can only be nested under a group of the same session kind",
+                        ))
+                    }
+                    Some(_) => {}
+                }
+                if subtree_ids(&groups, &group.id).contains(parent_id) {
+                    return Err(AppError::new(
+                        "a group cannot be moved into one of its own subgroups",
+                    ));
+                }
+            }
+            match groups.iter_mut().find(|g| g.id == group.id) {
+                Some(existing) => *existing = group.clone(),
+                None => groups.push(group.clone()),
+            }
+        }
+        self.persist_groups()?;
+        Ok(group)
+    }
+
+    /// Removes a group and all groups nested in it. Profiles anywhere in that
+    /// subtree move to the deleted group's parent (or the kind root) instead
+    /// of being deleted with it.
+    pub fn delete_group(&self, id: &str) -> Result<()> {
+        let (removed, parent_id) = {
+            let mut groups = self.groups.lock();
+            let Some(target) = groups.iter().find(|g| g.id == id) else {
+                return Ok(());
+            };
+            let parent_id = target.parent_id.clone();
+            let removed = subtree_ids(&groups, id);
+            groups.retain(|g| !removed.contains(&g.id));
+            (removed, parent_id)
+        };
+        self.persist_groups()?;
+
+        let mut moved = false;
+        {
+            let mut profiles = self.profiles.lock();
+            for profile in profiles.iter_mut() {
+                if let Some(group_id) = &profile.group_id {
+                    if removed.contains(group_id) {
+                        profile.group_id = parent_id.clone();
+                        moved = true;
+                    }
+                }
+            }
+        }
+        if moved {
+            self.persist()?;
+        }
+        Ok(())
     }
 
     pub fn list_sender_commands(&self) -> Vec<SavedCommand> {
@@ -239,6 +351,17 @@ impl Store {
         write_owner_only(&self.credentials_path, &credentials)
     }
 
+    fn persist_groups(&self) -> Result<()> {
+        let parent = self
+            .groups_path
+            .parent()
+            .ok_or_else(|| AppError::new("config directory has no parent"))?;
+        std::fs::create_dir_all(parent)?;
+
+        let groups = serde_json::to_string_pretty(&*self.groups.lock())?;
+        write_owner_only(&self.groups_path, &groups)
+    }
+
     fn persist_sender_commands(&self) -> Result<()> {
         let parent = self
             .sender_commands_path
@@ -262,6 +385,22 @@ impl Store {
         let entries = serde_json::to_string(&*self.command_history.lock())?;
         write_owner_only(&self.command_history_path, &entries)
     }
+}
+
+/// Ids of `root` and every group nested below it, in no particular order.
+fn subtree_ids(groups: &[SessionGroup], root: &str) -> Vec<String> {
+    let mut ids = vec![root.to_string()];
+    let mut cursor = 0;
+    while cursor < ids.len() {
+        let parent = ids[cursor].clone();
+        for group in groups {
+            if group.parent_id.as_deref() == Some(parent.as_str()) && !ids.contains(&group.id) {
+                ids.push(group.id.clone());
+            }
+        }
+        cursor += 1;
+    }
+    ids
 }
 
 fn unix_millis() -> i64 {
@@ -321,6 +460,10 @@ fn read_json<T: serde::de::DeserializeOwned>(path: &Path) -> Option<T> {
 
 fn credentials_path_for(path: &Path) -> PathBuf {
     path.with_file_name("credentials.json")
+}
+
+fn groups_path_for(path: &Path) -> PathBuf {
+    path.with_file_name("session_groups.json")
 }
 
 fn sender_commands_path_for(path: &Path) -> PathBuf {

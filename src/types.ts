@@ -8,6 +8,11 @@ export interface SessionProfile {
   name: string;
   kind: SessionKind;
   color?: string | null;
+  /**
+   * Session panel group holding this profile; null / undefined lists it
+   * directly under its kind's top-level heading.
+   */
+  groupId?: string | null;
 
   // local
   shell?: string | null;
@@ -29,6 +34,18 @@ export interface SessionProfile {
   stopBits?: number | null;
   parity?: string | null;
   flowControl?: string | null;
+}
+
+/**
+ * A user-defined folder in the Session panel. Groups belong to one session
+ * kind and may nest under another group of the same kind.
+ */
+export interface SessionGroup {
+  id: string;
+  name: string;
+  kind: SessionKind;
+  /** Enclosing group, or null for a group directly under the kind heading. */
+  parentId: string | null;
 }
 
 export interface SessionInfo {

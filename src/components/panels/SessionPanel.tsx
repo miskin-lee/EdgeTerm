@@ -1,9 +1,26 @@
-import { useMemo, useState } from "react";
+import { useCallback, useMemo, useState, type MouseEvent } from "react";
+import { ask } from "@tauri-apps/plugin-dialog";
 
 import { openSession } from "../../actions";
+import {
+  byName,
+  childGroups,
+  describeLocation,
+  effectiveGroupId,
+  flattenGroups,
+  KIND_LABELS,
+  SESSION_KINDS,
+} from "../../sessionGroups";
 import { useStore } from "../../store";
-import { colorForSession, type SessionProfile } from "../../types";
+import {
+  colorForSession,
+  type SessionGroup,
+  type SessionKind,
+  type SessionProfile,
+} from "../../types";
+import { ContextMenu, type MenuItem } from "../ContextMenu";
 import { DeleteProfileDialog } from "../DeleteProfileDialog";
+import { GroupNameDialog } from "../GroupNameDialog";
 
 export const LOCAL_SHELL_PROFILE: SessionProfile = {
   id: "",
@@ -12,12 +29,32 @@ export const LOCAL_SHELL_PROFILE: SessionProfile = {
   color: "#3fb950",
 };
 
-const SESSION_GROUPS = [
-  { kind: "ssh", label: "SSH Sessions" },
-  { kind: "ftp", label: "FTP Sessions" },
-  { kind: "serial", label: "Serial Sessions" },
-  { kind: "local", label: "Shell Sessions" },
-] as const;
+/** Horizontal step per tree level; the kind headings sit at level 0. */
+const INDENT = 18;
+
+/** Folder glyph for group rows, drawn like the Filer's directory entries. */
+function FolderIcon({ open }: { open: boolean }) {
+  return (
+    <svg
+      className="row-folder"
+      viewBox="0 0 16 16"
+      aria-hidden="true"
+      focusable="false"
+    >
+      {open ? (
+        <>
+          <path
+            d="M1.5 3.5A1 1 0 0 1 2.5 2.5h3.4a1 1 0 0 1 .7.3l1 1h5.4a1 1 0 0 1 1 1V7H3.2a1 1 0 0 0-.95.68L1.5 10V3.5Z"
+            opacity="0.55"
+          />
+          <path d="M2.35 8.35A1 1 0 0 1 3.3 7.7h11.2a.75.75 0 0 1 .7 1l-1.6 4.1a1 1 0 0 1-.94.65H2.55a1 1 0 0 1-.95-1.3l.75-3.8Z" />
+        </>
+      ) : (
+        <path d="M1.5 3.5A1 1 0 0 1 2.5 2.5h3.4a1 1 0 0 1 .7.3l1 1h5.4a1 1 0 0 1 1 1v7.7a1 1 0 0 1-1 1H2.5a1 1 0 0 1-1-1V3.5Z" />
+      )}
+    </svg>
+  );
+}
 
 /** One-line connection target, used for the row tooltip and delete prompt. */
 function describeProfile(profile: SessionProfile): string {
@@ -33,6 +70,35 @@ function describeProfile(profile: SessionProfile): string {
   }
 }
 
+type Row =
+  | {
+      type: "group";
+      group: SessionGroup;
+      depth: number;
+      /** Profiles in the group and all of its subgroups. */
+      count: number;
+      collapsed: boolean;
+    }
+  | { type: "profile"; profile: SessionProfile; depth: number };
+
+interface KindSection {
+  kind: SessionKind;
+  label: string;
+  count: number;
+  collapsed: boolean;
+  rows: Row[];
+}
+
+interface MenuState {
+  x: number;
+  y: number;
+  items: MenuItem[];
+}
+
+type GroupDialogState =
+  | { mode: "create"; kind: SessionKind; parentId: string | null }
+  | { mode: "rename"; group: SessionGroup };
+
 interface Props {
   onEditProfile: (profile: SessionProfile) => void;
   onNewSession: () => void;
@@ -40,24 +106,277 @@ interface Props {
 
 export function SessionPanel({ onEditProfile, onNewSession }: Props) {
   const profiles = useStore((s) => s.profiles);
+  const groups = useStore((s) => s.groups);
   const removeProfile = useStore((s) => s.removeProfile);
+  const moveProfileToGroup = useStore((s) => s.moveProfileToGroup);
+  const upsertGroup = useStore((s) => s.upsertGroup);
+  const removeGroup = useStore((s) => s.removeGroup);
+  const setStatus = useStore((s) => s.setStatus);
+
   const [filter, setFilter] = useState("");
+  /** Keys are `kind:<kind>` for headings and `group:<id>` for groups. */
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
   /** Profile awaiting the user's answer in the delete-confirmation dialog. */
   const [pendingDelete, setPendingDelete] = useState<SessionProfile | null>(
     null,
   );
+  const [menu, setMenu] = useState<MenuState | null>(null);
+  const [groupDialog, setGroupDialog] = useState<GroupDialogState | null>(
+    null,
+  );
 
-  const groups = useMemo(() => {
+  const closeMenu = useCallback(() => setMenu(null), []);
+
+  const filtering = filter.trim().length > 0;
+
+  const sections = useMemo<KindSection[]>(() => {
     const needle = filter.trim().toLowerCase();
-    const all = [LOCAL_SHELL_PROFILE, ...profiles].filter(
+    const visible = [LOCAL_SHELL_PROFILE, ...profiles].filter(
       (p) => !needle || p.name.toLowerCase().includes(needle),
     );
-    return SESSION_GROUPS.map(
-      ({ kind, label }) =>
-        [label, all.filter((profile) => profile.kind === kind)] as const,
+
+    return SESSION_KINDS.map((kind) => {
+      const byGroup = new Map<string | null, SessionProfile[]>();
+      for (const profile of visible) {
+        if (profile.kind !== kind) continue;
+        const groupId = effectiveGroupId(groups, profile);
+        byGroup.set(groupId, [...(byGroup.get(groupId) ?? []), profile]);
+      }
+      for (const members of byGroup.values()) members.sort(byName);
+
+      // Folders first, then the profiles at that level, both A→Z — the shape
+      // of a file tree. While filtering, empty groups are dropped and
+      // collapse state is ignored so every match is on screen.
+      const walk = (
+        parentId: string | null,
+        depth: number,
+      ): { rows: Row[]; count: number } => {
+        const rows: Row[] = [];
+        let count = 0;
+        for (const group of childGroups(groups, kind, parentId)) {
+          const sub = walk(group.id, depth + 1);
+          if (needle && sub.count === 0) continue;
+          const isCollapsed =
+            !needle && Boolean(collapsed[`group:${group.id}`]);
+          rows.push({
+            type: "group",
+            group,
+            depth,
+            count: sub.count,
+            collapsed: isCollapsed,
+          });
+          if (!isCollapsed) rows.push(...sub.rows);
+          count += sub.count;
+        }
+        for (const profile of byGroup.get(parentId) ?? []) {
+          rows.push({ type: "profile", profile, depth });
+          count++;
+        }
+        return { rows, count };
+      };
+
+      const { rows, count } = walk(null, 1);
+      return {
+        kind,
+        label: KIND_LABELS[kind],
+        count,
+        collapsed: !needle && Boolean(collapsed[`kind:${kind}`]),
+        rows,
+      };
+    });
+  }, [profiles, groups, filter, collapsed]);
+
+  const toggle = (key: string) =>
+    setCollapsed((prev) => ({ ...prev, [key]: !prev[key] }));
+
+  const openMenu = (event: MouseEvent, items: MenuItem[]) => {
+    event.preventDefault();
+    event.stopPropagation();
+    setMenu({ x: event.clientX, y: event.clientY, items });
+  };
+
+  const report = (what: string, error: unknown) =>
+    setStatus(`${what}: ${error}`);
+
+  const confirmDeleteGroup = async (group: SessionGroup) => {
+    const inside = profiles.filter((p) => {
+      let cursor = effectiveGroupId(groups, p);
+      const seen = new Set<string>();
+      while (cursor && !seen.has(cursor)) {
+        if (cursor === group.id) return true;
+        seen.add(cursor);
+        cursor = groups.find((g) => g.id === cursor)?.parentId ?? null;
+      }
+      return false;
+    }).length;
+    const parent = groups.find((g) => g.id === group.parentId);
+    const destination = parent ? `"${parent.name}"` : KIND_LABELS[group.kind];
+    const noun = inside === 1 ? "session" : `${inside} sessions`;
+    const sessions =
+      inside === 0
+        ? "It contains no sessions."
+        : `Its ${noun} (subgroups included) will be moved to ${destination}.`;
+    const confirmed = await ask(
+      `Delete the group "${group.name}" and its subgroups? ${sessions}`,
+      {
+        title: "Delete Group",
+        kind: "warning",
+        okLabel: "Delete",
+        cancelLabel: "Cancel",
+      },
     );
-  }, [profiles, filter]);
+    if (!confirmed) return;
+    try {
+      await removeGroup(group.id);
+      setStatus(`Group "${group.name}" deleted`);
+    } catch (error) {
+      report("Failed to delete group", error);
+    }
+  };
+
+  const kindMenu = (kind: SessionKind): MenuItem[] => [
+    {
+      label: "New Group…",
+      action: () => setGroupDialog({ mode: "create", kind, parentId: null }),
+    },
+  ];
+
+  const groupMenu = (group: SessionGroup): MenuItem[] => [
+    {
+      label: "New Subgroup…",
+      action: () =>
+        setGroupDialog({
+          mode: "create",
+          kind: group.kind,
+          parentId: group.id,
+        }),
+    },
+    "separator",
+    {
+      label: "Rename Group…",
+      action: () => setGroupDialog({ mode: "rename", group }),
+    },
+    {
+      label: "Delete Group…",
+      danger: true,
+      action: () => void confirmDeleteGroup(group),
+    },
+  ];
+
+  const profileMenu = (profile: SessionProfile): MenuItem[] => {
+    const connect: MenuItem = {
+      label: "Connect",
+      action: () => void openSession(profile),
+    };
+    // The built-in Local Shell is not a saved profile: nothing to edit or move.
+    if (!profile.id) return [connect];
+
+    const current = effectiveGroupId(groups, profile);
+    const move = (groupId: string | null) => () =>
+      moveProfileToGroup(profile.id, groupId).catch((error) =>
+        report("Failed to move session", error),
+      );
+    const choices: MenuItem[] = [
+      {
+        label: `${KIND_LABELS[profile.kind]} (no group)`,
+        checked: current === null,
+        action: move(null),
+      },
+    ];
+    const nodes = flattenGroups(groups, profile.kind);
+    if (nodes.length > 0) {
+      choices.push("separator");
+      for (const { group, depth } of nodes) {
+        choices.push({
+          label: group.name,
+          indent: depth,
+          checked: current === group.id,
+          action: move(group.id),
+        });
+      }
+    } else {
+      choices.push({ label: "No groups yet", disabled: true });
+    }
+
+    return [
+      connect,
+      { label: "Edit…", action: () => onEditProfile(profile) },
+      { label: "Move to Group", children: choices },
+      "separator",
+      {
+        label: "Delete…",
+        danger: true,
+        action: () => setPendingDelete(profile),
+      },
+    ];
+  };
+
+  const renderProfile = (profile: SessionProfile, depth: number) => (
+    <div
+      key={profile.id || profile.name}
+      className="row"
+      style={{ paddingLeft: 8 + INDENT * depth }}
+      onDoubleClick={() => void openSession(profile)}
+      onContextMenu={(event) => openMenu(event, profileMenu(profile))}
+      title={describeProfile(profile)}
+    >
+      <span
+        className="row-dot"
+        style={{
+          background:
+            profile.color ?? colorForSession(profile.id || profile.name),
+        }}
+      />
+      <span className="row-label">{profile.name}</span>
+      {profile.id && (
+        <>
+          <button
+            className="panel-action"
+            onMouseDown={(event) => {
+              event.stopPropagation();
+              onEditProfile(profile);
+            }}
+            title="Edit"
+          >
+            ✎
+          </button>
+          <button
+            className="panel-action"
+            onMouseDown={(event) => {
+              event.stopPropagation();
+              setPendingDelete(profile);
+            }}
+            title="Delete"
+          >
+            ✕
+          </button>
+        </>
+      )}
+    </div>
+  );
+
+  const renderGroup = (row: Extract<Row, { type: "group" }>) => (
+    // Location breadcrumb doubles as the hint that a menu exists here.
+    <div
+      key={`group:${row.group.id}`}
+      className="row is-group"
+      style={{ paddingLeft: 8 + INDENT * row.depth }}
+      onMouseDown={(event) => {
+        if (event.button === 0) toggle(`group:${row.group.id}`);
+      }}
+      onContextMenu={(event) => openMenu(event, groupMenu(row.group))}
+      title={`${describeLocation(
+        groups,
+        row.group.kind,
+        row.group.id,
+      )} · right-click for options`}
+    >
+      <span className="row-caret">{row.collapsed ? "▶" : "▼"}</span>
+      <FolderIcon open={!row.collapsed} />
+      <span className="row-label">{row.group.name}</span>
+      <span className="row-meta">{row.count}</span>
+    </div>
+  );
 
   return (
     <div className="panel" style={{ flex: 1 }}>
@@ -84,66 +403,95 @@ export function SessionPanel({ onEditProfile, onNewSession }: Props) {
       </div>
 
       <div className="panel-body">
-        {groups.map(([group, items]) => (
-          <div key={group}>
+        {sections.map((section) => (
+          <div key={section.kind}>
             <div
               className="row"
-              onMouseDown={() =>
-                setCollapsed((prev) => ({ ...prev, [group]: !prev[group] }))
+              onMouseDown={(event) => {
+                if (event.button === 0) toggle(`kind:${section.kind}`);
+              }}
+              onContextMenu={(event) =>
+                openMenu(event, kindMenu(section.kind))
               }
+              title="Right-click to add a group"
             >
-              <span className="row-caret">{collapsed[group] ? "▶" : "▼"}</span>
-              <span className="row-label">{group}</span>
-              <span className="row-meta">{items.length}</span>
+              <span className="row-caret">
+                {section.collapsed ? "▶" : "▼"}
+              </span>
+              <span className="row-label">{section.label}</span>
+              <span className="row-meta">{section.count}</span>
             </div>
 
-            {!collapsed[group] &&
-              items.map((profile) => (
-                <div
-                  key={profile.id || profile.name}
-                  className="row"
-                  style={{ paddingLeft: 26 }}
-                  onDoubleClick={() => void openSession(profile)}
-                  title={describeProfile(profile)}
-                >
-                  <span
-                    className="row-dot"
-                    style={{
-                      background:
-                        profile.color ??
-                        colorForSession(profile.id || profile.name),
-                    }}
-                  />
-                  <span className="row-label">{profile.name}</span>
-                  {profile.id && (
-                    <>
-                      <button
-                        className="panel-action"
-                        onMouseDown={(event) => {
-                          event.stopPropagation();
-                          onEditProfile(profile);
-                        }}
-                        title="Edit"
-                      >
-                        ✎
-                      </button>
-                      <button
-                        className="panel-action"
-                        onMouseDown={(event) => {
-                          event.stopPropagation();
-                          setPendingDelete(profile);
-                        }}
-                        title="Delete"
-                      >
-                        ✕
-                      </button>
-                    </>
-                  )}
-                </div>
-              ))}
+            {!section.collapsed &&
+              section.rows.map((row) =>
+                row.type === "group"
+                  ? renderGroup(row)
+                  : renderProfile(row.profile, row.depth),
+              )}
           </div>
         ))}
+        {filtering && sections.every((section) => section.count === 0) && (
+          <div className="panel-empty">
+            No sessions match “{filter.trim()}”.
+          </div>
+        )}
       </div>
+
+      {menu && (
+        <ContextMenu
+          x={menu.x}
+          y={menu.y}
+          items={menu.items}
+          onClose={closeMenu}
+        />
+      )}
+
+      {groupDialog &&
+        (groupDialog.mode === "create" ? (
+          <GroupNameDialog
+            title={groupDialog.parentId ? "New Subgroup" : "New Group"}
+            location={describeLocation(
+              groups,
+              groupDialog.kind,
+              groupDialog.parentId,
+            )}
+            submitLabel="Create"
+            onSubmit={async (name) => {
+              const saved = await upsertGroup({
+                id: "",
+                name,
+                kind: groupDialog.kind,
+                parentId: groupDialog.parentId,
+              });
+              // A new group is empty, so make sure its parents are open.
+              setCollapsed((prev) => ({
+                ...prev,
+                [`kind:${saved.kind}`]: false,
+                ...(saved.parentId
+                  ? { [`group:${saved.parentId}`]: false }
+                  : {}),
+              }));
+              setGroupDialog(null);
+            }}
+            onCancel={() => setGroupDialog(null)}
+          />
+        ) : (
+          <GroupNameDialog
+            title="Rename Group"
+            location={describeLocation(
+              groups,
+              groupDialog.group.kind,
+              groupDialog.group.parentId,
+            )}
+            initialName={groupDialog.group.name}
+            submitLabel="Rename"
+            onSubmit={async (name) => {
+              await upsertGroup({ ...groupDialog.group, name });
+              setGroupDialog(null);
+            }}
+            onCancel={() => setGroupDialog(null)}
+          />
+        ))}
 
       {pendingDelete && (
         <DeleteProfileDialog

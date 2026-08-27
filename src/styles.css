@@ -545,6 +545,52 @@ textarea:focus {
   display: inline-block;
 }
 
+/* Groups: the folder glyph marks them; the label matches a section heading. */
+.row.is-group .row-label {
+  color: var(--fg-dim);
+}
+
+.row-folder {
+  flex: 0 0 14px;
+  width: 14px;
+  height: 14px;
+  fill: var(--fg-dim);
+}
+
+/* --- context menu --------------------------------------------------------- */
+
+/* Anchored at the pointer rather than under a menubar title; the inline
+   left / top come from ContextMenu after it has clamped itself on screen. */
+.context-menu {
+  position: fixed;
+  z-index: 150;
+  min-width: 180px;
+}
+
+.context-menu .menu-submenu {
+  max-height: 60vh;
+  overflow-y: auto;
+}
+
+/* Near the right edge (where the Session panel lives) submenus open leftwards. */
+.context-menu.is-flipped .menu-submenu {
+  left: auto;
+  right: 100%;
+}
+
+.menu-entry.is-danger {
+  color: var(--red);
+}
+
+.menu-entry:disabled {
+  color: var(--fg-faint);
+  cursor: default;
+}
+
+.menu-entry:disabled:hover {
+  background: transparent;
+}
+
 /* --- tabs ----------------------------------------------------------------- */
 
 .tabstrip {

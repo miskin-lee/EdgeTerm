@@ -6,6 +6,7 @@ import type { GutterMode } from "./terminal";
 import { disposeController } from "./terminalRegistry";
 import type {
   HostKeyChange,
+  SessionGroup,
   SessionInfo,
   SessionProfile,
   SessionState,
@@ -173,6 +174,8 @@ const saveScrollback = (value: number) => {
 
 interface AppStore {
   profiles: SessionProfile[];
+  /** User-defined folders of the Session panel; see `SessionGroup`. */
+  groups: SessionGroup[];
   tabs: Tab[];
   activeId: string | null;
   gutterMode: GutterMode;
@@ -199,9 +202,19 @@ interface AppStore {
    */
   closePrompt: string | null;
 
+  /** Fetches saved profiles and their groups together. */
   loadProfiles: () => Promise<void>;
   upsertProfile: (profile: SessionProfile) => Promise<SessionProfile>;
   removeProfile: (id: string) => Promise<void>;
+  /** Moves a saved profile into a group (null = its kind's root). */
+  moveProfileToGroup: (id: string, groupId: string | null) => Promise<void>;
+
+  upsertGroup: (group: SessionGroup) => Promise<SessionGroup>;
+  /**
+   * Deletes a group with its subgroups. Profiles inside are lifted to the
+   * deleted group's parent by the backend, so profiles are reloaded too.
+   */
+  removeGroup: (id: string) => Promise<void>;
 
   addTab: (info: SessionInfo, state?: SessionState) => void;
   updateTabInfo: (id: string, info: SessionInfo) => void;
@@ -237,6 +250,7 @@ const patchTab = (tabs: Tab[], id: string, patch: Partial<Tab>): Tab[] =>
 
 export const useStore = create<AppStore>((set, get) => ({
   profiles: [],
+  groups: [],
   tabs: [],
   activeId: null,
   gutterMode: loadGutterMode(),
@@ -253,7 +267,11 @@ export const useStore = create<AppStore>((set, get) => ({
   closePrompt: null,
 
   async loadProfiles() {
-    set({ profiles: await api.listProfiles() });
+    const [profiles, groups] = await Promise.all([
+      api.listProfiles(),
+      api.listSessionGroups(),
+    ]);
+    set({ profiles, groups });
   },
 
   async upsertProfile(profile) {
@@ -272,6 +290,30 @@ export const useStore = create<AppStore>((set, get) => ({
   async removeProfile(id) {
     await api.deleteProfile(id);
     set({ profiles: get().profiles.filter((p) => p.id !== id) });
+  },
+
+  async moveProfileToGroup(id, groupId) {
+    const profile = get().profiles.find((p) => p.id === id);
+    if (!profile || (profile.groupId ?? null) === groupId) return;
+    await get().upsertProfile({ ...profile, groupId });
+  },
+
+  async upsertGroup(group) {
+    const saved = await api.saveSessionGroup(group);
+    const groups = get().groups;
+    const index = groups.findIndex((g) => g.id === saved.id);
+    set({
+      groups:
+        index === -1
+          ? [...groups, saved]
+          : groups.map((g) => (g.id === saved.id ? saved : g)),
+    });
+    return saved;
+  },
+
+  async removeGroup(id) {
+    await api.deleteSessionGroup(id);
+    await get().loadProfiles();
   },
 
   addTab(info, state = "connected") {

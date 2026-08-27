@@ -7,6 +7,7 @@ import type {
   OpenSessionOutcome,
   SavedCommand,
   SerialPortDesc,
+  SessionGroup,
   SessionInfo,
   SessionProfile,
 } from "./types";
@@ -44,6 +45,21 @@ export const saveProfile = (profile: SessionProfile) =>
 
 export const deleteProfile = (id: string) =>
   invoke<void>("delete_profile", { id });
+
+// --- session groups ---------------------------------------------------------
+
+export const listSessionGroups = () =>
+  invoke<SessionGroup[]>("list_session_groups");
+
+export const saveSessionGroup = (group: SessionGroup) =>
+  invoke<SessionGroup>("save_session_group", { group });
+
+/**
+ * Deletes a group and its subgroups; profiles inside move to the deleted
+ * group's parent, so callers must reload profiles afterwards.
+ */
+export const deleteSessionGroup = (id: string) =>
+  invoke<void>("delete_session_group", { id });
 
 // --- sender commands -------------------------------------------------------
 

@@ -8,8 +8,8 @@ use tokio::sync::mpsc;
 use crate::error::{err, AppError, Result};
 use crate::fs_local;
 use crate::model::{
-    CommandHistoryEntry, DirListing, OpenSessionOutcome, SavedCommand, SerialPortDesc, SessionInfo,
-    SessionKind, SessionProfile, ZmodemFileInfo,
+    CommandHistoryEntry, DirListing, OpenSessionOutcome, SavedCommand, SerialPortDesc,
+    SessionGroup, SessionInfo, SessionKind, SessionProfile, ZmodemFileInfo,
 };
 use crate::session::ssh::ConnectOutcome;
 use crate::session::{
@@ -38,6 +38,25 @@ pub fn save_profile(state: State<'_, AppState>, profile: SessionProfile) -> Resu
 #[tauri::command]
 pub fn delete_profile(state: State<'_, AppState>, id: String) -> Result<()> {
     state.store.delete(&id)
+}
+
+// --- session groups ---------------------------------------------------------
+
+#[tauri::command]
+pub fn list_session_groups(state: State<'_, AppState>) -> Vec<SessionGroup> {
+    state.store.list_groups()
+}
+
+#[tauri::command]
+pub fn save_session_group(state: State<'_, AppState>, group: SessionGroup) -> Result<SessionGroup> {
+    state.store.save_group(group)
+}
+
+/// Removes a group and every group nested in it. Profiles inside move up to
+/// the deleted group's parent rather than being deleted with it.
+#[tauri::command]
+pub fn delete_session_group(state: State<'_, AppState>, id: String) -> Result<()> {
+    state.store.delete_group(&id)
 }
 
 // --- sender commands -------------------------------------------------------

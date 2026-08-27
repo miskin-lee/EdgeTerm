@@ -7,7 +7,8 @@ use crate::commands::{
 };
 use crate::fs_local;
 use crate::model::{
-    AuthKind, FileEntry, LineEnding, SavedCommand, SenderFormat, SessionKind, SessionProfile,
+    AuthKind, FileEntry, LineEnding, SavedCommand, SenderFormat, SessionGroup, SessionKind,
+    SessionProfile,
 };
 use crate::session::{join_remote, sort_entries};
 use crate::store::Store;
@@ -24,6 +25,7 @@ fn profile(kind: SessionKind) -> SessionProfile {
         name: "test".into(),
         kind,
         color: None,
+        group_id: None,
         shell: None,
         cwd: None,
         host: None,
@@ -39,6 +41,15 @@ fn profile(kind: SessionKind) -> SessionProfile {
         stop_bits: None,
         parity: None,
         flow_control: None,
+    }
+}
+
+fn group(name: &str, kind: SessionKind, parent_id: Option<&str>) -> SessionGroup {
+    SessionGroup {
+        id: String::new(),
+        name: name.into(),
+        kind,
+        parent_id: parent_id.map(str::to_string),
     }
 }
 
@@ -448,4 +459,167 @@ async fn zmodem_file_io_uses_bounded_chunks_and_preserves_offsets() {
     );
 
     std::fs::remove_dir_all(&dir).ok();
+}
+
+#[test]
+fn store_round_trips_session_groups_and_profile_membership() {
+    let dir = temp_dir("groups");
+    let path = dir.join("sessions.json");
+    let store = Store::load_from(path.clone());
+
+    let prod = store
+        .save_group(group("  prod  ", SessionKind::Ssh, None))
+        .expect("save group");
+    assert!(!prod.id.is_empty());
+    // Names are trimmed before they are stored.
+    assert_eq!(prod.name, "prod");
+    let eu = store
+        .save_group(group("eu", SessionKind::Ssh, Some(&prod.id)))
+        .expect("save nested group");
+
+    let mut member = profile(SessionKind::Ssh);
+    member.group_id = Some(eu.id.clone());
+    let member = store.save(member).expect("save profile");
+    assert_eq!(member.group_id.as_deref(), Some(eu.id.as_str()));
+
+    // A profile of another kind cannot sit in an SSH group; it falls back to
+    // its own kind root rather than being rejected or stranded.
+    let mut stray = profile(SessionKind::Serial);
+    stray.group_id = Some(eu.id.clone());
+    let stray = store.save(stray).expect("save stray profile");
+    assert_eq!(stray.group_id, None);
+
+    // Everything survives a reload from disk.
+    let reloaded = Store::load_from(path);
+    let groups = reloaded.list_groups();
+    assert_eq!(groups.len(), 2);
+    assert!(groups
+        .iter()
+        .any(|g| g.id == eu.id && g.parent_id.as_deref() == Some(&*prod.id)));
+    let saved = reloaded
+        .list()
+        .into_iter()
+        .find(|p| p.id == member.id)
+        .expect("member profile persisted");
+    assert_eq!(saved.group_id.as_deref(), Some(eu.id.as_str()));
+
+    // sessions.json itself stays a plain profile array for older builds.
+    let raw = std::fs::read_to_string(dir.join("sessions.json")).expect("read sessions.json");
+    assert!(raw.trim_start().starts_with('['));
+    assert!(dir.join("session_groups.json").exists());
+
+    std::fs::remove_dir_all(dir).ok();
+}
+
+#[test]
+fn store_rejects_invalid_group_shapes() {
+    let dir = temp_dir("groups-invalid");
+    let store = Store::load_from(dir.join("sessions.json"));
+
+    assert!(store
+        .save_group(group("   ", SessionKind::Ssh, None))
+        .is_err());
+    assert!(store
+        .save_group(group("orphan", SessionKind::Ssh, Some("missing")))
+        .is_err());
+
+    let ssh = store
+        .save_group(group("ssh", SessionKind::Ssh, None))
+        .expect("save ssh group");
+    // Groups nest only within one session kind.
+    assert!(store
+        .save_group(group("ftp", SessionKind::Ftp, Some(&ssh.id)))
+        .is_err());
+
+    let child = store
+        .save_group(group("child", SessionKind::Ssh, Some(&ssh.id)))
+        .expect("save child");
+    // No cycles: neither self-parenting nor moving under a descendant.
+    let mut looped = ssh.clone();
+    looped.parent_id = Some(ssh.id.clone());
+    assert!(store.save_group(looped).is_err());
+    let mut looped = ssh.clone();
+    looped.parent_id = Some(child.id.clone());
+    assert!(store.save_group(looped).is_err());
+    // A group keeps its kind for life.
+    let mut switched = ssh.clone();
+    switched.kind = SessionKind::Ftp;
+    assert!(store.save_group(switched).is_err());
+
+    // Renaming in place is fine and keeps the id.
+    let mut renamed = child.clone();
+    renamed.name = "renamed".into();
+    let renamed = store.save_group(renamed).expect("rename");
+    assert_eq!(renamed.id, child.id);
+    assert_eq!(store.list_groups().len(), 2);
+
+    std::fs::remove_dir_all(dir).ok();
+}
+
+#[test]
+fn deleting_a_group_removes_its_subtree_and_lifts_profiles_to_the_parent() {
+    let dir = temp_dir("groups-delete");
+    let path = dir.join("sessions.json");
+    let store = Store::load_from(path.clone());
+
+    let root = store
+        .save_group(group("root", SessionKind::Ssh, None))
+        .expect("root");
+    let mid = store
+        .save_group(group("mid", SessionKind::Ssh, Some(&root.id)))
+        .expect("mid");
+    let leaf = store
+        .save_group(group("leaf", SessionKind::Ssh, Some(&mid.id)))
+        .expect("leaf");
+    let sibling = store
+        .save_group(group("sibling", SessionKind::Ssh, Some(&root.id)))
+        .expect("sibling");
+
+    let mut in_mid = profile(SessionKind::Ssh);
+    in_mid.group_id = Some(mid.id.clone());
+    let in_mid = store.save(in_mid).expect("save in_mid");
+    let mut in_leaf = profile(SessionKind::Ssh);
+    in_leaf.group_id = Some(leaf.id.clone());
+    let in_leaf = store.save(in_leaf).expect("save in_leaf");
+    let mut in_sibling = profile(SessionKind::Ssh);
+    in_sibling.group_id = Some(sibling.id.clone());
+    let in_sibling = store.save(in_sibling).expect("save in_sibling");
+
+    store.delete_group(&mid.id).expect("delete mid");
+
+    let remaining: Vec<String> = store.list_groups().into_iter().map(|g| g.id).collect();
+    assert!(remaining.contains(&root.id));
+    assert!(remaining.contains(&sibling.id));
+    assert!(!remaining.contains(&mid.id));
+    assert!(!remaining.contains(&leaf.id));
+
+    let find = |id: &str| {
+        store
+            .list()
+            .into_iter()
+            .find(|p| p.id == id)
+            .expect("profile still exists")
+    };
+    // Both the direct member and the nested one move up to mid's parent.
+    assert_eq!(find(&in_mid.id).group_id.as_deref(), Some(root.id.as_str()));
+    assert_eq!(
+        find(&in_leaf.id).group_id.as_deref(),
+        Some(root.id.as_str())
+    );
+    assert_eq!(
+        find(&in_sibling.id).group_id.as_deref(),
+        Some(sibling.id.as_str())
+    );
+
+    // Deleting a top-level group puts its profiles at the kind root, and the
+    // result is what a fresh process reads back.
+    store.delete_group(&root.id).expect("delete root");
+    let reloaded = Store::load_from(path);
+    assert!(reloaded.list_groups().is_empty());
+    assert!(reloaded.list().iter().all(|p| p.group_id.is_none()));
+
+    // Unknown ids are a no-op rather than an error.
+    reloaded.delete_group("nope").expect("delete unknown");
+
+    std::fs::remove_dir_all(dir).ok();
 }
