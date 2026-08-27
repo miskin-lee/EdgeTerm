@@ -1,7 +1,7 @@
 [package]
 name = "edgeterm"
 version = "0.4.9"
-description = "EdgeTerm - a WindTerm-inspired terminal, SSH, FTP and serial client"
+description = "EdgeTerm - a lightweight terminal, SSH, FTP and serial client built with Rust + Tauri (installer under 5 MB, fast startup)"
 authors = ["EdgeTerm contributors"]
 edition = "2021"
 

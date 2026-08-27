@@ -1,4 +1,8 @@
-# EdgeTerm
+<p align="center">
+  <img src="docs/icon.png" alt="EdgeTerm logo" width="128" height="128">
+</p>
+
+<h1 align="center">EdgeTerm</h1>
 
 [English](README.md) | [简体中文](README.zh-CN.md)
 

@@ -384,8 +384,9 @@ export default function App() {
                 EdgeTerm{updater.appVersion ? ` ${updater.appVersion}` : ""}
               </strong>
               <span>
-                A WindTerm-inspired terminal, SSH, FTP and serial client built
-                with Rust + Tauri.
+                A lightweight terminal, SSH, FTP and serial client built with
+                Rust + Tauri. The installer is under 5 MB and the whole app is a
+                single native binary, so it starts fast.
               </span>
               <span style={{ color: "var(--fg-faint)" }}>
                 Local shell via portable-pty · SSH and SFTP via russh · FTP via

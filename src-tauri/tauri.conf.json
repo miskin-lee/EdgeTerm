@@ -34,7 +34,7 @@
     "targets": "all",
     "createUpdaterArtifacts": true,
     "category": "DeveloperTool",
-    "shortDescription": "WindTerm-inspired terminal, SSH, FTP and serial client",
+    "shortDescription": "Lightweight terminal, SSH, FTP and serial client built with Rust (installer under 5 MB)",
     "macOS": {
       "signingIdentity": "-"
     },
