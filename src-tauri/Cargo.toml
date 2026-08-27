@@ -1,6 +1,6 @@
 [package]
 name = "edgeterm"
-version = "0.4.8"
+version = "0.4.9"
 description = "EdgeTerm - a WindTerm-inspired terminal, SSH, FTP and serial client"
 authors = ["EdgeTerm contributors"]
 edition = "2021"
