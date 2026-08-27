@@ -1,4 +1,6 @@
 use std::io::{Read, Write};
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
 
 use portable_pty::{native_pty_system, CommandBuilder, PtySize};
 use tauri::AppHandle;
@@ -51,8 +53,14 @@ pub fn spawn(
 
     emit_state(&app, &id, "connected", Some(format!("shell {shell}")));
 
+    // Raised by the control thread before it kills the shell, so the reader
+    // can tell a close the frontend asked for from the shell exiting on its
+    // own; only the latter is reported back (see `emit_state`).
+    let close_requested = Arc::new(AtomicBool::new(false));
+
     let reader_app = app.clone();
     let reader_id = id.clone();
+    let reader_close_requested = close_requested.clone();
     std::thread::Builder::new()
         .name(format!("edgeterm-pty-read-{id}"))
         .spawn(move || {
@@ -72,7 +80,9 @@ pub fn spawn(
                 }
             }
             pump.flush();
-            emit_state(&reader_app, &reader_id, "closed", None);
+            if !reader_close_requested.load(Ordering::SeqCst) {
+                emit_state(&reader_app, &reader_id, "closed", None);
+            }
         })
         .map_err(err)?;
 
@@ -106,6 +116,7 @@ pub fn spawn(
                         });
                     }
                     SessionCommand::Close => {
+                        close_requested.store(true, Ordering::SeqCst);
                         let _ = child.kill();
                         break;
                     }

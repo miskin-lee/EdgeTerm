@@ -3,7 +3,7 @@ import { create } from "zustand";
 import * as api from "./api";
 import { commandHistory } from "./history";
 import type { GutterMode } from "./terminal";
-import { disposeController } from "./terminalRegistry";
+import { disposeController, getController } from "./terminalRegistry";
 import type {
   HostKeyChange,
   SessionGroup,
@@ -15,6 +15,11 @@ import type {
 
 export interface Tab {
   info: SessionInfo;
+  /**
+   * The profile the tab was opened with, secrets included, so the session
+   * can be reconnected in place. Kept in memory only.
+   */
+  profile: SessionProfile;
   state: SessionState;
   message?: string;
   cols: number;
@@ -216,7 +221,7 @@ interface AppStore {
    */
   removeGroup: (id: string) => Promise<void>;
 
-  addTab: (info: SessionInfo, state?: SessionState) => void;
+  addTab: (info: SessionInfo, profile: SessionProfile, state?: SessionState) => void;
   updateTabInfo: (id: string, info: SessionInfo) => void;
   closeTab: (id: string) => Promise<void>;
   /**
@@ -316,9 +321,10 @@ export const useStore = create<AppStore>((set, get) => ({
     await get().loadProfiles();
   },
 
-  addTab(info, state = "connected") {
+  addTab(info, profile, state = "connected") {
     const tab: Tab = {
       info,
+      profile,
       state,
       cols: 80,
       rows: 24,
@@ -385,6 +391,9 @@ export const useStore = create<AppStore>((set, get) => ({
 
   applyState(id, state, message) {
     set({ tabs: patchTab(get().tabs, id, { state, message }) });
+    // An ended session has nothing to type into; lock its terminal until a
+    // reconnect brings it back.
+    getController(id)?.setLocked(state === "closed" || state === "error");
   },
 
   setSize(id, cols, rows) {

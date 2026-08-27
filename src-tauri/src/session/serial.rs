@@ -94,12 +94,16 @@ pub fn spawn(
         .name(format!("edgeterm-serial-{id}"))
         .spawn(move || {
             let mut pump = OutputPump::new(app.clone(), id.clone());
-            run_owner_loop(port, rx, |bytes| {
+            let close_requested = run_owner_loop(port, rx, |bytes| {
                 pump.push(bytes);
                 pump.flush();
             });
             pump.flush();
-            emit_state(&app, &id, "closed", None);
+            // A close the frontend asked for is not reported back; see
+            // `emit_state`.
+            if !close_requested {
+                emit_state(&app, &id, "closed", None);
+            }
         })
         .map_err(err)
 }
@@ -107,7 +111,15 @@ pub fn spawn(
 /// Owns the serial handle for its entire lifetime. In particular, do not clone
 /// the handle for a separate reader: dropping only the writer would leave the
 /// cloned descriptor open and keep the device busy forever.
-fn run_owner_loop<P, F>(mut port: P, mut rx: UnboundedReceiver<SessionCommand>, mut on_output: F)
+///
+/// Returns `true` when the loop ended because a close was requested (a Close
+/// command, or the command channel going away with the session manager) and
+/// `false` when the port itself failed.
+fn run_owner_loop<P, F>(
+    mut port: P,
+    mut rx: UnboundedReceiver<SessionCommand>,
+    mut on_output: F,
+) -> bool
 where
     P: Read + Write,
     F: FnMut(&[u8]),
@@ -117,7 +129,7 @@ where
         match rx.try_recv() {
             Ok(SessionCommand::Write(data)) => {
                 if port.write_all(&data).is_err() || port.flush().is_err() {
-                    break;
+                    return false;
                 }
             }
             Ok(SessionCommand::WriteConfirmed { data, reply }) => {
@@ -128,12 +140,12 @@ where
                 let failed = result.is_err();
                 let _ = reply.send(result);
                 if failed {
-                    break;
+                    return false;
                 }
             }
             // A serial line has no window to resize.
             Ok(SessionCommand::Resize { .. }) => {}
-            Ok(SessionCommand::Close) | Err(TryRecvError::Disconnected) => break,
+            Ok(SessionCommand::Close) | Err(TryRecvError::Disconnected) => return true,
             Ok(other) => reject_sftp(other, SessionKind::Serial),
             Err(TryRecvError::Empty) => {}
         }
@@ -146,7 +158,7 @@ where
                 // queued close command has to wait before it can be handled.
             }
             Err(e) if e.kind() == std::io::ErrorKind::Interrupted => continue,
-            Err(_) => break,
+            Err(_) => return false,
         }
     }
 }
@@ -218,8 +230,9 @@ mod tests {
             .expect("owner should acknowledge the write")
             .expect("mock write should succeed");
         command_tx.send(SessionCommand::Close).unwrap();
-        owner.join().unwrap();
+        let close_requested = owner.join().unwrap();
 
+        assert!(close_requested);
         assert!(dropped.load(Ordering::SeqCst));
     }
 }

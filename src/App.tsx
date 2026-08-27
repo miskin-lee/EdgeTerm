@@ -6,7 +6,7 @@ import {
   type CSSProperties,
 } from "react";
 
-import { acceptHostKey } from "./actions";
+import { acceptHostKey, SESSION_CLOSED_NOTICE } from "./actions";
 import * as api from "./api";
 import { CloseSessionDialog } from "./components/CloseSessionDialog";
 import { FontSizeDialog } from "./components/FontSizeDialog";
@@ -125,7 +125,7 @@ export default function App() {
     const unlisten = api.onSessionState(({ id, state, message }) => {
       applyState(id, state as SessionState, message ?? undefined);
       if (state === "closed") {
-        getController(id)?.writeText("\r\n\x1b[33m[session closed]\x1b[0m\r\n");
+        getController(id)?.writeText(SESSION_CLOSED_NOTICE);
       }
     });
     return () => {
@@ -267,7 +267,7 @@ export default function App() {
         )}
 
         <div className="center">
-          <TabStrip onNewSession={newSession} />
+          <TabStrip />
           <SearchOverlay
             ref={searchRef}
             open={searchOpen}

@@ -9,6 +9,9 @@ import {
 } from "./terminalRegistry";
 import type { SessionInfo, SessionProfile } from "./types";
 
+/** Line written into a terminal when its session ends, however it ended. */
+export const SESSION_CLOSED_NOTICE = "\r\n\x1b[33m[session closed]\x1b[0m\r\n";
+
 function newSessionId(): string {
   if (typeof crypto?.randomUUID === "function") return crypto.randomUUID();
   return `s-${Math.random().toString(36).slice(2)}-${Date.now().toString(36)}`;
@@ -48,6 +51,9 @@ function pendingSessionInfo(
     supportsRemoteFiles: profile.kind === "ssh" || profile.kind === "ftp",
   };
 }
+
+/** Tabs whose open_session call has not replied yet; see `connectSession`. */
+const pendingConnects = new Set<string>();
 
 /**
  * The history bucket a session's commands belong to, so suggestions can
@@ -103,9 +109,70 @@ export async function openSession(
   profile: SessionProfile,
 ): Promise<string | null> {
   const id = newSessionId();
-  useStore.getState().addTab(pendingSessionInfo(id, profile), "connecting");
+  useStore
+    .getState()
+    .addTab(pendingSessionInfo(id, profile), profile, "connecting");
   if (profile.kind !== "ftp") ensureController(id);
   return connectSession(id, profile);
+}
+
+/**
+ * Disconnects a tab's session but keeps the tab, its terminal and its
+ * scrollback, so `reconnectSession` can bring it back in place. The backend
+ * does not echo a "closed" state for a close it was asked for (see
+ * `emit_state` in session/mod.rs), so the tab is marked here.
+ */
+export async function disconnectSession(id: string): Promise<void> {
+  const tab = useStore.getState().tabs.find((item) => item.info.id === id);
+  // The backend reports "connected" as soon as the session task starts,
+  // which can land before open_session's own reply. Closing in that window
+  // would let the late reply mark the tab connected again over a session
+  // that is already gone, so wait for the connect to settle first.
+  if (!tab || tab.state !== "connected" || pendingConnects.has(id)) return;
+
+  let failure: string | null = null;
+  await api.closeSession(id).catch((e) => {
+    failure = String(e);
+  });
+
+  const store = useStore.getState();
+  const current = store.tabs.find((item) => item.info.id === id);
+  // The tab may have been closed meanwhile, or the session may have ended on
+  // its own while the close was in flight; either way there is nothing left
+  // to mark.
+  if (!current || current.state !== "connected") return;
+
+  store.applyState(id, "closed", failure ?? "Disconnected");
+  // The backend stays silent for a close it was asked for, so echo the same
+  // notice into the terminal that a peer-initiated close gets (see App.tsx).
+  getController(id)?.writeText(SESSION_CLOSED_NOTICE);
+  if (failure) store.setError(failure, id);
+  else store.setStatus(`Disconnected from ${current.info.name}`);
+}
+
+/**
+ * Reconnects a tab whose session ended — by `disconnectSession`, a failed
+ * connection, or the peer going away — reusing its terminal so the earlier
+ * output stays in the scrollback. Resolves like `openSession`.
+ */
+export function reconnectSession(id: string): Promise<string | null> {
+  const tab = useStore.getState().tabs.find((item) => item.info.id === id);
+  if (!tab || (tab.state !== "closed" && tab.state !== "error")) {
+    return Promise.resolve(null);
+  }
+  return connectSession(id, tab.profile);
+}
+
+/**
+ * The one-button behaviour of a tab's power toggle: a live session is
+ * disconnected, an ended one is reconnected, and a session still connecting
+ * is left alone.
+ */
+export function toggleSessionConnection(id: string): void {
+  const tab = useStore.getState().tabs.find((item) => item.info.id === id);
+  if (!tab) return;
+  if (tab.state === "connected") void disconnectSession(id);
+  else if (tab.state !== "connecting") void reconnectSession(id);
 }
 
 /**
@@ -125,6 +192,7 @@ async function connectSession(
   store.setError(null);
   store.applyState(id, "connecting");
 
+  pendingConnects.add(id);
   try {
     const outcome = await api.openSession(profile, id);
 
@@ -167,6 +235,8 @@ async function connectSession(
       disposeController(id);
     }
     return null;
+  } finally {
+    pendingConnects.delete(id);
   }
 }
 

@@ -603,10 +603,68 @@ textarea:focus {
   overflow-x: auto;
   overflow-y: hidden;
   scrollbar-width: none;
+  /* Keep scrollIntoView'd tabs clear of the edge fades and the sticky list button. */
+  scroll-padding: 0 44px 0 28px;
 }
 
 .tabstrip::-webkit-scrollbar {
   display: none;
+}
+
+/* Edge fades hint that more tabs are hidden past either side. Both are hung
+   off zero-width sticky anchors so they stay put while the tabs scroll under
+   them; the right one lives on the already-sticky actions block. */
+.tabstrip-fade-left {
+  position: sticky;
+  left: 0;
+  flex: 0 0 0;
+  width: 0;
+  z-index: 1;
+}
+
+.tabstrip-fade-left::after,
+.tabstrip-actions::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 28px;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.15s ease;
+}
+
+.tabstrip-fade-left::after {
+  left: 0;
+  background: linear-gradient(to right, var(--bg-app) 25%, transparent);
+}
+
+.tabstrip-actions::before {
+  right: 100%;
+  background: linear-gradient(to left, var(--bg-app) 25%, transparent);
+}
+
+.tabstrip.can-scroll-left .tabstrip-fade-left::after,
+.tabstrip.can-scroll-right .tabstrip-actions::before {
+  opacity: 1;
+}
+
+.tabstrip-actions .panel-action.is-open {
+  color: var(--fg);
+  background: var(--bg-hover);
+}
+
+/* The "all sessions" dropdown: one row per tab, scrolls once it gets tall. */
+.tab-list-menu {
+  max-width: 320px;
+  max-height: 60vh;
+  overflow-y: auto;
+}
+
+.tab-list-menu .menu-entry-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .tab {
@@ -667,7 +725,8 @@ textarea:focus {
   text-overflow: ellipsis;
 }
 
-.tab-close {
+.tab-close,
+.tab-power {
   color: var(--fg-faint);
   padding: 0 2px;
   border-radius: 2px;
@@ -675,14 +734,66 @@ textarea:focus {
   visibility: hidden;
 }
 
+/* The power toggle sits between the label and ✕; drawn from the same 10px
+   caption-glyph grid as the window controls so it reads as a control, not
+   text. */
+.tab-power {
+  display: flex;
+  align-items: center;
+  height: 16px;
+  /* Tighten the trailing controls into one compact cluster: pull the toggle
+     toward the session name, and the ✕ in against the toggle. */
+  margin-left: -4px;
+  margin-right: -5px;
+}
+
+.tab-power svg {
+  width: 10px;
+  height: 10px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.2;
+  stroke-linecap: round;
+}
+
 .tab:hover .tab-close,
-.tab.is-active .tab-close {
+.tab.is-active .tab-close,
+.tab:hover .tab-power,
+.tab.is-active .tab-power,
+/* An ended session keeps its toggle in view so the way back is obvious. */
+.tab.is-closed .tab-power,
+.tab.is-error .tab-power {
   visibility: visible;
 }
 
 .tab-close:hover {
   background: var(--bg-hover);
   color: var(--red);
+}
+
+.tab-power:hover:not(:disabled) {
+  background: var(--bg-hover);
+}
+
+/* Green while the session is live ("powered on"); an ended session keeps a
+   neutral icon so its colour never reads as "connected". */
+.tab.is-connected .tab-power {
+  color: var(--green);
+}
+
+.tab.is-closed .tab-power,
+.tab.is-error .tab-power {
+  color: var(--fg-faint);
+}
+
+.tab.is-closed .tab-power:hover,
+.tab.is-error .tab-power:hover {
+  color: var(--fg);
+}
+
+.tab-power:disabled {
+  opacity: 0.35;
+  cursor: default;
 }
 
 .tabstrip-actions {

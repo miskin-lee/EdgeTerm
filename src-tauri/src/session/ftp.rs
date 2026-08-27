@@ -322,12 +322,16 @@ pub fn spawn(
             // manager has inserted its command handle. Emitting that state
             // from this immediately-started thread would let Filer race the
             // insertion and fail its first Home request.
+            let mut close_requested = false;
             while let Some(command) = rx.blocking_recv() {
                 match command {
                     SessionCommand::Sftp { request, reply } => {
                         let _ = reply.send(run_ftp(&mut connection, request));
                     }
-                    SessionCommand::Close => break,
+                    SessionCommand::Close => {
+                        close_requested = true;
+                        break;
+                    }
                     // Standard FTP is a file protocol, not an interactive
                     // terminal, so keyboard input and resize events do not map
                     // to protocol commands.
@@ -339,7 +343,12 @@ pub fn spawn(
             }
 
             let _ = connection.stream.quit();
-            emit_state(&app, &id, "closed", None);
+            // The frontend already knows about a close it asked for; see
+            // `emit_state`. The channel closing without a Close command means
+            // the whole manager is gone, and nobody is listening either.
+            if !close_requested {
+                emit_state(&app, &id, "closed", None);
+            }
         })
         .map_err(err)?;
     Ok(())

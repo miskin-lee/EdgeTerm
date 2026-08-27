@@ -395,6 +395,8 @@ pub fn spawn(
         let mut pump = OutputPump::new(app.clone(), id.clone());
         let mut sftp: Option<Arc<SftpSession>> = None;
         let mut exit_status: Option<u32> = None;
+        // Set when the frontend asked for the close; see `emit_state`.
+        let mut close_requested = false;
 
         emit_state(&app, &id, "connected", None);
 
@@ -442,6 +444,7 @@ pub fn spawn(
                             }
                         }
                         Some(SessionCommand::Close) | None => {
+                            close_requested = true;
                             let _ = writer.eof().await;
                             let _ = writer.close().await;
                             break;
@@ -453,12 +456,14 @@ pub fn spawn(
         }
 
         pump.flush();
-        emit_state(
-            &app,
-            &id,
-            "closed",
-            exit_status.map(|c| format!("exit status {c}")),
-        );
+        if !close_requested {
+            emit_state(
+                &app,
+                &id,
+                "closed",
+                exit_status.map(|c| format!("exit status {c}")),
+            );
+        }
     });
 }
 

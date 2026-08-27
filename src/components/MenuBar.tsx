@@ -7,9 +7,10 @@ import { ask } from "@tauri-apps/plugin-dialog";
 import { openUrl } from "@tauri-apps/plugin-opener";
 
 import appIcon from "../../src-tauri/icons/32x32.png";
+import { toggleSessionConnection } from "../actions";
 import { commandHistory } from "../history";
 import { IS_MAC, IS_WINDOWS, shortcutLabel as sc } from "../platform";
-import { useStore } from "../store";
+import { useActiveTab, useStore } from "../store";
 import type { GutterMode } from "../terminal";
 import { getController } from "../terminalRegistry";
 import type { ThemeMode } from "../types";
@@ -145,6 +146,7 @@ export function MenuBar(props: Props) {
   const maximized = useWindowFlag(IS_WINDOWS, readMaximized);
 
   const activeId = useStore((s) => s.activeId);
+  const activeState = useActiveTab()?.state;
   const panels = useStore((s) => s.panels);
   const togglePanel = useStore((s) => s.togglePanel);
   const gutterMode = useStore((s) => s.gutterMode);
@@ -205,6 +207,15 @@ export function MenuBar(props: Props) {
           action: () => activateAdjacentTab(1),
         },
         "separator",
+        {
+          // One entry that mirrors the tab's power toggle: it names whichever
+          // side of the switch applies to the active session right now.
+          label:
+            activeState === "closed" || activeState === "error"
+              ? "Reconnect Session"
+              : "Disconnect Session",
+          action: withActive(toggleSessionConnection),
+        },
         {
           label: "Close Session",
           shortcut: sc("⌘W", "Ctrl+Shift+W"),

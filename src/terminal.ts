@@ -188,6 +188,7 @@ export class TerminalController {
   private themeMode: ThemeMode;
   private scrollback: number;
   private pendingShellClear = false;
+  private locked = false;
   /** Command history capture + completion popup. Opt-in via the Edit menu. */
   private suggestionsOn = false;
   private inputAnchor: InputAnchor | null = null;
@@ -486,6 +487,20 @@ export class TerminalController {
 
   writeText(text: string) {
     this.term.write(text);
+  }
+
+  /**
+   * Locks the terminal once its session has ended: keystrokes, paste and
+   * completions no longer reach `onData`, and the cursor is hidden so the
+   * pane does not look like it is waiting for input. Unlocking restores both
+   * for a reconnect.
+   */
+  setLocked(locked: boolean) {
+    if (this.locked === locked) return;
+    this.locked = locked;
+    this.term.options.disableStdin = locked;
+    this.term.write(locked ? "\x1b[?25l" : "\x1b[?25h");
+    if (locked) this.hidePopup();
   }
 
   isZmodemActive(): boolean {
@@ -903,7 +918,9 @@ export class TerminalController {
       : "\x7f".repeat([...input].length) + candidate.command;
     this.dismissedInput = candidate.command;
     this.hidePopup();
-    if (data && !this.zmodem.isActive()) this.callbacks.onData(data);
+    if (data && !this.locked && !this.zmodem.isActive()) {
+      this.callbacks.onData(data);
+    }
   }
 
   private hidePopup() {

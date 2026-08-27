@@ -28,6 +28,13 @@ interface Props {
   y: number;
   items: MenuItem[];
   onClose: () => void;
+  /**
+   * Which edge of the menu sits at `x`. "right" is for dropdowns hanging off
+   * a button near the right side of the screen.
+   */
+  align?: "left" | "right";
+  /** Extra classes, e.g. to cap the height of a long, scrollable list. */
+  className?: string;
 }
 
 /** Approximate submenu width, used to decide which side it opens on. */
@@ -40,7 +47,14 @@ const EDGE_MARGIN = 6;
  * outside, Escape, scrolling, resizing or the window losing focus — the same
  * moments a native menu would go away.
  */
-export function ContextMenu({ x, y, items, onClose }: Props) {
+export function ContextMenu({
+  x,
+  y,
+  items,
+  onClose,
+  align = "left",
+  className,
+}: Props) {
   const ref = useRef<HTMLDivElement>(null);
   const [placement, setPlacement] = useState<{
     left: number;
@@ -54,13 +68,14 @@ export function ContextMenu({ x, y, items, onClose }: Props) {
     const { offsetWidth: width, offsetHeight: height } = element;
     const maxLeft = window.innerWidth - width - EDGE_MARGIN;
     const maxTop = window.innerHeight - height - EDGE_MARGIN;
-    const left = Math.max(EDGE_MARGIN, Math.min(x, maxLeft));
+    const anchorLeft = align === "right" ? x - width : x;
+    const left = Math.max(EDGE_MARGIN, Math.min(anchorLeft, maxLeft));
     const top = Math.max(EDGE_MARGIN, Math.min(y, maxTop));
     // The Session panel sits on the right edge, so submenus usually have to
     // open leftwards to stay visible.
     const flipped = left + width + SUBMENU_WIDTH > window.innerWidth;
     setPlacement({ left, top, flipped });
-  }, [x, y, items]);
+  }, [x, y, items, align]);
 
   useEffect(() => {
     const onMouseDown = (event: MouseEvent) => {
@@ -124,9 +139,14 @@ export function ContextMenu({ x, y, items, onClose }: Props) {
   return (
     <div
       ref={ref}
-      className={`menu-dropdown context-menu${
-        placement.flipped ? " is-flipped" : ""
-      }`}
+      className={[
+        "menu-dropdown",
+        "context-menu",
+        placement.flipped ? "is-flipped" : "",
+        className ?? "",
+      ]
+        .filter(Boolean)
+        .join(" ")}
       role="menu"
       style={{ left: placement.left, top: placement.top }}
       onContextMenu={(event) => event.preventDefault()}
