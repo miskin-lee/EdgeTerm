@@ -1,7 +1,7 @@
 {
   "name": "edgeterm",
   "private": true,
-  "version": "0.4.9",
+  "version": "0.5.0",
   "type": "module",
   "description": "A lightweight terminal, SSH, FTP and serial client built with Rust + Tauri - installer under 5 MB, fast startup",
   "scripts": {
