@@ -8,7 +8,7 @@ use tokio::sync::mpsc::UnboundedReceiver;
 
 use super::{emit_state, reject_sftp, OutputPump, SessionCommand};
 use crate::error::{err, Result};
-use crate::model::{default_shell, SessionKind, SessionProfile};
+use crate::model::{split_command_line, SessionKind, SessionProfile};
 
 /// Spawns a login shell on a local pseudo-terminal.
 ///
@@ -31,8 +31,12 @@ pub fn spawn(
         })
         .map_err(err)?;
 
-    let shell = profile.shell.clone().unwrap_or_else(default_shell);
-    let mut cmd = CommandBuilder::new(&shell);
+    // The Shell field is a command line, not just a program name, so a
+    // profile can start `wsl.exe -d Ubuntu` or `pwsh -NoLogo`.
+    let shell = profile.shell_command_line();
+    let argv = split_command_line(&shell, cfg!(windows)).map_err(err)?;
+    let mut cmd = CommandBuilder::new(&argv[0]);
+    cmd.args(&argv[1..]);
     cmd.env("TERM", "xterm-256color");
     cmd.env("COLORTERM", "truecolor");
     cmd.env("TERM_PROGRAM", "EdgeTerm");

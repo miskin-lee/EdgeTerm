@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 
 import { openSession } from "../actions";
 import * as api from "../api";
+import { IS_WINDOWS } from "../platform";
 import {
   flattenGroups,
   groupCategory,
@@ -586,7 +587,7 @@ export function SessionDialog({ initial, onClose }: Props) {
                   <input
                     {...RAW_TEXT_INPUT}
                     value={profile.shell ?? ""}
-                    placeholder="$SHELL"
+                    placeholder={IS_WINDOWS ? "%COMSPEC%" : "$SHELL"}
                     onChange={(event) => patch({ shell: event.target.value })}
                   />
                 </label>

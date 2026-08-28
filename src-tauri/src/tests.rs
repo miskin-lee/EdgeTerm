@@ -8,8 +8,9 @@ use crate::commands::{
 };
 use crate::fs_local;
 use crate::model::{
-    AppData, AuthKind, CommandScope, FileEntry, LineEnding, SavedCommand, SenderFormat,
-    SessionGroup, SessionKind, SessionProfile, APP_DATA_APP, APP_DATA_EXTENSION, APP_DATA_FORMAT,
+    split_command_line, AppData, AuthKind, CommandScope, FileEntry, LineEnding, SavedCommand,
+    SenderFormat, SessionGroup, SessionKind, SessionProfile, APP_DATA_APP, APP_DATA_EXTENSION,
+    APP_DATA_FORMAT,
 };
 use crate::session::{join_remote, sort_entries};
 use crate::store::{is_data_file_path, Store};
@@ -136,6 +137,65 @@ fn profile_renders_its_address_per_protocol() {
     local.shell = Some("/bin/zsh".into());
     assert_eq!(local.protocol(), "shell");
     assert_eq!(local.address(), "/bin/zsh");
+}
+
+#[test]
+fn blank_shell_field_means_the_default_shell() {
+    let default = crate::model::default_shell();
+    let mut local = profile(SessionKind::Local);
+    assert_eq!(local.shell_command_line(), default);
+    local.shell = Some("   ".into());
+    assert_eq!(local.shell_command_line(), default);
+    assert_eq!(local.address(), default);
+    local.shell = Some("  wsl.exe -d Ubuntu ".into());
+    assert_eq!(local.shell_command_line(), "wsl.exe -d Ubuntu");
+}
+
+#[test]
+fn shell_command_line_splits_into_program_and_arguments() {
+    let words = |s: &str| split_command_line(s, false).unwrap();
+    assert_eq!(words("/bin/zsh"), ["/bin/zsh"]);
+    assert_eq!(words("/bin/zsh -l"), ["/bin/zsh", "-l"]);
+    assert_eq!(
+        words("  pwsh   -NoLogo\t-NoProfile "),
+        ["pwsh", "-NoLogo", "-NoProfile"]
+    );
+    // Quotes group words with spaces and are removed; `""` is an empty argument.
+    assert_eq!(
+        words(r#""/Applications/My Shell/sh" 'a b' c"#),
+        ["/Applications/My Shell/sh", "a b", "c"]
+    );
+    assert_eq!(words("sh -c \"\""), ["sh", "-c", ""]);
+    assert_eq!(words(r#"pre"fix ed"post"#), ["prefix edpost"]);
+    // POSIX escapes: a backslash outside quotes, the shell-escapable set
+    // inside double quotes, nothing inside single quotes.
+    assert_eq!(words(r"a\ b"), ["a b"]);
+    assert_eq!(words(r#""say \"hi\" \$x \n""#), [r#"say "hi" $x \n"#]);
+    assert_eq!(words(r"'no \escape'"), [r"no \escape"]);
+
+    assert!(split_command_line("", false).is_err());
+    assert!(split_command_line("   ", false).is_err());
+    assert!(split_command_line(r#"sh "unterminated"#, false).is_err());
+    assert!(split_command_line("sh 'unterminated", false).is_err());
+    assert!(split_command_line(r"sh \", false).is_err());
+}
+
+#[test]
+fn windows_shell_command_line_keeps_backslashes_and_single_quotes() {
+    let words = |s: &str| split_command_line(s, true).unwrap();
+    assert_eq!(words("wsl.exe -d Ubuntu"), ["wsl.exe", "-d", "Ubuntu"]);
+    assert_eq!(
+        words(r#""C:\Program Files\PowerShell\7\pwsh.exe" -NoLogo"#),
+        [r"C:\Program Files\PowerShell\7\pwsh.exe", "-NoLogo"]
+    );
+    assert_eq!(
+        words(r"C:\Windows\System32\cmd.exe /k"),
+        [r"C:\Windows\System32\cmd.exe", "/k"]
+    );
+    // `'` is not a quote in cmd and a trailing backslash is a path character.
+    assert_eq!(words("pwsh -c 'Get-Date'"), ["pwsh", "-c", "'Get-Date'"]);
+    assert_eq!(words(r"cmd /k cd C:\"), ["cmd", "/k", "cd", r"C:\"]);
+    assert!(split_command_line(r#"pwsh "unterminated"#, true).is_err());
 }
 
 #[test]
@@ -637,11 +697,17 @@ fn store_merges_and_persists_command_history() {
 
     store.record_command("ls -la", "ssh:db:22").unwrap();
     store.record_command("ls -la", "ssh:db:22").unwrap();
-    store.record_command("make test  ", "shell:/bin/zsh").unwrap();
+    store
+        .record_command("make test  ", "shell:/bin/zsh")
+        .unwrap();
     store.record_command("   ", "shell:/bin/zsh").unwrap();
 
     let entries = store.list_command_history();
-    assert_eq!(entries.len(), 2, "duplicates merge, blank lines are dropped");
+    assert_eq!(
+        entries.len(),
+        2,
+        "duplicates merge, blank lines are dropped"
+    );
     let ls = entries
         .iter()
         .find(|entry| entry.command == "ls -la")
@@ -1208,15 +1274,26 @@ fn credentials_are_sealed_on_disk_and_readable_after_restart() {
         .save(password_profile("10.0.0.1", "s3cret"))
         .expect("save");
     let sealed = read_credentials();
-    assert!(!sealed.contains("s3cret"), "the secret must not be on disk in clear");
+    assert!(
+        !sealed.contains("s3cret"),
+        "the secret must not be on disk in clear"
+    );
     assert!(sealed.contains("\"encrypted\": true"));
-    assert_eq!(stored_password(&store, &saved.id).as_deref(), Some("s3cret"));
+    assert_eq!(
+        stored_password(&store, &saved.id).as_deref(),
+        Some("s3cret")
+    );
 
     // The same machine and account open it again without any prompt.
     let reloaded = Store::load_from(path.clone());
-    assert_eq!(stored_password(&reloaded, &saved.id).as_deref(), Some("s3cret"));
+    assert_eq!(
+        stored_password(&reloaded, &saved.id).as_deref(),
+        Some("s3cret")
+    );
     // Every write uses a fresh nonce.
-    reloaded.save(password_profile("10.0.0.2", "other")).expect("save");
+    reloaded
+        .save(password_profile("10.0.0.2", "other"))
+        .expect("save");
     assert_ne!(read_credentials(), sealed);
 
     // A file written before sealing existed is sealed on first load.
@@ -1226,7 +1303,10 @@ fn credentials_are_sealed_on_disk_and_readable_after_restart() {
     )
     .expect("write legacy file");
     let upgraded = Store::load_from(path.clone());
-    assert_eq!(stored_password(&upgraded, &saved.id).as_deref(), Some("legacy"));
+    assert_eq!(
+        stored_password(&upgraded, &saved.id).as_deref(),
+        Some("legacy")
+    );
     assert!(!read_credentials().contains("legacy"));
 
     // A file from another machine (a different salt stands in for a

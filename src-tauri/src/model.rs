@@ -81,13 +81,22 @@ pub struct SessionProfile {
 }
 
 impl SessionProfile {
+    /// The Shell field with surrounding whitespace removed, or the platform's
+    /// default shell when it is empty. A blank field is "use the default" so
+    /// clearing it never tries to spawn a program called "".
+    pub fn shell_command_line(&self) -> String {
+        self.shell
+            .as_deref()
+            .map(str::trim)
+            .filter(|shell| !shell.is_empty())
+            .map(str::to_owned)
+            .unwrap_or_else(default_shell)
+    }
+
     /// The `ssh > host:port` style descriptor shown in the address bar.
     pub fn address(&self) -> String {
         match self.kind {
-            SessionKind::Local => self
-                .shell
-                .clone()
-                .unwrap_or_else(|| default_shell().to_string()),
+            SessionKind::Local => self.shell_command_line(),
             SessionKind::Ssh => format!(
                 "{}:{}",
                 self.host.as_deref().unwrap_or("localhost"),
@@ -330,6 +339,82 @@ pub struct SerialPortDesc {
     pub port_name: String,
     pub port_type: String,
     pub description: Option<String>,
+}
+
+/// Splits the Shell field into a program and its arguments, so a profile can
+/// start `wsl.exe -d Ubuntu` or `pwsh -NoLogo` rather than only a bare
+/// program name. Words are separated by whitespace and double quotes group a
+/// word containing spaces (`"C:\Program Files\PowerShell\7\pwsh.exe"`).
+///
+/// On Unix single quotes and backslash escapes work as in a POSIX shell. On
+/// Windows a backslash is an ordinary path character and `'` is not a quote
+/// in cmd, so only double quotes group there, as in `CommandLineToArgvW`.
+/// An unterminated quote is an error rather than a silently different
+/// command line. The result is never empty for a non-blank input.
+pub fn split_command_line(line: &str, windows: bool) -> std::result::Result<Vec<String>, String> {
+    let mut words = Vec::new();
+    let mut word = String::new();
+    // Set once a quote opened, so `""` still yields an (empty) argument.
+    let mut in_word = false;
+    let mut chars = line.chars();
+    while let Some(c) = chars.next() {
+        match c {
+            '"' => {
+                in_word = true;
+                loop {
+                    match chars.next() {
+                        None => return Err("unterminated \" quote in shell command".into()),
+                        Some('"') => break,
+                        Some('\\') if !windows => match chars.next() {
+                            // Only the characters a POSIX shell lets a
+                            // backslash escape inside double quotes.
+                            Some(next @ ('"' | '\\' | '$' | '`')) => word.push(next),
+                            Some(next) => {
+                                word.push('\\');
+                                word.push(next);
+                            }
+                            None => return Err("unterminated \" quote in shell command".into()),
+                        },
+                        Some(inner) => word.push(inner),
+                    }
+                }
+            }
+            '\'' if !windows => {
+                in_word = true;
+                loop {
+                    match chars.next() {
+                        None => return Err("unterminated ' quote in shell command".into()),
+                        Some('\'') => break,
+                        Some(inner) => word.push(inner),
+                    }
+                }
+            }
+            '\\' if !windows => match chars.next() {
+                Some(next) => {
+                    in_word = true;
+                    word.push(next);
+                }
+                None => return Err("trailing backslash in shell command".into()),
+            },
+            c if c.is_whitespace() => {
+                if in_word {
+                    words.push(std::mem::take(&mut word));
+                    in_word = false;
+                }
+            }
+            c => {
+                in_word = true;
+                word.push(c);
+            }
+        }
+    }
+    if in_word {
+        words.push(word);
+    }
+    if words.is_empty() {
+        return Err("empty shell command".into());
+    }
+    Ok(words)
 }
 
 pub fn default_shell() -> String {

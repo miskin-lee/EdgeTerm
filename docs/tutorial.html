@@ -164,8 +164,8 @@
 
       <h3><span data-i18n="en">Local Shell</span><span data-i18n="zh">本地 Shell</span></h3>
       <p>
-        <span data-i18n="en">A real pseudoterminal on your machine with synchronized window resizing. Optional fields: <strong>Shell</strong> (defaults to <code>$SHELL</code>) and <strong>Directory</strong> (the starting directory, defaults to your home).</span>
-        <span data-i18n="zh">本机上真正的伪终端，窗口尺寸自动同步。可选字段：<strong>Shell</strong>（默认使用 <code>$SHELL</code>）和 <strong>Directory</strong>（起始目录，默认为用户主目录）。</span>
+        <span data-i18n="en">A real pseudoterminal on your machine with synchronized window resizing. Optional fields: <strong>Shell</strong> (defaults to <code>$SHELL</code>, or <code>%COMSPEC%</code> on Windows) and <strong>Directory</strong> (the starting directory, defaults to your home). The Shell field is a full command line, so arguments work: <code>wsl.exe -d Ubuntu</code>, <code>pwsh -NoLogo</code> or <code>/bin/zsh -l</code>; quote a path that contains spaces.</span>
+        <span data-i18n="zh">本机上真正的伪终端，窗口尺寸自动同步。可选字段：<strong>Shell</strong>（默认使用 <code>$SHELL</code>，Windows 下为 <code>%COMSPEC%</code>）和 <strong>Directory</strong>（起始目录，默认为用户主目录）。Shell 字段是完整的命令行，可以带参数：<code>wsl.exe -d Ubuntu</code>、<code>pwsh -NoLogo</code> 或 <code>/bin/zsh -l</code>；路径含空格时请加引号。</span>
       </p>
 
       <h3>SSH</h3>
