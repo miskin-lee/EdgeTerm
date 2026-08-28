@@ -256,6 +256,13 @@ export const sftpUploadDirectory = (
 
 export const localHome = () => invoke<string>("local_home");
 
+/**
+ * Path of the Windows drive list the local browser reaches by going up from a
+ * drive root. Mirrors `fs_local::THIS_PC`; nothing can be created or deleted
+ * there.
+ */
+export const LOCAL_DRIVES_ROOT = "This PC";
+
 export const localList = (path: string) =>
   invoke<DirListing>("local_list", { path });
 

@@ -46,6 +46,10 @@ dirs = "6"
 [target."cfg(any(target_os = \"macos\", windows, target_os = \"linux\"))".dependencies]
 tauri-plugin-updater = "2"
 
+# Drive enumeration and volume labels for the Filer's "This PC" view.
+[target."cfg(windows)".dependencies]
+windows-sys = { version = "0.59", features = ["Win32_Storage_FileSystem", "Win32_System_WindowsProgramming"] }
+
 [profile.release]
 codegen-units = 1
 lto = true

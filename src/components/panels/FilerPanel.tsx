@@ -366,7 +366,7 @@ export function FilerPanel() {
     const draft = creating;
     setCreating(null);
     const name = draft?.name.trim();
-    if (!draft || !name || !path) return;
+    if (!draft || !name || !path || atDrivesRoot) return;
     const label = draft.kind === "folder" ? "folder" : "file";
     if (name === "." || name === ".." || /[\\/]/.test(name)) {
       setError(`"${name}" is not a valid ${label} name`);
@@ -414,6 +414,9 @@ export function FilerPanel() {
 
   const remoteTitle = (label: string) =>
     remote ? label : `${label} (connected SSH sessions only)`;
+  // The Windows drive list is virtual: drives can be opened but not created,
+  // deleted or navigated above.
+  const atDrivesRoot = !remoteId && path === api.LOCAL_DRIVES_ROOT;
 
   return (
     <div className="panel" style={{ flex: 1 }}>
@@ -434,7 +437,7 @@ export function FilerPanel() {
           onClick={() => setCreating({ kind: "file", name: "" })}
           title="New file"
           aria-label="New file"
-          disabled={busy || !path}
+          disabled={busy || !path || atDrivesRoot}
         >
           <FilerActionIcon name="new-file" />
         </button>
@@ -443,7 +446,7 @@ export function FilerPanel() {
           onClick={() => setCreating({ kind: "folder", name: "" })}
           title="New folder"
           aria-label="New folder"
-          disabled={busy || !path}
+          disabled={busy || !path || atDrivesRoot}
         >
           <FilerActionIcon name="new-folder" />
         </button>
@@ -488,7 +491,7 @@ export function FilerPanel() {
           onClick={removeSelected}
           title="Delete"
           aria-label="Delete"
-          disabled={!selected || busy}
+          disabled={!selected || busy || atDrivesRoot}
         >
           <FilerActionIcon name="delete" />
         </button>
@@ -511,7 +514,7 @@ export function FilerPanel() {
           onClick={goUp}
           title="Parent folder"
           aria-label="Parent folder"
-          disabled={busy}
+          disabled={busy || atDrivesRoot}
         >
           <FilerActionIcon name="parent-folder" />
         </button>
