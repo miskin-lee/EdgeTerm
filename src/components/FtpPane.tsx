@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 
 import * as api from "../api";
-import type { Tab } from "../store";
+import { fileIconUrl } from "../fileIcons";
+import { useStore, type Tab } from "../store";
 import type { FileEntry } from "../types";
 
 interface Props {
@@ -559,6 +560,7 @@ function FileBrowser({
   onSelect,
   onActivate,
 }: FileBrowserProps) {
+  const theme = useStore((s) => s.theme);
   return (
     <section className="ftp-file-browser">
       <div className="ftp-browser-header">
@@ -617,7 +619,11 @@ function FileBrowser({
             >
               <span className="ftp-file-name">
                 <span className="ftp-file-icon" aria-hidden="true">
-                  {entry.isDir ? "◆" : entry.isSymlink ? "◇" : "▪"}
+                  <img
+                    src={fileIconUrl(entry.name, entry.isDir, theme)}
+                    alt=""
+                    draggable={false}
+                  />
                 </span>
                 <span>{entry.name}</span>
               </span>

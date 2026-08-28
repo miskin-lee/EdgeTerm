@@ -68,7 +68,6 @@
   --swatch-ring: rgba(255, 255, 255, 0.1);
 
   --dir-label: #9cdcfe;
-  --dir-icon: #75beff;
   --symlink-label: #c586c0;
 
   --gutter-border: #2b2b2b;
@@ -129,7 +128,6 @@
   --swatch-ring: rgba(0, 0, 0, 0.15);
 
   --dir-label: #26569e;
-  --dir-icon: #4e79b6;
   --symlink-label: #652d90;
 
   --gutter-border: #e5e5e5;
@@ -1074,9 +1072,20 @@ textarea:focus {
 }
 
 .ftp-file-icon {
-  flex: 0 0 12px;
-  color: var(--dir-icon);
-  text-align: center;
+  display: inline-flex;
+  flex: 0 0 16px;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+}
+
+.ftp-file-icon img {
+  display: block;
+  width: 16px;
+  height: 16px;
+  pointer-events: none;
+  user-select: none;
 }
 
 .ftp-browser-message {
