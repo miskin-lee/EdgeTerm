@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 
 import * as api from "../api";
-import { fileIconUrl } from "../fileIcons";
+import { FileIcon } from "./FileIcon";
 import { useStore, type Tab } from "../store";
 import type { FileEntry } from "../types";
 
@@ -625,11 +625,7 @@ function FileBrowser({
             >
               <span className="ftp-file-name">
                 <span className="ftp-file-icon" aria-hidden="true">
-                  <img
-                    src={fileIconUrl(entry.name, entry.isDir, theme)}
-                    alt=""
-                    draggable={false}
-                  />
+                  <FileIcon name={entry.name} isDir={entry.isDir} theme={theme} />
                 </span>
                 <span>{entry.name}</span>
               </span>

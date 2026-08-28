@@ -3,9 +3,9 @@ import { open as openDialog, save as saveDialog } from "@tauri-apps/plugin-dialo
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import * as api from "../../api";
-import { fileIconUrl } from "../../fileIcons";
 import { useActiveTab, useStore } from "../../store";
-import type { FileEntry } from "../../types";
+import { FileIcon } from "../FileIcon";
+import type { FileEntry, ThemeMode } from "../../types";
 
 interface TransferState {
   kind: "upload" | "download";
@@ -495,7 +495,7 @@ export function FilerPanel() {
         {error && <div className="panel-empty">{error}</div>}
         {newFolder !== null && (
           <div className="row filer-new-folder">
-            <FilerEntryIcon src={fileIconUrl(newFolder, true, theme)} />
+            <FilerEntryIcon name={newFolder} isDir theme={theme} />
             <input
               autoFocus
               value={newFolder}
@@ -520,7 +520,9 @@ export function FilerPanel() {
               title={entryTitle(entry)}
             >
               <FilerEntryIcon
-                src={fileIconUrl(entry.name, entry.isDir, theme)}
+                name={entry.name}
+                isDir={entry.isDir}
+                theme={theme}
               />
               <span className="row-label">{entry.name}</span>
               <span className="filer-col-date row-meta">
@@ -597,10 +599,18 @@ export function FilerPanel() {
 
 type FilerEntryKind = "directory" | "file" | "symlink";
 
-function FilerEntryIcon({ src }: { src: string }) {
+function FilerEntryIcon({
+  name,
+  isDir,
+  theme,
+}: {
+  name: string;
+  isDir: boolean;
+  theme: ThemeMode;
+}) {
   return (
     <span className="filer-icon">
-      <img src={src} alt="" draggable={false} />
+      <FileIcon name={name} isDir={isDir} theme={theme} />
     </span>
   );
 }
