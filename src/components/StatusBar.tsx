@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 
 import { useActiveTab, useStore } from "../store";
+import { isFileSession } from "../types";
 
 export function StatusBar() {
   const tab = useActiveTab();
@@ -26,7 +27,7 @@ export function StatusBar() {
       <div className="status-spacer" />
       {tab && (
         <>
-          {tab.info.kind === "ftp" ? (
+          {isFileSession(tab.info.kind) ? (
             <span className="status-item">Dual-pane file transfer</span>
           ) : (
             <span className="status-item">

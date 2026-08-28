@@ -2,7 +2,12 @@ import { useEffect, useRef, useState } from "react";
 
 import { openSession } from "../actions";
 import * as api from "../api";
-import { flattenGroups, groupPath, KIND_LABELS } from "../sessionGroups";
+import {
+  flattenGroups,
+  groupCategory,
+  groupPath,
+  sectionLabel,
+} from "../sessionGroups";
 import { useStore } from "../store";
 import {
   colorForSession,
@@ -38,7 +43,24 @@ const RAW_TEXT_INPUT = {
 } as const;
 
 const defaultPort = (kind: SessionKind, current?: number | null) =>
-  kind === "ssh" ? (current ?? 22) : kind === "ftp" ? (current ?? 21) : current;
+  kind === "ssh" || kind === "sftp"
+    ? (current ?? 22)
+    : kind === "ftp"
+      ? (current ?? 21)
+      : current;
+
+/**
+ * Protocol picker entries. FTP and SFTP share one "(S)FTP" choice, mirroring
+ * the Session panel's merged section; a sub-toggle inside the connection
+ * section picks the actual protocol. `kinds[0]` is the default when the choice
+ * is selected fresh — SFTP, since it is the encrypted one.
+ */
+const PROTOCOL_OPTIONS: { label: string; kinds: SessionKind[] }[] = [
+  { label: "SSH", kinds: ["ssh"] },
+  { label: "(S)FTP", kinds: ["sftp", "ftp"] },
+  { label: "Shell", kinds: ["local"] },
+  { label: "Serial", kinds: ["serial"] },
+];
 
 /** Column count of `.session-color-picker`; keep in sync with styles.css. */
 const COLOR_PICKER_COLUMNS = 8;
@@ -121,6 +143,7 @@ export function SessionDialog({ initial, onClose }: Props) {
 
   const defaultName = () => {
     if (profile.kind === "ssh") return profile.host ?? "ssh";
+    if (profile.kind === "sftp") return profile.host ?? "sftp";
     if (profile.kind === "ftp") return profile.host ?? "ftp";
     if (profile.kind === "serial") return profile.portName ?? "serial";
     return "shell";
@@ -130,6 +153,62 @@ export function SessionDialog({ initial, onClose }: Props) {
     ...profile,
     name: profile.name.trim() || defaultName(),
   });
+
+  // The authentication block shared by SSH and SFTP: they ride the same
+  // transport, so both offer password, public-key, and ssh-agent auth with the
+  // exact same inputs.
+  const renderServerAuthFields = () => (
+    <>
+      <label className="session-field">
+        <span className="session-field-label">Authentication</span>
+        <select
+          value={profile.auth ?? "password"}
+          onChange={(event) =>
+            patch({ auth: event.target.value as SessionProfile["auth"] })
+          }
+        >
+          <option value="password">Password</option>
+          <option value="publicKey">Public key</option>
+          <option value="agent">SSH agent</option>
+        </select>
+      </label>
+
+      {profile.auth === "password" && (
+        <label className="session-field is-wide">
+          <span className="session-field-label">Password</span>
+          <input
+            {...RAW_TEXT_INPUT}
+            type="password"
+            value={profile.password ?? ""}
+            onChange={(event) => patch({ password: event.target.value })}
+          />
+        </label>
+      )}
+
+      {profile.auth === "publicKey" && (
+        <>
+          <label className="session-field is-wide">
+            <span className="session-field-label">Private key</span>
+            <input
+              {...RAW_TEXT_INPUT}
+              value={profile.privateKeyPath ?? ""}
+              placeholder="~/.ssh/id_ed25519"
+              onChange={(event) => patch({ privateKeyPath: event.target.value })}
+            />
+          </label>
+          <label className="session-field is-wide">
+            <span className="session-field-label">Passphrase</span>
+            <input
+              {...RAW_TEXT_INPUT}
+              type="password"
+              value={profile.passphrase ?? ""}
+              onChange={(event) => patch({ passphrase: event.target.value })}
+            />
+          </label>
+        </>
+      )}
+    </>
+  );
 
   const save = async () => {
     const candidate = normalized();
@@ -215,33 +294,37 @@ export function SessionDialog({ initial, onClose }: Props) {
               <div className="session-field is-wide">
                 <span className="session-field-label">Protocol</span>
                 <div className="kind-picker">
-                  {(["ssh", "ftp", "local", "serial"] as SessionKind[]).map((kind) => (
-                    <button
-                      key={kind}
-                      className={`kind-option${profile.kind === kind ? " is-active" : ""}`}
-                      onClick={() =>
-                        patch({
-                          kind,
-                          port: defaultPort(
-                            kind,
-                            profile.kind === kind ? profile.port : null,
-                          ),
-                          // Groups belong to one kind; keep the choice only
-                          // while the kind stays the same.
-                          groupId:
-                            profile.kind === kind ? profile.groupId : null,
-                        })
-                      }
-                    >
-                      {kind === "ssh"
-                        ? "SSH"
-                        : kind === "ftp"
-                          ? "FTP"
-                        : kind === "local"
-                          ? "Shell"
-                          : "Serial"}
-                    </button>
-                  ))}
+                  {PROTOCOL_OPTIONS.map((option) => {
+                    const active = option.kinds.includes(profile.kind);
+                    // Keep the current sub-choice when the group already
+                    // matches; otherwise select the option's default kind.
+                    const target = active ? profile.kind : option.kinds[0];
+                    return (
+                      <button
+                        key={option.label}
+                        className={`kind-option${active ? " is-active" : ""}`}
+                        onClick={() =>
+                          patch({
+                            kind: target,
+                            port: defaultPort(
+                              target,
+                              profile.kind === target ? profile.port : null,
+                            ),
+                            // Groups belong to one category; FTP and SFTP share
+                            // theirs, so the choice survives switching between
+                            // them but is cleared across categories.
+                            groupId:
+                              groupCategory(profile.kind) ===
+                              groupCategory(target)
+                                ? profile.groupId
+                                : null,
+                          })
+                        }
+                      >
+                        {option.label}
+                      </button>
+                    );
+                  })}
                 </div>
               </div>
 
@@ -322,7 +405,7 @@ export function SessionDialog({ initial, onClose }: Props) {
                   }
                 >
                   <option value="">
-                    {KIND_LABELS[profile.kind]} (no group)
+                    {sectionLabel(profile.kind)} (no group)
                   </option>
                   {groupChoices.map(({ group }) => (
                     <option key={group.id} value={group.id}>
@@ -380,79 +463,58 @@ export function SessionDialog({ initial, onClose }: Props) {
                   />
                 </label>
 
-                <label className="session-field">
-                  <span className="session-field-label">Authentication</span>
-                  <select
-                    value={profile.auth ?? "password"}
-                    onChange={(event) =>
-                      patch({
-                        auth: event.target.value as SessionProfile["auth"],
-                      })
-                    }
-                  >
-                    <option value="password">Password</option>
-                    <option value="publicKey">Public key</option>
-                    <option value="agent">SSH agent</option>
-                  </select>
-                </label>
-
-                {profile.auth === "password" && (
-                  <label className="session-field is-wide">
-                    <span className="session-field-label">Password</span>
-                    <input
-                      {...RAW_TEXT_INPUT}
-                      type="password"
-                      value={profile.password ?? ""}
-                      onChange={(event) =>
-                        patch({ password: event.target.value })
-                      }
-                    />
-                  </label>
-                )}
-
-                {profile.auth === "publicKey" && (
-                  <>
-                    <label className="session-field is-wide">
-                      <span className="session-field-label">Private key</span>
-                      <input
-                        {...RAW_TEXT_INPUT}
-                        value={profile.privateKeyPath ?? ""}
-                        placeholder="~/.ssh/id_ed25519"
-                        onChange={(event) =>
-                          patch({ privateKeyPath: event.target.value })
-                        }
-                      />
-                    </label>
-                    <label className="session-field is-wide">
-                      <span className="session-field-label">Passphrase</span>
-                      <input
-                        {...RAW_TEXT_INPUT}
-                        type="password"
-                        value={profile.passphrase ?? ""}
-                        onChange={(event) =>
-                          patch({ passphrase: event.target.value })
-                        }
-                      />
-                    </label>
-                  </>
-                )}
+                {renderServerAuthFields()}
               </div>
             </section>
           )}
 
-          {profile.kind === "ftp" && (
+          {(profile.kind === "sftp" || profile.kind === "ftp") && (
             <section className="session-section">
               <div className="session-section-heading">
-                <span>FTP connection</span>
-                <small>Passive mode · unencrypted</small>
+                <span>(S)FTP connection</span>
+                <small>
+                  {profile.kind === "sftp"
+                    ? "SFTP · encrypted file transfer over SSH"
+                    : "FTP · passive mode · unencrypted"}
+                </small>
               </div>
               <div className="session-form-grid">
+                <div className="session-field is-wide">
+                  <span className="session-field-label">Protocol</span>
+                  <div className="kind-picker">
+                    {(["sftp", "ftp"] as SessionKind[]).map((sub) => (
+                      <button
+                        key={sub}
+                        className={`kind-option${profile.kind === sub ? " is-active" : ""}`}
+                        onClick={() =>
+                          patch({
+                            kind: sub,
+                            // Swap the default port when it is still the old
+                            // default; keep a custom port untouched. The group
+                            // survives — FTP and SFTP share one category.
+                            port:
+                              profile.port === defaultPort(profile.kind)
+                                ? defaultPort(sub)
+                                : profile.port,
+                          })
+                        }
+                      >
+                        {sub === "sftp" ? "SFTP (over SSH)" : "FTP"}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
                 <label className="session-field">
                   <span className="session-field-label">Host</span>
                   <input
                     {...RAW_TEXT_INPUT}
                     value={profile.host ?? ""}
-                    placeholder="ftp.example.com"
+                    placeholder={
+                      profile.kind === "sftp"
+                        ? "sftp.example.com"
+                        : "ftp.example.com"
+                    }
                     onChange={(event) => patch({ host: event.target.value })}
                   />
                 </label>
@@ -463,9 +525,13 @@ export function SessionDialog({ initial, onClose }: Props) {
                     type="number"
                     min={1}
                     max={65535}
-                    value={profile.port ?? 21}
+                    value={profile.port ?? (profile.kind === "sftp" ? 22 : 21)}
                     onChange={(event) =>
-                      patch({ port: Number(event.target.value) || 21 })
+                      patch({
+                        port:
+                          Number(event.target.value) ||
+                          (profile.kind === "sftp" ? 22 : 21),
+                      })
                     }
                   />
                 </label>
@@ -475,26 +541,35 @@ export function SessionDialog({ initial, onClose }: Props) {
                   <input
                     {...RAW_TEXT_INPUT}
                     value={profile.username ?? ""}
-                    placeholder="anonymous"
+                    placeholder={profile.kind === "sftp" ? "user" : "anonymous"}
                     onChange={(event) => patch({ username: event.target.value })}
                   />
                 </label>
 
-                <label className="session-field">
-                  <span className="session-field-label">Password</span>
-                  <input
-                    {...RAW_TEXT_INPUT}
-                    type="password"
-                    value={profile.password ?? ""}
-                    placeholder="Optional for anonymous FTP"
-                    onChange={(event) => patch({ password: event.target.value })}
-                  />
-                </label>
+                {profile.kind === "sftp" ? (
+                  renderServerAuthFields()
+                ) : (
+                  <>
+                    <label className="session-field">
+                      <span className="session-field-label">Password</span>
+                      <input
+                        {...RAW_TEXT_INPUT}
+                        type="password"
+                        value={profile.password ?? ""}
+                        placeholder="Optional for anonymous FTP"
+                        onChange={(event) =>
+                          patch({ password: event.target.value })
+                        }
+                      />
+                    </label>
 
-                <small className="session-field-hint is-wide">
-                  Standard FTP sends credentials and file contents without
-                  encryption. Use it only on a trusted network.
-                </small>
+                    <small className="session-field-hint is-wide">
+                      Standard FTP sends credentials and file contents without
+                      encryption. Use it only on a trusted network — choose SFTP
+                      when transport security is required.
+                    </small>
+                  </>
+                )}
               </div>
             </section>
           )}

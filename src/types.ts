@@ -1,5 +1,15 @@
-export type SessionKind = "local" | "ssh" | "ftp" | "serial";
+export type SessionKind = "local" | "ssh" | "ftp" | "sftp" | "serial";
 export type AuthKind = "password" | "publicKey" | "agent";
+
+/**
+ * File-transfer sessions with no interactive terminal: they open the dual-pane
+ * file manager instead of an xterm, and are skipped by the Sender, search, and
+ * terminal-only wiring. FTP speaks its own protocol; SFTP rides an SSH
+ * transport but is likewise browse-and-transfer only.
+ */
+export function isFileSession(kind: SessionKind): boolean {
+  return kind === "ftp" || kind === "sftp";
+}
 
 export type ThemeMode = "dark" | "light";
 

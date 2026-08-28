@@ -14,11 +14,12 @@ import {
 import { byName } from "../../sessionGroups";
 import { useStore } from "../../store";
 import { getController } from "../../terminalRegistry";
-import type {
-  CommandScope,
-  LineEnding,
-  SavedCommand,
-  SenderFormat,
+import {
+  isFileSession,
+  type CommandScope,
+  type LineEnding,
+  type SavedCommand,
+  type SenderFormat,
 } from "../../types";
 import { ContextMenu, type MenuItem } from "../ContextMenu";
 
@@ -176,11 +177,11 @@ export function SenderPanel() {
   const targets = (): string[] => {
     if (target === "all") {
       return tabs
-        .filter((tab) => tab.info.kind !== "ftp")
+        .filter((tab) => !isFileSession(tab.info.kind))
         .map((tab) => tab.info.id);
     }
     return tabs.some(
-      (tab) => tab.info.id === activeId && tab.info.kind !== "ftp",
+      (tab) => tab.info.id === activeId && !isFileSession(tab.info.kind),
     ) && activeId
       ? [activeId]
       : [];

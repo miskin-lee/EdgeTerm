@@ -7,7 +7,7 @@ import {
   getController,
   setController,
 } from "./terminalRegistry";
-import type { SessionInfo, SessionProfile } from "./types";
+import { isFileSession, type SessionInfo, type SessionProfile } from "./types";
 
 /** Line written into a terminal when its session ends, however it ended. */
 export const SESSION_CLOSED_NOTICE = "\r\n\x1b[33m[session closed]\x1b[0m\r\n";
@@ -29,6 +29,9 @@ function pendingSessionInfo(
   if (profile.kind === "ssh") {
     protocol = "ssh";
     address = `${profile.host || "localhost"}:${profile.port ?? 22}`;
+  } else if (profile.kind === "sftp") {
+    protocol = "sftp";
+    address = `${profile.host || "localhost"}:${profile.port ?? 22}`;
   } else if (profile.kind === "ftp") {
     protocol = "ftp";
     address = `${profile.host || "localhost"}:${profile.port ?? 21}`;
@@ -48,7 +51,7 @@ function pendingSessionInfo(
     protocol,
     address,
     color: profile.color ?? null,
-    supportsRemoteFiles: profile.kind === "ssh" || profile.kind === "ftp",
+    supportsRemoteFiles: profile.kind === "ssh" || isFileSession(profile.kind),
   };
 }
 
@@ -112,7 +115,7 @@ export async function openSession(
   useStore
     .getState()
     .addTab(pendingSessionInfo(id, profile), profile, "connecting");
-  if (profile.kind !== "ftp") ensureController(id);
+  if (!isFileSession(profile.kind)) ensureController(id);
   return connectSession(id, profile);
 }
 
@@ -223,7 +226,7 @@ async function connectSession(
 
     // The pane was fitted while the backend was still connecting, so its
     // first resize command could not be delivered. Re-send the current size.
-    if (info.kind !== "ftp") {
+    if (!isFileSession(info.kind)) {
       void api.resizeSession(id, tab.cols, tab.rows).catch(() => undefined);
     }
     return id;

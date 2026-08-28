@@ -12,6 +12,7 @@ import { matchAppShortcut } from "../shortcuts";
 import { useActiveTab, useStore } from "../store";
 import { SEARCH_HIGHLIGHT_LIMIT, type SearchResults } from "../terminal";
 import { getController } from "../terminalRegistry";
+import { isFileSession } from "../types";
 
 interface Props {
   onClose: () => void;
@@ -127,7 +128,7 @@ export const SearchOverlay = forwardRef<SearchOverlayHandle, Props>(
     // as state, not a mutable ref, so StrictMode's repeated effects agree.)
     const [openedIn] = useState({ tab: tab?.info.id, seeded: query !== "" });
     useEffect(() => {
-      if (tab?.info.kind === "ftp") return;
+      if (tab && isFileSession(tab.info.kind)) return;
       focusInput(!(openedIn.seeded && tab?.info.id === openedIn.tab));
     }, [tab?.info.id, tab?.info.kind]);
 
@@ -156,7 +157,7 @@ export const SearchOverlay = forwardRef<SearchOverlayHandle, Props>(
       [activeId, query],
     );
 
-    if (!tab || tab.info.kind === "ftp") return null;
+    if (!tab || isFileSession(tab.info.kind)) return null;
 
     return (
       <div className="terminal-search" role="search">

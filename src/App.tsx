@@ -33,7 +33,7 @@ import { setSemanticColorTheme } from "./semanticColors";
 import { matchAppShortcut } from "./shortcuts";
 import { useActiveTab, useStore } from "./store";
 import { allControllers, getController } from "./terminalRegistry";
-import type { SessionProfile, SessionState } from "./types";
+import { isFileSession, type SessionProfile, type SessionState } from "./types";
 import { useUpdater } from "./updater";
 
 const clamp = (value: number, min: number, max: number) =>
@@ -66,7 +66,7 @@ export default function App() {
   const setHostKeyPrompt = useStore((s) => s.setHostKeyPrompt);
   const theme = useStore((s) => s.theme);
   const activeTab = useActiveTab();
-  const ftpMode = activeTab?.info.kind === "ftp";
+  const fileMode = activeTab ? isFileSession(activeTab.info.kind) : false;
   const closingTab = useStore((s) =>
     s.closePrompt === null
       ? undefined
@@ -183,18 +183,18 @@ export default function App() {
   // Opening the box focuses it via its mount effect; when it is already
   // open that effect does not re-run, so refocus it explicitly.
   const openSearch = useCallback(() => {
-    if (ftpMode) return;
+    if (fileMode) return;
     if (searchOpen) searchRef.current?.focus();
     else setSearchOpen(true);
-  }, [ftpMode, searchOpen]);
+  }, [fileMode, searchOpen]);
 
   // Jump to the next match; with the search box closed this just opens it
   // so the user can type a query.
   const findNext = useCallback(() => {
-    if (ftpMode) return;
+    if (fileMode) return;
     if (!searchOpen) setSearchOpen(true);
     else searchRef.current?.findNext();
-  }, [ftpMode, searchOpen]);
+  }, [fileMode, searchOpen]);
 
   // --- keyboard -------------------------------------------------------------
 
@@ -238,7 +238,7 @@ export default function App() {
           findNext();
           return;
         case "clear":
-          if (activeId && !ftpMode) {
+          if (activeId && !fileMode) {
             event.preventDefault();
             getController(activeId)?.clear();
           }
@@ -259,7 +259,7 @@ export default function App() {
     activateAdjacentTab,
     activeId,
     findNext,
-    ftpMode,
+    fileMode,
     newSession,
     openSearch,
     requestCloseTab,
@@ -269,10 +269,10 @@ export default function App() {
 
   // --- layout ---------------------------------------------------------------
 
-  // Session panel docks on the left, Filer on the right; FTP tabs bring
-  // their own dual-pane file manager, so the Filer stays hidden there.
+  // Session panel docks on the left, Filer on the right; FTP and SFTP tabs
+  // bring their own dual-pane file manager, so the Filer stays hidden there.
   const showLeft = panels.sessions;
-  const showRight = panels.filer && !ftpMode;
+  const showRight = panels.filer && !fileMode;
 
   return (
     <div

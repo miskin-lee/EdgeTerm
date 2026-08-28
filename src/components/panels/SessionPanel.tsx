@@ -9,8 +9,8 @@ import {
   describeLocation,
   effectiveGroupId,
   flattenGroups,
-  KIND_LABELS,
-  SESSION_KINDS,
+  sectionLabel,
+  SESSION_SECTIONS,
 } from "../../sessionGroups";
 import { useStore } from "../../store";
 import {
@@ -71,6 +71,8 @@ function FolderIcon({ open }: { open: boolean }) {
 function describeProfile(profile: SessionProfile): string {
   switch (profile.kind) {
     case "ssh":
+      return `${profile.username ?? ""}@${profile.host ?? ""}:${profile.port ?? 22}`;
+    case "sftp":
       return `${profile.username ?? ""}@${profile.host ?? ""}:${profile.port ?? 22}`;
     case "ftp":
       return `${profile.username || "anonymous"}@${profile.host ?? ""}:${profile.port ?? 21}`;
@@ -156,10 +158,10 @@ export function SessionPanel({ onEditProfile, onNewSession }: Props) {
       (p) => !needle || p.name.toLowerCase().includes(needle),
     );
 
-    return SESSION_KINDS.map((kind) => {
+    return SESSION_SECTIONS.map((section) => {
       const byGroup = new Map<string | null, SessionProfile[]>();
       for (const profile of visible) {
-        if (profile.kind !== kind) continue;
+        if (!section.kinds.includes(profile.kind)) continue;
         const groupId = effectiveGroupId(groups, profile);
         byGroup.set(groupId, [...(byGroup.get(groupId) ?? []), profile]);
       }
@@ -174,7 +176,7 @@ export function SessionPanel({ onEditProfile, onNewSession }: Props) {
       ): { rows: Row[]; count: number } => {
         const rows: Row[] = [];
         let count = 0;
-        for (const group of childGroups(groups, kind, parentId)) {
+        for (const group of childGroups(groups, section.kind, parentId)) {
           const sub = walk(group.id, depth + 1);
           if (needle && sub.count === 0) continue;
           const isCollapsed =
@@ -198,10 +200,10 @@ export function SessionPanel({ onEditProfile, onNewSession }: Props) {
 
       const { rows, count } = walk(null, 1);
       return {
-        kind,
-        label: KIND_LABELS[kind],
+        kind: section.kind,
+        label: section.label,
         count,
-        collapsed: !needle && Boolean(collapsed[`kind:${kind}`]),
+        collapsed: !needle && Boolean(collapsed[`kind:${section.kind}`]),
         rows,
       };
     });
@@ -326,7 +328,7 @@ export function SessionPanel({ onEditProfile, onNewSession }: Props) {
       );
     const choices: MenuItem[] = [
       {
-        label: `${KIND_LABELS[profile.kind]} (no group)`,
+        label: `${sectionLabel(profile.kind)} (no group)`,
         checked: current === null,
         action: move(null),
       },

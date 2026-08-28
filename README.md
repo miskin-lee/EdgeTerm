@@ -6,7 +6,7 @@
 
 [English](README.md) | [简体中文](README.zh-CN.md)
 
-A small, lightweight terminal, SSH, FTP, and serial client, built with **Rust + Tauri v2** and a React + xterm.js frontend. The installer is under 5 MB on Windows and macOS.
+A small, lightweight terminal, SSH, SFTP, FTP, and serial client, built with **Rust + Tauri v2** and a React + xterm.js frontend. The installer is under 5 MB on Windows and macOS.
 
 The entire SSH stack is written in pure Rust using `russh`. It does not depend on libssh2, OpenSSL, or pkg-config, so it can be compiled directly on any machine with a Rust toolchain installed.
 
@@ -36,10 +36,11 @@ The only runtime dependency is that system WebView: Windows 11 and up-to-date Wi
 | --- | --- | --- |
 | Local shell | `portable-pty` | A real pseudoterminal with synchronized window resizing |
 | SSH | `russh` + `russh-sftp` | Password, public-key, and ssh-agent authentication; SFTP reuses the same connection with streaming file and folder transfers |
+| SFTP | `russh` + `russh-sftp` | A file-transfer-only session over SSH — same authentication and host-key policy, opened straight into the dual-pane file manager with no terminal |
 | FTP | `suppaftp` | Password or anonymous authentication; passive-mode browsing, UTF-8/GBK filename decoding, and streaming file and folder transfers in both directions |
 | Serial | `serialport` | Configurable baud rate, data bits, stop bits, parity, and flow control |
 
-SSH/FTP passwords and SSH private-key passphrases are stored in `credentials.json` in the application configuration directory, readable only by the current system user. They are never returned to the frontend or written to `sessions.json`. As a result, saved sessions can reconnect after EdgeTerm restarts without triggering the macOS Keychain system-password authorization dialog.
+SSH/SFTP/FTP passwords and SSH private-key passphrases are stored in `credentials.json` in the application configuration directory, readable only by the current system user. They are never returned to the frontend or written to `sessions.json`. As a result, saved sessions can reconnect after EdgeTerm restarts without triggering the macOS Keychain system-password authorization dialog.
 
 Standard FTP does not encrypt credentials or file contents. Use FTP only on a trusted network; use SSH/SFTP when transport security is required.
 
@@ -49,7 +50,7 @@ Standard FTP does not encrypt credentials or file contents. Use FTP only on a tr
 - **Rich color rendering** — Supports ANSI 16-color, 256-color, and 24-bit true color, plus warm semantic highlighting for unstyled output that goes beyond WindTerm: prompts, options, operators and rainbow brackets, `ls -l` permission bits and owner columns, table headers, log levels and Kubernetes/Docker/systemd states, network addresses and domains, paths, Git diffs, HTTP, JSON/YAML, and more — with subtle line bands for errors/warnings, diffs and headers, and underlined links.
 - **Session** (left): saved connection profiles in a collapsible tree; double-click to connect. Right-click a heading or a group to create (nested) groups, rename or delete them; right-click a session to connect, edit, move it to another group, or delete it. The New Session dialog lets you choose which group a session is saved to.
 - **Filer** (right): a file browser that automatically switches to SFTP for SSH sessions, with file and folder upload (including drag & drop), file and folder download, create-directory, and delete operations. Other terminal sessions browse the local filesystem.
-- **FTP workspace**: FTP sessions open a dedicated dual-pane file manager, with the FTP server on the left and the local computer on the right. It supports two-way streaming transfers of files and whole folders plus create, rename, and non-recursive delete operations.
+- **FTP / SFTP workspace**: FTP and SFTP sessions open a dedicated dual-pane file manager, with the remote server on the left and the local computer on the right. It supports two-way streaming transfers of files and whole folders plus create, rename, and non-recursive delete operations.
 - **Sender** (bottom): batch sending with text or hexadecimal input, line-by-line or character-by-character modes, repeat counts, configurable intervals, and targeting of the current session or all sessions. Saved commands are scoped — to one session, a Session panel group, a session kind (serial / SSH / shell) or everywhere — and the Sender lists the ones that apply to the active tab, most specific first.
 - Tabs, an address bar (`ssh › host:port`), and a status bar showing the terminal dimensions, cursor Ln/Ch, and protocol. The Session panel header carries a power toggle for the active tab (also **Session → Disconnect / Reconnect Session**): click it to disconnect the session while keeping the tab and its scrollback, and click again to reconnect in place.
 

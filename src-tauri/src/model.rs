@@ -6,6 +6,7 @@ pub enum SessionKind {
     Local,
     Ssh,
     Ftp,
+    Sftp,
     Serial,
 }
 
@@ -97,6 +98,11 @@ impl SessionProfile {
                 self.host.as_deref().unwrap_or("localhost"),
                 self.port.unwrap_or(21)
             ),
+            SessionKind::Sftp => format!(
+                "{}:{}",
+                self.host.as_deref().unwrap_or("localhost"),
+                self.port.unwrap_or(22)
+            ),
             SessionKind::Serial => format!(
                 "{}@{}",
                 self.port_name.as_deref().unwrap_or("-"),
@@ -110,6 +116,7 @@ impl SessionProfile {
             SessionKind::Local => "shell",
             SessionKind::Ssh => "ssh",
             SessionKind::Ftp => "ftp",
+            SessionKind::Sftp => "sftp",
             SessionKind::Serial => "serial",
         }
     }

@@ -118,6 +118,14 @@ fn profile_renders_its_address_per_protocol() {
     ftp.port = Some(2121);
     assert_eq!(ftp.address(), "files.example.com:2121");
 
+    let mut sftp = profile(SessionKind::Sftp);
+    sftp.host = Some("files.example.com".into());
+    assert_eq!(sftp.protocol(), "sftp");
+    // SFTP rides SSH, so it defaults to the SSH port.
+    assert_eq!(sftp.address(), "files.example.com:22");
+    sftp.port = Some(2222);
+    assert_eq!(sftp.address(), "files.example.com:2222");
+
     let mut serial = profile(SessionKind::Serial);
     serial.port_name = Some("/dev/tty.usbserial".into());
     serial.baud_rate = Some(921_600);
@@ -751,6 +759,54 @@ fn store_persists_ftp_password_separately() {
     std::fs::remove_dir_all(&dir).ok();
 }
 
+#[test]
+fn store_persists_sftp_secrets_like_ssh() {
+    let dir = temp_dir("sftp-secrets");
+    let path = dir.join("sessions.json");
+    let store = Store::load_from(path.clone());
+
+    // SFTP rides an SSH transport, so it stores credentials by auth kind like
+    // SSH: a password for password auth, a passphrase for public-key auth.
+    let mut password_profile = profile(SessionKind::Sftp);
+    password_profile.name = "sftp-password".into();
+    password_profile.host = Some("sftp.example.com".into());
+    password_profile.username = Some("uploader".into());
+    password_profile.auth = Some(AuthKind::Password);
+    password_profile.password = Some("sftp-secret".into());
+    let saved_password = store.save(password_profile).expect("save sftp password");
+
+    let mut key_profile = profile(SessionKind::Sftp);
+    key_profile.name = "sftp-key".into();
+    key_profile.host = Some("sftp.example.com".into());
+    key_profile.auth = Some(AuthKind::PublicKey);
+    key_profile.passphrase = Some("sftp-passphrase".into());
+    let saved_key = store.save(key_profile).expect("save sftp passphrase");
+
+    let raw = std::fs::read_to_string(&path).expect("read profiles");
+    assert!(!raw.contains("sftp-secret"));
+    assert!(!raw.contains("sftp-passphrase"));
+    assert!(saved_password.password.is_none());
+    assert!(saved_key.passphrase.is_none());
+
+    let reloaded = Store::load_from(path);
+    assert_eq!(
+        reloaded
+            .get(&saved_password.id)
+            .expect("read sftp password")
+            .and_then(|profile| profile.password),
+        Some("sftp-secret".into())
+    );
+    assert_eq!(
+        reloaded
+            .get(&saved_key.id)
+            .expect("read sftp passphrase")
+            .and_then(|profile| profile.passphrase),
+        Some("sftp-passphrase".into())
+    );
+
+    std::fs::remove_dir_all(&dir).ok();
+}
+
 #[cfg(unix)]
 #[test]
 fn store_files_are_owner_readable_only() {
@@ -926,6 +982,48 @@ fn store_round_trips_session_groups_and_profile_membership() {
     let raw = std::fs::read_to_string(dir.join("sessions.json")).expect("read sessions.json");
     assert!(raw.trim_start().starts_with('['));
     assert!(dir.join("session_groups.json").exists());
+
+    std::fs::remove_dir_all(dir).ok();
+}
+
+#[test]
+fn ftp_and_sftp_share_one_group_namespace() {
+    let dir = temp_dir("ftp-sftp-groups");
+    let path = dir.join("sessions.json");
+    let store = Store::load_from(path.clone());
+
+    // A group in the shared "(S)FTP" section is stored under the canonical FTP
+    // kind; it holds servers of either protocol.
+    let servers = store
+        .save_group(group("servers", SessionKind::Ftp, None))
+        .expect("save (s)ftp group");
+
+    let mut ftp = profile(SessionKind::Ftp);
+    ftp.group_id = Some(servers.id.clone());
+    let ftp = store.save(ftp).expect("save ftp member");
+    assert_eq!(ftp.group_id.as_deref(), Some(servers.id.as_str()));
+
+    // An SFTP profile joins the same FTP-category group instead of being
+    // stranded — this is the shared-namespace behaviour.
+    let mut sftp = profile(SessionKind::Sftp);
+    sftp.group_id = Some(servers.id.clone());
+    let sftp = store.save(sftp).expect("save sftp member");
+    assert_eq!(sftp.group_id.as_deref(), Some(servers.id.as_str()));
+
+    // A session of an unrelated category still cannot sit in that group.
+    let mut ssh = profile(SessionKind::Ssh);
+    ssh.group_id = Some(servers.id.clone());
+    let ssh = store.save(ssh).expect("save ssh profile");
+    assert_eq!(ssh.group_id, None);
+
+    // Membership survives a reload from disk.
+    let reloaded = Store::load_from(path);
+    let saved_sftp = reloaded
+        .list()
+        .into_iter()
+        .find(|p| p.id == sftp.id)
+        .expect("sftp member persisted");
+    assert_eq!(saved_sftp.group_id.as_deref(), Some(servers.id.as_str()));
 
     std::fs::remove_dir_all(dir).ok();
 }

@@ -298,7 +298,10 @@ pub fn make_info(id: &str, profile: &SessionProfile) -> SessionInfo {
         protocol: profile.protocol().to_string(),
         address: profile.address(),
         color: profile.color.clone(),
-        supports_remote_files: matches!(profile.kind, SessionKind::Ssh | SessionKind::Ftp),
+        supports_remote_files: matches!(
+            profile.kind,
+            SessionKind::Ssh | SessionKind::Ftp | SessionKind::Sftp
+        ),
     }
 }
 

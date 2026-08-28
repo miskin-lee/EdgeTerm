@@ -6,7 +6,7 @@
 
 [English](README.md) | [简体中文](README.zh-CN.md)
 
-一个小巧、轻量的终端 / SSH / FTP / 串口客户端，用 **Rust + Tauri v2** 构建，前端为 React + xterm.js。Windows 和 macOS 安装包都不到 5 MB。
+一个小巧、轻量的终端 / SSH / SFTP / FTP / 串口客户端，用 **Rust + Tauri v2** 构建，前端为 React + xterm.js。Windows 和 macOS 安装包都不到 5 MB。
 
 整个 SSH 栈是纯 Rust 的（russh），不依赖 libssh2、OpenSSL 或 pkg-config，因此在任何装了 Rust 工具链的机器上都能直接编译。
 
@@ -36,10 +36,11 @@
 | --- | --- | --- |
 | 本地 Shell | `portable-pty` | 真正的伪终端，支持窗口尺寸同步 |
 | SSH | `russh` + `russh-sftp` | 密码 / 公钥 / ssh-agent 认证，SFTP 复用同一条连接，文件及文件夹流式传输 |
+| SFTP | `russh` + `russh-sftp` | 基于 SSH 的纯文件传输会话，认证与主机密钥策略同 SSH，无终端，直接进入双栏文件管理器 |
 | FTP | `suppaftp` | 密码或匿名认证，被动模式浏览，自动识别 UTF-8 / GBK 文件名，文件及文件夹双向流式传输 |
 | 串口 | `serialport` | 波特率、数据位、停止位、校验、流控可配 |
 
-SSH / FTP 密码和 SSH 私钥口令保存在应用配置目录下仅当前系统用户可读的 `credentials.json` 中，不会返回给前端，也不会写入 `sessions.json`。因此重启 EdgeTerm 后可直接连接已保存的会话，不会触发 macOS Keychain 的电脑密码授权框。
+SSH / SFTP / FTP 密码和 SSH 私钥口令保存在应用配置目录下仅当前系统用户可读的 `credentials.json` 中，不会返回给前端，也不会写入 `sessions.json`。因此重启 EdgeTerm 后可直接连接已保存的会话，不会触发 macOS Keychain 的电脑密码授权框。
 
 标准 FTP 不加密凭据和文件内容，只应在可信网络中使用；需要传输安全时请使用 SSH / SFTP。
 
@@ -49,7 +50,7 @@ SSH / FTP 密码和 SSH 私钥口令保存在应用配置目录下仅当前系�
 - **丰富色彩渲染** —— 支持 ANSI 16 色、256 色和 24-bit 真彩，并为无 ANSI 样式的输出补充比 WindTerm 更丰富的暖色语义着色：提示符、选项、运算符与彩虹括号、`ls -l` 权限位与属主列、表头行、日志级别与 Kubernetes/Docker/systemd 状态、网络地址与域名、路径、Git diff、HTTP、JSON/YAML 等，并为错误/警告、diff 和表头行加淡色底带，为链接加下划线。
 - **Session**（左侧）：保存的连接配置以可折叠的树形展示，双击连接。右击类型标题或分组可新建（可嵌套的）分组、重命名或删除分组；右击会话可连接、编辑、移动到其他分组或删除；新建会话时也可直接选择保存到哪个分组
 - **Filer**（右侧）：文件浏览器。SSH 会话下自动切到 SFTP，可上传 / 下载文件和文件夹（支持拖拽上传）、新建目录、删除；其他终端会话下浏览本地文件系统
-- **FTP 工作区**：FTP 会话使用独立的双栏文件管理器，左侧为 FTP 服务器，右侧为本机，支持文件和整个文件夹的双向流式传输，以及新建、重命名和非递归删除
+- **FTP / SFTP 工作区**：FTP 和 SFTP 会话使用独立的双栏文件管理器，左侧为远端服务器，右侧为本机，支持文件和整个文件夹的双向流式传输，以及新建、重命名和非递归删除
 - **Sender**（底部）：批量发送。支持文本 / 十六进制、按行 / 按字符、重复次数、发送间隔、目标为当前会话或全部会话。保存的命令带作用域 —— 某个会话、Session 面板的某个分组、某类会话（串口 / SSH / Shell）或全部 —— Sender 只列出对当前标签页适用的命令，越具体的排越前
 - 标签页、地址栏（`ssh › host:port`）、状态栏（窗口尺寸、光标 Ln/Ch、协议）。Session 面板标题栏带有作用于当前标签页的电源开关（也可用 **Session → Disconnect / Reconnect Session**）：点击断开连接，标签页和终端输出保留；再次点击即可原地重新连接
 

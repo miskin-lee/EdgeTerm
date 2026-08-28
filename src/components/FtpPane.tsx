@@ -40,6 +40,8 @@ interface FileBrowserProps {
 
 export function FtpPane({ tab, active }: Props) {
   const sessionId = tab.info.id;
+  // The pane serves both FTP and SFTP file sessions; only the labels differ.
+  const protocolLabel = tab.info.kind === "sftp" ? "SFTP" : "FTP";
 
   const [remoteHome, setRemoteHome] = useState("");
   const [remotePath, setRemotePath] = useState("");
@@ -377,14 +379,18 @@ export function FtpPane({ tab, active }: Props) {
     <div className={`ftp-workspace${active ? "" : " is-hidden"}`}>
       {tab.state !== "connected" ? (
         <div className={`ftp-session-state is-${tab.state}`}>
-          <strong>{tab.state === "connecting" ? "Connecting to FTP…" : "FTP unavailable"}</strong>
+          <strong>
+            {tab.state === "connecting"
+              ? `Connecting to ${protocolLabel}…`
+              : `${protocolLabel} unavailable`}
+          </strong>
           <span>{tab.message ?? tab.info.address}</span>
         </div>
       ) : (
         <>
           <div className="ftp-dual-pane">
             <FileBrowser
-              title="FTP Server"
+              title={`${protocolLabel} Server`}
               subtitle={tab.info.address}
               path={remotePath}
               draft={remoteDraft}
@@ -443,7 +449,7 @@ export function FtpPane({ tab, active }: Props) {
                 className="ftp-transfer-button"
                 onClick={() => void download()}
                 disabled={!selectedRemote || transferring}
-                title="Download selected FTP file or folder"
+                title={`Download selected ${protocolLabel} file or folder`}
               >
                 Download
                 <span>→</span>
@@ -533,7 +539,7 @@ export function FtpPane({ tab, active }: Props) {
                 )}
               </>
             ) : (
-              <span>Select a local file or folder to upload, or an FTP file or folder to download.</span>
+              <span>{`Select a local file or folder to upload, or a ${protocolLabel} file or folder to download.`}</span>
             )}
           </div>
         </>

@@ -3,6 +3,7 @@ import { useEffect, useRef } from "react";
 import { ensureController } from "../actions";
 import { useStore, type Tab } from "../store";
 import { getController } from "../terminalRegistry";
+import { isFileSession } from "../types";
 import { FtpPane } from "./FtpPane";
 
 interface Props {
@@ -16,7 +17,7 @@ export function TerminalPane({ onNewSession }: Props) {
   return (
     <div className="term-stack">
       {tabs.map((tab) => (
-        tab.info.kind === "ftp" ? (
+        isFileSession(tab.info.kind) ? (
           <FtpPane
             key={tab.info.id}
             tab={tab}

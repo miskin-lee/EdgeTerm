@@ -12,7 +12,7 @@ use crate::model::{
     SerialPortDesc, SessionGroup, SessionInfo, SessionKind, SessionProfile, ZmodemFileInfo,
     APP_DATA_EXTENSION,
 };
-use crate::session::ssh::ConnectOutcome;
+use crate::session::ssh::{ConnectOutcome, SftpConnectOutcome};
 use crate::session::{
     self, SessionCommand, SessionHandle, SessionManager, SftpRequest, SftpResponse,
     TransferProgress,
@@ -220,6 +220,16 @@ pub async fn open_session(
             // Nothing was opened; the user decides whether to trust the new
             // key and the frontend retries with the same session id.
             ConnectOutcome::HostKeyChanged(change) => {
+                return Ok(OpenSessionOutcome::HostKeyChanged { change });
+            }
+        },
+        SessionKind::Sftp => match session::ssh::connect_sftp(&profile).await? {
+            SftpConnectOutcome::Ready(conn) => {
+                session::ssh::spawn_sftp(app.clone(), id.clone(), conn, rx);
+                None
+            }
+            // Same host-key decision as a shell session on the same transport.
+            SftpConnectOutcome::HostKeyChanged(change) => {
                 return Ok(OpenSessionOutcome::HostKeyChanged { change });
             }
         },

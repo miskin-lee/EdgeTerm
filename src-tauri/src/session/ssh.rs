@@ -32,6 +32,9 @@ use crate::model::{AuthKind, DirListing, FileEntry, HostKeyChange, SessionProfil
 const FLUSH_INTERVAL: Duration = Duration::from_millis(8);
 const TRANSFER_PROGRESS_INTERVAL: Duration = Duration::from_millis(50);
 const TRANSFER_CHUNK_SIZE: usize = 1024 * 1024;
+/// How often an SFTP-only session, which has no channel to read from, checks
+/// that its transport is still alive so a dropped connection is reported.
+const SFTP_HEALTH_INTERVAL: Duration = Duration::from_secs(5);
 
 /// Host key policy: trust on first use, refuse on change.
 ///
@@ -206,18 +209,39 @@ pub enum ConnectOutcome {
     HostKeyChanged(HostKeyChange),
 }
 
-pub async fn connect(profile: &SessionProfile) -> Result<ConnectOutcome> {
+/// An SSH transport that carries only the SFTP subsystem: a file-transfer
+/// session with no shell channel or PTY. See `spawn_sftp`.
+pub struct SftpConnection {
+    handle: Arc<Handle<Client>>,
+}
+
+pub enum SftpConnectOutcome {
+    Ready(SftpConnection),
+    HostKeyChanged(HostKeyChange),
+}
+
+/// An authenticated transport, or the host-key decision that has to be made
+/// before one can be established. Shared by the shell and SFTP entry points.
+enum HandleOutcome {
+    Ready(Handle<Client>),
+    HostKeyChanged(HostKeyChange),
+}
+
+/// Opens the transport and authenticates, applying the trust-on-first-use host
+/// key policy. It stops short of requesting any channel, so both an interactive
+/// shell and a bare SFTP subsystem can be layered on top of the same handshake.
+async fn connect_handle(profile: &SessionProfile) -> Result<HandleOutcome> {
     let host = profile
         .host
         .clone()
         .filter(|h| !h.is_empty())
-        .ok_or_else(|| AppError::new("ssh session is missing a host"))?;
+        .ok_or_else(|| AppError::new("session is missing a host"))?;
     let port = profile.port.unwrap_or(22);
     let username = profile
         .username
         .clone()
         .filter(|u| !u.is_empty())
-        .ok_or_else(|| AppError::new("ssh session is missing a username"))?;
+        .ok_or_else(|| AppError::new("session is missing a username"))?;
 
     let config = Arc::new(client::Config {
         inactivity_timeout: None,
@@ -243,7 +267,7 @@ pub async fn connect(profile: &SessionProfile) -> Result<ConnectOutcome> {
             line,
             key,
         }) => {
-            return Ok(ConnectOutcome::HostKeyChanged(describe_host_key_change(
+            return Ok(HandleOutcome::HostKeyChanged(describe_host_key_change(
                 &host,
                 port,
                 &known_hosts,
@@ -257,8 +281,17 @@ pub async fn connect(profile: &SessionProfile) -> Result<ConnectOutcome> {
     };
 
     authenticate(&mut handle, profile, &username).await?;
+    Ok(HandleOutcome::Ready(handle))
+}
 
-    let handle = Arc::new(handle);
+pub async fn connect(profile: &SessionProfile) -> Result<ConnectOutcome> {
+    let handle = match connect_handle(profile).await? {
+        HandleOutcome::Ready(handle) => Arc::new(handle),
+        HandleOutcome::HostKeyChanged(change) => {
+            return Ok(ConnectOutcome::HostKeyChanged(change));
+        }
+    };
+
     let channel = handle.channel_open_session().await?;
     channel
         .request_pty(true, "xterm-256color", 80, 24, 0, 0, &[])
@@ -270,6 +303,19 @@ pub async fn connect(profile: &SessionProfile) -> Result<ConnectOutcome> {
     channel.request_shell(true).await?;
 
     Ok(ConnectOutcome::Ready(SshConnection { handle, channel }))
+}
+
+/// Opens an SFTP-only session: the same SSH handshake and authentication as a
+/// shell session, but no channel is requested up front. The SFTP subsystem is
+/// opened lazily on the first file request, exactly as it is for a shell
+/// session's Filer.
+pub async fn connect_sftp(profile: &SessionProfile) -> Result<SftpConnectOutcome> {
+    match connect_handle(profile).await? {
+        HandleOutcome::Ready(handle) => Ok(SftpConnectOutcome::Ready(SftpConnection {
+            handle: Arc::new(handle),
+        })),
+        HandleOutcome::HostKeyChanged(change) => Ok(SftpConnectOutcome::HostKeyChanged(change)),
+    }
 }
 
 async fn authenticate(
@@ -464,6 +510,69 @@ pub fn spawn(
                 exit_status.map(|c| format!("exit status {c}")),
             );
         }
+    });
+}
+
+/// Drives an SFTP-only session. There is no shell channel to pump, so the loop
+/// serves file requests off the SFTP subsystem and periodically checks that the
+/// transport is still up. Like the other file backends it does not announce
+/// "connected" itself — the frontend records that when `open_session` returns,
+/// after the manager has the command handle, so the file pane's first request
+/// cannot race the insertion (see `emit_state`).
+pub fn spawn_sftp(
+    app: AppHandle,
+    id: String,
+    conn: SftpConnection,
+    mut rx: UnboundedReceiver<SessionCommand>,
+) {
+    tauri::async_runtime::spawn(async move {
+        let handle = conn.handle;
+        let mut sftp: Option<Arc<SftpSession>> = None;
+        // Set when the frontend asked for the close; see `emit_state`.
+        let mut close_requested = false;
+
+        loop {
+            tokio::select! {
+                cmd = rx.recv() => {
+                    match cmd {
+                        Some(SessionCommand::Sftp { request, reply }) => {
+                            match ensure_sftp(&handle, &mut sftp).await {
+                                Ok(session) => {
+                                    // Run off the session loop so a large
+                                    // transfer never stalls the next request.
+                                    tauri::async_runtime::spawn(async move {
+                                        let _ = reply.send(run_sftp(session, request).await);
+                                    });
+                                }
+                                Err(e) => {
+                                    let _ = reply.send(Err(e));
+                                }
+                            }
+                        }
+                        Some(SessionCommand::Close) | None => {
+                            close_requested = true;
+                            break;
+                        }
+                        // A file-only session has no terminal, so keyboard
+                        // input and resize map to nothing and binary terminal
+                        // data is rejected, matching the other file backends.
+                        Some(other) => super::reject_sftp(other, crate::model::SessionKind::Sftp),
+                    }
+                }
+                _ = tokio::time::sleep(SFTP_HEALTH_INTERVAL) => {
+                    if handle.is_closed() {
+                        break;
+                    }
+                }
+            }
+        }
+
+        if !close_requested {
+            emit_state(&app, &id, "closed", None);
+        }
+        let _ = handle
+            .disconnect(russh::Disconnect::ByApplication, "", "en")
+            .await;
     });
 }
 

@@ -1,19 +1,55 @@
 import type { SessionGroup, SessionKind, SessionProfile } from "./types";
 
-/** Top-level headings of the Session panel, in display order. */
-export const SESSION_KINDS: readonly SessionKind[] = [
-  "ssh",
-  "ftp",
-  "serial",
-  "local",
-];
-
+/**
+ * Per-kind display names. The Session panel groups by section (see
+ * `SESSION_SECTIONS`, which merges FTP and SFTP under one heading); these
+ * single-kind labels are used where an individual kind is named, such as the
+ * Sender's kind-scope description.
+ */
 export const KIND_LABELS: Record<SessionKind, string> = {
   ssh: "SSH Sessions",
+  sftp: "SFTP Sessions",
   ftp: "FTP Sessions",
   serial: "Serial Sessions",
   local: "Shell Sessions",
 };
+
+/**
+ * The grouping namespace a session kind belongs to. FTP and SFTP are both
+ * remote-file sessions that share one panel section, so they share one set of
+ * folders: a group can hold servers of either protocol. Groups are always
+ * stored under the category's canonical kind (`ftp`), and membership and
+ * nesting are compared by category rather than by exact kind — both here and
+ * in the Rust store's `group_category`.
+ */
+export function groupCategory(kind: SessionKind): SessionKind {
+  return kind === "sftp" ? "ftp" : kind;
+}
+
+/** A top-level Session-panel heading, covering one or more session kinds. */
+export interface SessionSection {
+  /** Canonical grouping kind — used to create groups and look them up. */
+  kind: SessionKind;
+  /** Profile kinds listed under this heading. */
+  kinds: SessionKind[];
+  label: string;
+}
+
+/** Top-level headings of the Session panel, in display order. */
+export const SESSION_SECTIONS: readonly SessionSection[] = [
+  { kind: "ssh", kinds: ["ssh"], label: "SSH Sessions" },
+  { kind: "ftp", kinds: ["ftp", "sftp"], label: "(S)FTP Sessions" },
+  { kind: "serial", kinds: ["serial"], label: "Serial Sessions" },
+  { kind: "local", kinds: ["local"], label: "Shell Sessions" },
+];
+
+/** The heading a kind is listed under — merged for FTP / SFTP. */
+export function sectionLabel(kind: SessionKind): string {
+  return (
+    SESSION_SECTIONS.find((section) => section.kinds.includes(kind))?.label ??
+    KIND_LABELS[kind]
+  );
+}
 
 /** A group with its nesting depth (0 = directly under the kind heading). */
 export interface GroupNode {
@@ -39,7 +75,10 @@ export function effectiveParentId(
 ): string | null {
   const parentId = group.parentId ?? null;
   if (parentId === null || parentId === group.id) return null;
-  return groups.some((g) => g.id === parentId && g.kind === group.kind)
+  return groups.some(
+    (g) =>
+      g.id === parentId && groupCategory(g.kind) === groupCategory(group.kind),
+  )
     ? parentId
     : null;
 }
@@ -51,7 +90,10 @@ export function effectiveGroupId(
 ): string | null {
   const groupId = profile.groupId ?? null;
   if (groupId === null) return null;
-  return groups.some((g) => g.id === groupId && g.kind === profile.kind)
+  return groups.some(
+    (g) =>
+      g.id === groupId && groupCategory(g.kind) === groupCategory(profile.kind),
+  )
     ? groupId
     : null;
 }
@@ -64,7 +106,9 @@ export function childGroups(
 ): SessionGroup[] {
   return groups
     .filter(
-      (g) => g.kind === kind && effectiveParentId(groups, g) === parentId,
+      (g) =>
+        groupCategory(g.kind) === groupCategory(kind) &&
+        effectiveParentId(groups, g) === parentId,
     )
     .sort(byName);
 }
@@ -113,5 +157,5 @@ export function describeLocation(
   kind: SessionKind,
   groupId: string | null,
 ): string {
-  return [KIND_LABELS[kind], ...groupPath(groups, groupId)].join(" / ");
+  return [sectionLabel(kind), ...groupPath(groups, groupId)].join(" / ");
 }
