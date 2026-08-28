@@ -83,6 +83,15 @@ function describeProfile(profile: SessionProfile): string {
   }
 }
 
+/**
+ * Whether a tree node is open. Kind headings start open so every section is
+ * visible; groups start closed so a long list of servers folds down to its
+ * top-level folders until the user opens one.
+ */
+function isOpen(open: Record<string, boolean>, key: string): boolean {
+  return open[key] ?? key.startsWith("kind:");
+}
+
 type Row =
   | {
       type: "group";
@@ -132,8 +141,12 @@ export function SessionPanel({ onEditProfile, onNewSession }: Props) {
   );
 
   const [filter, setFilter] = useState("");
-  /** Keys are `kind:<kind>` for headings and `group:<id>` for groups. */
-  const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
+  /**
+   * Explicit open / closed state of the tree, keyed `kind:<kind>` for
+   * headings and `group:<id>` for groups. Anything not in here is at its
+   * default — see `isOpen`.
+   */
+  const [open, setOpen] = useState<Record<string, boolean>>({});
   /**
    * Profile awaiting the user's answer in the delete-confirmation dialog,
    * with how many Sender commands are scoped to it alone (they go with it,
@@ -179,8 +192,7 @@ export function SessionPanel({ onEditProfile, onNewSession }: Props) {
         for (const group of childGroups(groups, section.kind, parentId)) {
           const sub = walk(group.id, depth + 1);
           if (needle && sub.count === 0) continue;
-          const isCollapsed =
-            !needle && Boolean(collapsed[`group:${group.id}`]);
+          const isCollapsed = !needle && !isOpen(open, `group:${group.id}`);
           rows.push({
             type: "group",
             group,
@@ -203,14 +215,14 @@ export function SessionPanel({ onEditProfile, onNewSession }: Props) {
         kind: section.kind,
         label: section.label,
         count,
-        collapsed: !needle && Boolean(collapsed[`kind:${section.kind}`]),
+        collapsed: !needle && !isOpen(open, `kind:${section.kind}`),
         rows,
       };
     });
-  }, [profiles, groups, filter, collapsed]);
+  }, [profiles, groups, filter, open]);
 
   const toggle = (key: string) =>
-    setCollapsed((prev) => ({ ...prev, [key]: !prev[key] }));
+    setOpen((prev) => ({ ...prev, [key]: !isOpen(prev, key) }));
 
   const openMenu = (event: MouseEvent, items: MenuItem[]) => {
     event.preventDefault();
@@ -535,11 +547,11 @@ export function SessionPanel({ onEditProfile, onNewSession }: Props) {
                 parentId: groupDialog.parentId,
               });
               // A new group is empty, so make sure its parents are open.
-              setCollapsed((prev) => ({
+              setOpen((prev) => ({
                 ...prev,
-                [`kind:${saved.kind}`]: false,
+                [`kind:${saved.kind}`]: true,
                 ...(saved.parentId
-                  ? { [`group:${saved.parentId}`]: false }
+                  ? { [`group:${saved.parentId}`]: true }
                   : {}),
               }));
               setGroupDialog(null);
