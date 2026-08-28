@@ -21,6 +21,12 @@ export interface Tab {
    * can be reconnected in place. Kept in memory only.
    */
   profile: SessionProfile;
+  /**
+   * The number shown on the tab and bound to ⌘N / Alt+N. Fixed when the tab
+   * opens (the lowest one no open tab holds) and kept for its lifetime, so
+   * reordering or closing other tabs never renumbers it.
+   */
+  number: number;
   state: SessionState;
   message?: string;
   cols: number;
@@ -312,6 +318,11 @@ interface AppStore {
   setClosePrompt: (id: string | null) => void;
   setActive: (id: string) => void;
   activateAdjacentTab: (direction: -1 | 1) => void;
+  /**
+   * Moves a tab to `index` counted over the other tabs, i.e. its final
+   * position in the strip. Out-of-range indexes clamp to the ends.
+   */
+  moveTab: (id: string, index: number) => void;
 
   applyState: (id: string, state: SessionState, message?: string) => void;
   setSize: (id: string, cols: number, rows: number) => void;
@@ -418,9 +429,13 @@ export const useStore = create<AppStore>((set, get) => ({
   },
 
   addTab(info, profile, state = "connected") {
+    const taken = new Set(get().tabs.map((tab) => tab.number));
+    let number = 1;
+    while (taken.has(number)) number += 1;
     const tab: Tab = {
       info,
       profile,
+      number,
       state,
       cols: 80,
       rows: 24,
@@ -483,6 +498,17 @@ export const useStore = create<AppStore>((set, get) => ({
     const startIndex = activeIndex === -1 ? (direction > 0 ? -1 : 0) : activeIndex;
     const nextIndex = (startIndex + direction + tabs.length) % tabs.length;
     set({ activeId: tabs[nextIndex].info.id });
+  },
+
+  moveTab(id, index) {
+    const tabs = get().tabs;
+    const from = tabs.findIndex((tab) => tab.info.id === id);
+    if (from === -1) return;
+    const reordered = tabs.filter((tab) => tab.info.id !== id);
+    const to = Math.max(0, Math.min(index, reordered.length));
+    if (to === from) return;
+    reordered.splice(to, 0, tabs[from]);
+    set({ tabs: reordered });
   },
 
   applyState(id, state, message) {

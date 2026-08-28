@@ -21,7 +21,7 @@ export type AppShortcut =
   | { kind: "findNext" }
   | { kind: "clear" }
   | { kind: "tabStep"; step: -1 | 1 }
-  | { kind: "tab"; index: number }
+  | { kind: "tab"; number: number }
   | { kind: "togglePanel"; panel: PanelName };
 
 const LETTER_SHORTCUTS: Record<string, AppShortcut> = {
@@ -57,7 +57,7 @@ function tabShortcut(event: ShortcutKeyEvent): AppShortcut | null {
   if (event.code === "BracketLeft") return { kind: "tabStep", step: -1 };
   if (event.code === "BracketRight") return { kind: "tabStep", step: 1 };
   const key = event.key;
-  if (/^[1-9]$/.test(key)) return { kind: "tab", index: Number(key) - 1 };
+  if (/^[1-9]$/.test(key)) return { kind: "tab", number: Number(key) };
   return null;
 }
 

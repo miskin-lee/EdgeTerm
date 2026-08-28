@@ -244,7 +244,9 @@ export default function App() {
           }
           return;
         case "tab": {
-          const tab = useStore.getState().tabs[shortcut.index];
+          const tab = useStore
+            .getState()
+            .tabs.find((item) => item.number === shortcut.number);
           if (tab) {
             event.preventDefault();
             setActive(tab.info.id);

@@ -736,10 +736,45 @@ textarea:focus {
   color: var(--fg-dim);
   font-style: italic;
   white-space: nowrap;
+  /* WebKit still shows an I-beam over unselectable text under cursor: auto. */
+  cursor: default;
 }
 
 .tab:hover {
   background: var(--bg-hover);
+}
+
+/* Dragged tab: lifted above its neighbours while it follows the pointer; the
+   strip drops hover feedback so the reflowing tabs stay calm. */
+.tabstrip.is-reordering {
+  cursor: grabbing;
+}
+
+.tabstrip.is-reordering .tab:hover {
+  background: transparent;
+}
+
+.tabstrip.is-reordering .tab.is-active:hover {
+  background: var(--bg-terminal);
+}
+
+.tab.is-dragging,
+.tabstrip.is-reordering .tab.is-dragging:hover {
+  position: relative;
+  z-index: 2;
+  background: var(--bg-hover);
+  box-shadow:
+    inset 0 2px 0 var(--session-color, var(--accent)),
+    var(--shadow-pop);
+}
+
+.tab.is-dragging.is-active,
+.tabstrip.is-reordering .tab.is-dragging.is-active:hover {
+  background: var(--bg-terminal);
+}
+
+.tabstrip.is-reordering .tab .tab-close {
+  visibility: hidden;
 }
 
 .tab.is-active {
