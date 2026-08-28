@@ -187,6 +187,13 @@ pub fn mkdir(path: &str) -> Result<()> {
     Ok(())
 }
 
+/// Creates an empty file, failing if the path already exists so a typo in the
+/// name can never truncate a real file.
+pub fn create_file(path: &str) -> Result<()> {
+    std::fs::File::create_new(path)?;
+    Ok(())
+}
+
 pub fn rename(from: &str, to: &str) -> Result<()> {
     std::fs::rename(from, to)?;
     Ok(())

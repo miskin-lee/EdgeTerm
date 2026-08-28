@@ -29,6 +29,10 @@ pub enum SftpRequest {
     Mkdir {
         path: String,
     },
+    /// Creates an empty file, refusing to touch one that already exists.
+    CreateFile {
+        path: String,
+    },
     Remove {
         path: String,
         is_dir: bool,

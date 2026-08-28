@@ -12,7 +12,7 @@ use russh::keys::{HashAlg, PrivateKeyWithHashAlg, PublicKey};
 use russh::{Channel, ChannelMsg};
 use russh_sftp::client::error::Error as SftpError;
 use russh_sftp::client::SftpSession;
-use russh_sftp::protocol::StatusCode;
+use russh_sftp::protocol::{OpenFlags, StatusCode};
 use tauri::AppHandle;
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 use tokio::sync::mpsc::UnboundedReceiver;
@@ -628,6 +628,18 @@ async fn run_sftp(sftp: Arc<SftpSession>, request: SftpRequest) -> Result<SftpRe
         }
         SftpRequest::Mkdir { path } => {
             sftp.create_dir(path).await?;
+            Ok(SftpResponse::Done)
+        }
+        SftpRequest::CreateFile { path } => {
+            // EXCLUDE makes the server reject the open when the path exists,
+            // so a typo in the name can never truncate a real file.
+            let mut file = sftp
+                .open_with_flags(
+                    path,
+                    OpenFlags::CREATE | OpenFlags::WRITE | OpenFlags::EXCLUDE,
+                )
+                .await?;
+            file.shutdown().await?;
             Ok(SftpResponse::Done)
         }
         SftpRequest::Remove { path, is_dir } => {

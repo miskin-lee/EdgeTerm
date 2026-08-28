@@ -410,6 +410,19 @@ pub async fn sftp_mkdir(state: State<'_, AppState>, id: String, path: String) ->
 }
 
 #[tauri::command]
+pub async fn sftp_create_file(
+    state: State<'_, AppState>,
+    id: String,
+    path: String,
+) -> Result<()> {
+    state
+        .sessions
+        .sftp(&id, SftpRequest::CreateFile { path })
+        .await?;
+    Ok(())
+}
+
+#[tauri::command]
 pub async fn sftp_remove(
     state: State<'_, AppState>,
     id: String,
@@ -547,6 +560,11 @@ pub fn local_parent(path: String) -> String {
 #[tauri::command]
 pub fn local_mkdir(path: String) -> Result<()> {
     fs_local::mkdir(&path)
+}
+
+#[tauri::command]
+pub fn local_create_file(path: String) -> Result<()> {
+    fs_local::create_file(&path)
 }
 
 #[tauri::command]

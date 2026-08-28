@@ -179,6 +179,9 @@ export const sftpCanonicalize = (id: string, path: string) =>
 export const sftpMkdir = (id: string, path: string) =>
   invoke<void>("sftp_mkdir", { id, path });
 
+export const sftpCreateFile = (id: string, path: string) =>
+  invoke<void>("sftp_create_file", { id, path });
+
 export const sftpRemove = (id: string, path: string, isDir: boolean) =>
   invoke<void>("sftp_remove", { id, path, isDir });
 
@@ -264,6 +267,9 @@ export const localIsDirectory = (path: string) =>
 
 export const localMkdir = (path: string) =>
   invoke<void>("local_mkdir", { path });
+
+export const localCreateFile = (path: string) =>
+  invoke<void>("local_create_file", { path });
 
 export const localRename = (from: string, to: string) =>
   invoke<void>("local_rename", { from, to });

@@ -2341,7 +2341,8 @@ textarea:focus {
   background: var(--bg-hover);
 }
 
-.filer-action:active:not(:disabled) {
+.filer-action:active:not(:disabled),
+.filer-action.is-open {
   color: var(--accent);
   background: var(--accent-soft);
 }
@@ -2430,11 +2431,11 @@ textarea:focus {
   user-select: none;
 }
 
-.filer-new-folder {
+.filer-new-entry {
   gap: 7px;
 }
 
-.filer-new-folder input {
+.filer-new-entry input {
   min-width: 0;
 }
 

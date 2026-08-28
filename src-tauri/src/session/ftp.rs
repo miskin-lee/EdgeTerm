@@ -371,6 +371,16 @@ fn run_ftp(connection: &mut FtpConnection, request: SftpRequest) -> Result<SftpR
             connection.stream.mkdir(path)?;
             Ok(SftpResponse::Done)
         }
+        SftpRequest::CreateFile { path } => {
+            // FTP has no exclusive create; STOR silently truncates, so probe
+            // first. Servers without SIZE answer with an error, which we treat
+            // as "not there" — the same trade-off a plain upload makes.
+            if connection.stream.size(&path).is_ok() {
+                return Err(AppError::new(format!("{path} already exists")));
+            }
+            connection.stream.put_file(&path, &mut std::io::empty())?;
+            Ok(SftpResponse::Done)
+        }
         SftpRequest::Remove { path, is_dir } => {
             if is_dir {
                 connection.stream.rmdir(path)?;

@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 import * as api from "../../api";
 import { useActiveTab, useStore } from "../../store";
+import { ContextMenu } from "../ContextMenu";
 import { FileIcon } from "../FileIcon";
 import type { FileEntry, ThemeMode } from "../../types";
 
@@ -39,7 +40,14 @@ export function FilerPanel() {
   const [selected, setSelected] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [newFolder, setNewFolder] = useState<string | null>(null);
+  const [creating, setCreating] = useState<NewEntryDraft | null>(null);
+  const [uploadMenu, setUploadMenu] = useState<{ x: number; y: number } | null>(
+    null,
+  );
+  // ContextMenu closes itself on any outside mousedown, so by the time the
+  // upload button's click fires the menu is already gone; remember whether it
+  // was open so the button toggles instead of reopening.
+  const uploadMenuWasOpen = useRef(false);
   const [transfer, setTransfer] = useState<TransferState | null>(null);
   const [dragOverList, setDragOverList] = useState(false);
   const listRef = useRef<HTMLDivElement>(null);
@@ -341,10 +349,11 @@ export function FilerPanel() {
 
   const removeSelected = async () => {
     const entry = entries.find((e) => e.path === selected);
-    if (!entry || !remoteId) return;
+    if (!entry) return;
     setBusy(true);
     try {
-      await api.sftpRemove(remoteId, entry.path, entry.isDir);
+      if (remoteId) await api.sftpRemove(remoteId, entry.path, entry.isDir);
+      else await api.localRemove(entry.path, entry.isDir);
       await load(path);
     } catch (e) {
       setError(String(e));
@@ -353,12 +362,30 @@ export function FilerPanel() {
     }
   };
 
-  const commitNewFolder = async () => {
-    const name = newFolder?.trim();
-    setNewFolder(null);
-    if (!name || !remoteId) return;
+  const commitNewEntry = async () => {
+    const draft = creating;
+    setCreating(null);
+    const name = draft?.name.trim();
+    if (!draft || !name || !path) return;
+    const label = draft.kind === "folder" ? "folder" : "file";
+    if (name === "." || name === ".." || /[\\/]/.test(name)) {
+      setError(`"${name}" is not a valid ${label} name`);
+      return;
+    }
+    if (entries.some((entry) => entry.name === name)) {
+      setError(`"${name}" already exists in this folder`);
+      return;
+    }
     try {
-      await api.sftpMkdir(remoteId, joinRemote(path, name));
+      if (remoteId) {
+        const target = joinRemote(path, name);
+        if (draft.kind === "folder") await api.sftpMkdir(remoteId, target);
+        else await api.sftpCreateFile(remoteId, target);
+      } else {
+        const target = joinLocal(path, name);
+        if (draft.kind === "folder") await api.localMkdir(target);
+        else await api.localCreateFile(target);
+      }
       await load(path);
     } catch (e) {
       setError(String(e));
@@ -400,34 +427,43 @@ export function FilerPanel() {
         </div>
       </div>
 
-      {/* Remote-only actions stay visible on local sessions, just disabled. */}
+      {/* Upload and download stay visible on local sessions, just disabled. */}
       <div className="filer-toolbar" role="toolbar" aria-label="File actions">
         <button
           className="panel-action filer-action"
-          onClick={() => setNewFolder("")}
-          title={remoteTitle("New folder")}
+          onClick={() => setCreating({ kind: "file", name: "" })}
+          title="New file"
+          aria-label="New file"
+          disabled={busy || !path}
+        >
+          <FilerActionIcon name="new-file" />
+        </button>
+        <button
+          className="panel-action filer-action"
+          onClick={() => setCreating({ kind: "folder", name: "" })}
+          title="New folder"
           aria-label="New folder"
-          disabled={!remote || busy}
+          disabled={busy || !path}
         >
           <FilerActionIcon name="new-folder" />
         </button>
         <button
-          className="panel-action filer-action"
-          onClick={upload}
-          title={remoteTitle("Upload files")}
-          aria-label="Upload files"
+          className={`panel-action filer-action${uploadMenu ? " is-open" : ""}`}
+          onMouseDown={() => {
+            uploadMenuWasOpen.current = uploadMenu !== null;
+          }}
+          onClick={(event) => {
+            if (uploadMenuWasOpen.current) return;
+            const rect = event.currentTarget.getBoundingClientRect();
+            setUploadMenu({ x: rect.left, y: rect.bottom + 2 });
+          }}
+          title={remoteTitle("Upload files or folders")}
+          aria-label="Upload files or folders"
+          aria-haspopup="menu"
+          aria-expanded={uploadMenu !== null}
           disabled={!remote || busy || !path}
         >
           <FilerActionIcon name="upload" />
-        </button>
-        <button
-          className="panel-action filer-action"
-          onClick={uploadFolder}
-          title={remoteTitle("Upload folder")}
-          aria-label="Upload folder"
-          disabled={!remote || busy || !path}
-        >
-          <FilerActionIcon name="upload-folder" />
         </button>
         <button
           className="panel-action filer-action"
@@ -450,13 +486,24 @@ export function FilerPanel() {
         <button
           className="panel-action filer-action filer-action-danger"
           onClick={removeSelected}
-          title={remoteTitle("Delete")}
+          title="Delete"
           aria-label="Delete"
-          disabled={!remote || !selected || busy}
+          disabled={!selected || busy}
         >
           <FilerActionIcon name="delete" />
         </button>
       </div>
+      {uploadMenu && (
+        <ContextMenu
+          x={uploadMenu.x}
+          y={uploadMenu.y}
+          items={[
+            { label: "Upload files…", action: () => void upload() },
+            { label: "Upload folder…", action: () => void uploadFolder() },
+          ]}
+          onClose={() => setUploadMenu(null)}
+        />
+      )}
 
       <div className="filer-path">
         <button
@@ -493,18 +540,26 @@ export function FilerPanel() {
         }
       >
         {error && <div className="panel-empty">{error}</div>}
-        {newFolder !== null && (
-          <div className="row filer-new-folder">
-            <FilerEntryIcon name={newFolder} isDir theme={theme} />
+        {creating !== null && (
+          <div className="row filer-new-entry">
+            <FilerEntryIcon
+              name={creating.name}
+              isDir={creating.kind === "folder"}
+              theme={theme}
+            />
             <input
               autoFocus
-              value={newFolder}
-              placeholder="New folder name"
-              onChange={(event) => setNewFolder(event.target.value)}
-              onBlur={commitNewFolder}
+              value={creating.name}
+              placeholder={
+                creating.kind === "folder" ? "New folder name" : "New file name"
+              }
+              onChange={(event) =>
+                setCreating({ ...creating, name: event.target.value })
+              }
+              onBlur={commitNewEntry}
               onKeyDown={(event) => {
-                if (event.key === "Enter") void commitNewFolder();
-                if (event.key === "Escape") setNewFolder(null);
+                if (event.key === "Enter") void commitNewEntry();
+                if (event.key === "Escape") setCreating(null);
               }}
             />
           </div>
@@ -599,6 +654,9 @@ export function FilerPanel() {
 
 type FilerEntryKind = "directory" | "file" | "symlink";
 
+/** An entry being named inline at the top of the list before it exists. */
+type NewEntryDraft = { kind: "file" | "folder"; name: string };
+
 function FilerEntryIcon({
   name,
   isDir,
@@ -616,9 +674,9 @@ function FilerEntryIcon({
 }
 
 type FilerActionIconName =
+  | "new-file"
   | "new-folder"
   | "upload"
-  | "upload-folder"
   | "download"
   | "delete"
   | "refresh"
@@ -626,6 +684,13 @@ type FilerActionIconName =
 
 function FilerActionIcon({ name }: { name: FilerActionIconName }) {
   const paths: Record<FilerActionIconName, React.ReactNode> = {
+    "new-file": (
+      <>
+        <path d="M13.5 3.5H7.25A1.75 1.75 0 0 0 5.5 5.25v13.5A1.75 1.75 0 0 0 7.25 20.5h9.5a1.75 1.75 0 0 0 1.75-1.75V8.5l-5-5Z" />
+        <path d="M13.5 3.5v5h5" />
+        <path d="M12 11.5v5M9.5 14h5" />
+      </>
+    ),
     "new-folder": (
       <>
         <path d="M3.5 6.5h6l2 2h9v9.75a1.75 1.75 0 0 1-1.75 1.75H5.25a1.75 1.75 0 0 1-1.75-1.75V6.5Z" />
@@ -636,12 +701,6 @@ function FilerActionIcon({ name }: { name: FilerActionIconName }) {
       <>
         <path d="M12 15V4.5M8 8.5l4-4 4 4" />
         <path d="M5 14.5v3.75A1.75 1.75 0 0 0 6.75 20h10.5A1.75 1.75 0 0 0 19 18.25V14.5" />
-      </>
-    ),
-    "upload-folder": (
-      <>
-        <path d="M3.5 6.5h6l2 2h9v9.75a1.75 1.75 0 0 1-1.75 1.75H5.25a1.75 1.75 0 0 1-1.75-1.75V6.5Z" />
-        <path d="M12 17.25v-6M9.25 14l2.75-2.75L14.75 14" />
       </>
     ),
     download: (
