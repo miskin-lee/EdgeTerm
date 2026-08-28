@@ -37,6 +37,42 @@ fn create_main_window(app: &tauri::App) -> tauri::Result<()> {
     Ok(())
 }
 
+/// The default macOS menu's Quit item sends `terminate:` straight to
+/// NSApplication, so ⌘Q would kill the app without the webview ever seeing
+/// it — bypassing the close-requested hook that guards live sessions. Swap
+/// it for an ordinary ⌘Q item whose event is forwarded to the frontend,
+/// which confirms and then exits the process itself.
+#[cfg(target_os = "macos")]
+fn install_menu(app: &tauri::App) -> tauri::Result<()> {
+    use tauri::menu::{Menu, MenuItem, MenuItemKind};
+    use tauri::Emitter;
+
+    let handle = app.handle();
+    let menu = Menu::default(handle)?;
+    if let Some(MenuItemKind::Submenu(app_menu)) = menu.items()?.into_iter().next() {
+        let quit = MenuItem::with_id(
+            handle,
+            "quit",
+            format!("Quit {}", handle.package_info().name),
+            true,
+            Some("Cmd+Q"),
+        )?;
+        // The predefined Quit entry is the last item of the app submenu.
+        let items = app_menu.items()?;
+        if !items.is_empty() {
+            app_menu.remove_at(items.len() - 1)?;
+        }
+        app_menu.append(&quit)?;
+    }
+    app.set_menu(menu)?;
+    app.on_menu_event(|handle, event| {
+        if event.id().as_ref() == "quit" {
+            let _ = handle.emit("app:quit-requested", ());
+        }
+    });
+    Ok(())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -48,6 +84,8 @@ pub fn run() {
             app.handle()
                 .plugin(tauri_plugin_updater::Builder::new().build())?;
             create_main_window(app)?;
+            #[cfg(target_os = "macos")]
+            install_menu(app)?;
             Ok(())
         })
         .manage(AppState {

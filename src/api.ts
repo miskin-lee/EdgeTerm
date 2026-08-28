@@ -288,6 +288,13 @@ export const onSessionState = (
 ): Promise<UnlistenFn> =>
   listen<StateEvent>("session:state", (e) => handler(e.payload));
 
+/**
+ * Fired by the Rust menu handler when the user hits ⌘Q / Quit on macOS;
+ * the frontend owns the confirm-and-exit flow (see App.tsx).
+ */
+export const onQuitRequested = (handler: () => void): Promise<UnlistenFn> =>
+  listen("app:quit-requested", () => handler());
+
 // --- encoding helpers -------------------------------------------------------
 
 export function base64ToBytes(base64: string): Uint8Array {

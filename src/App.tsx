@@ -1,3 +1,5 @@
+import { getCurrentWindow } from "@tauri-apps/api/window";
+import { exit } from "@tauri-apps/plugin-process";
 import {
   useCallback,
   useEffect,
@@ -9,6 +11,7 @@ import {
 import { acceptHostKey, SESSION_CLOSED_NOTICE } from "./actions";
 import * as api from "./api";
 import { CloseSessionDialog } from "./components/CloseSessionDialog";
+import { QuitConfirmDialog } from "./components/QuitConfirmDialog";
 import { FontSizeDialog } from "./components/FontSizeDialog";
 import { HostKeyDialog } from "./components/HostKeyDialog";
 import { MenuBar } from "./components/MenuBar";
@@ -35,6 +38,11 @@ import { useUpdater } from "./updater";
 
 const clamp = (value: number, min: number, max: number) =>
   Math.min(max, Math.max(min, value));
+
+const hasLiveSessions = () =>
+  useStore
+    .getState()
+    .tabs.some((tab) => tab.state === "connecting" || tab.state === "connected");
 
 export default function App() {
   const updater = useUpdater();
@@ -72,6 +80,7 @@ export default function App() {
   const searchRef = useRef<SearchOverlayHandle>(null);
   const [aboutOpen, setAboutOpen] = useState(false);
   const [fontSettingsOpen, setFontSettingsOpen] = useState(false);
+  const [quitPromptOpen, setQuitPromptOpen] = useState(false);
 
   const [leftWidth, setLeftWidth] = useState(220);
   const [rightWidth, setRightWidth] = useState(220);
@@ -132,6 +141,40 @@ export default function App() {
       void unlisten.then((off) => off());
     };
   }, [applyState]);
+
+  // A tab-close prompt open underneath would race this dialog for
+  // Enter/Esc (both listen on window in the capture phase), so drop it.
+  const openQuitPrompt = useCallback(() => {
+    setClosePrompt(null);
+    setQuitPromptOpen(true);
+  }, [setClosePrompt]);
+
+  // Closing the window (macOS ✕, the menubar Close button on Windows,
+  // Alt+F4) must not silently drop live connections: hold the close and
+  // confirm while any tab is still connecting or connected. Without the
+  // preventDefault the listener itself destroys the window.
+  useEffect(() => {
+    const unlisten = getCurrentWindow().onCloseRequested((event) => {
+      if (!hasLiveSessions()) return;
+      event.preventDefault();
+      openQuitPrompt();
+    });
+    return () => {
+      void unlisten.then((off) => off());
+    };
+  }, [openQuitPrompt]);
+
+  // ⌘Q on macOS bypasses the window close path, so the Rust menu handler
+  // forwards it here; with no live sessions just exit.
+  useEffect(() => {
+    const unlisten = api.onQuitRequested(() => {
+      if (hasLiveSessions()) openQuitPrompt();
+      else void exit(0);
+    });
+    return () => {
+      void unlisten.then((off) => off());
+    };
+  }, [openQuitPrompt]);
 
   // --- actions --------------------------------------------------------------
 
@@ -341,6 +384,16 @@ export default function App() {
             void closeTab(closingTab.info.id);
           }}
           onCancel={() => setClosePrompt(null)}
+        />
+      )}
+
+      {quitPromptOpen && (
+        <QuitConfirmDialog
+          onConfirm={() => {
+            setQuitPromptOpen(false);
+            void exit(0);
+          }}
+          onCancel={() => setQuitPromptOpen(false)}
         />
       )}
 
