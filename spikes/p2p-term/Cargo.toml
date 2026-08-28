@@ -1,0 +1,27 @@
+[package]
+name = "p2p-term"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[features]
+default = ["p2p"]
+# NAT traversal transport. Without it the demo listens / dials plain TCP,
+# which gives a clean binary-size delta for iroh alone.
+p2p = ["dep:iroh"]
+
+[dependencies]
+anyhow = "1"
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "io-util", "io-std", "net", "sync", "signal", "time"] }
+russh = { version = "0.62", default-features = false, features = ["ring", "flate2", "rsa"] }
+portable-pty = "0.9"
+crossterm = "0.29"
+rand = { version = "0.10", features = ["thread_rng"] }
+iroh = { version = "1.1", optional = true }
+
+[profile.release]
+codegen-units = 1
+lto = true
+opt-level = "s"
+panic = "abort"
+strip = true
