@@ -194,6 +194,13 @@ export class TerminalController {
   private firstLineNumber = 1;
 
   private gutterMode: GutterMode = "both";
+  /**
+   * Whether blank rows below the cursor count as never written. Off for
+   * sessions whose byte stream is the application's own (SSH, a Unix pty),
+   * where a clear arrives as `CSI 2J` and resets the metadata. See
+   * `setHidesBlankRowsBelowCursor`.
+   */
+  private hidesBlankRowsBelowCursor = false;
   private themeMode: ThemeMode;
   private scrollback: number;
   private pendingShellClear = false;
@@ -602,6 +609,21 @@ export class TerminalController {
   setGutterMode(mode: GutterMode) {
     this.gutterMode = mode;
     this.applyGutterMode();
+    this.syncGutter();
+  }
+
+  /**
+   * Windows ConPTY does not forward a shell's `clear`: it scrolls the old
+   * screen into scrollback with a run of newlines, homes the cursor and
+   * erases line by line, so no `CSI 2J` ever reaches the parser. The
+   * newlines stamp every row of the viewport as written and the gutter
+   * fills with timestamps under a single prompt line. Serial devices
+   * redraw the same way. For those sessions a blank row below the cursor
+   * is treated as never written; a row with text on it (a multi-line
+   * prompt redrawn with cursor-up) still counts.
+   */
+  setHidesBlankRowsBelowCursor(enabled: boolean) {
+    this.hidesBlankRowsBelowCursor = enabled;
     this.syncGutter();
   }
 
@@ -1306,7 +1328,12 @@ export class TerminalController {
       // `buf.length` always spans the whole viewport, so it cannot tell a
       // written line from blank padding below the last one. A recorded
       // timestamp can: only produced lines have one.
-      const written = !alternate && index < this.lineTimes.length;
+      const written =
+        !alternate &&
+        index < this.lineTimes.length &&
+        (!this.hidesBlankRowsBelowCursor ||
+          index <= cursorIndex ||
+          !isBlankLine(buf.getLine(index)));
       row.classList.toggle("is-empty", !written);
       row.classList.toggle("is-cursor", written && index === cursorIndex);
 
@@ -1321,6 +1348,11 @@ export class TerminalController {
       }
     }
   }
+}
+
+/** A row holding nothing but default-attribute spaces (or no row at all). */
+function isBlankLine(line: IBufferLine | undefined): boolean {
+  return !line || line.translateToString(true).length === 0;
 }
 
 /** Semantic colors must never repaint output that styled itself via ANSI. */

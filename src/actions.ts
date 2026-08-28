@@ -1,5 +1,6 @@
 import * as api from "./api";
 import { commandHistory } from "./history";
+import { IS_WINDOWS } from "./platform";
 import { useStore, type HostKeyPrompt } from "./store";
 import { TerminalController } from "./terminal";
 import {
@@ -98,10 +99,18 @@ export function ensureController(id: string): TerminalController {
     useStore.getState().terminalScrollback,
     useStore.getState().theme,
   );
-  const { suggestionsEnabled, rightClickAction, copyOnSelect } =
+  const { suggestionsEnabled, rightClickAction, copyOnSelect, tabs } =
     useStore.getState();
   controller.setSuggestions(suggestionsEnabled);
   controller.setMouseOptions(rightClickAction, copyOnSelect);
+  // The tab is registered before its terminal exists (see `openSession`),
+  // so the session kind is known here. Only ConPTY-backed shells and serial
+  // devices redraw the screen without a `CSI 2J`; everything else keeps the
+  // exact clear semantics.
+  const kind = tabs.find((tab) => tab.info.id === id)?.info.kind;
+  controller.setHidesBlankRowsBelowCursor(
+    kind === "serial" || (kind === "local" && IS_WINDOWS),
+  );
   setController(id, controller);
   return controller;
 }
