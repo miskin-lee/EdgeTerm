@@ -84,6 +84,13 @@ SSH / SFTP / FTP 密码和 SSH 私钥口令保存在应用配置目录下仅当�
 - **命令补全弹窗** —— `↓` 进入列表，`↑` / `↓` 移动，`Enter` 或 `Tab` 采纳，`Esc` 关闭。弹窗只是显示、尚未选中任何一项时，其余按键仍然照常发给 Shell。
 - **终端输出中的链接** —— macOS 下 `⌘`+点击，Windows / Linux 下 `Ctrl`+点击。
 
+鼠标复制 / 粘贴沿用各平台终端的惯例，在 **Edit** 菜单中设置：
+
+- **Edit → Right Click** —— *Copy or Paste*（Windows 控制台惯例，Windows 下的默认值：有选区时右键复制，否则粘贴）、*Show Menu*（macOS / Linux 下的默认值：弹出 Copy / Paste / Select All / Clear Buffer 菜单，并先选中指针所在的单词）或 *Paste*（PuTTY / MobaXterm 风格）。
+- **中键** 始终粘贴剪贴板内容。
+- **Edit → Copy on Select** —— 选中即复制到剪贴板（PuTTY / iTerm2 风格，默认关闭）。
+- 接管了鼠标的程序（vim、开启鼠标支持的 tmux、htop）会收到这些点击；Windows / Linux 下按住 `Shift` 可绕过它们。
+
 Windows / Linux 下，单独的 `Ctrl+字母` 始终原样发给 Shell（`Ctrl+C` 中断、`Ctrl+W` 删词、`Ctrl+K` 删到行尾）；`Alt+字母` 留给 readline 的 Meta 键位，只占用 readline 没有绑定的 `Alt+N` 和 `Alt+K`，因此编辑和搜索类快捷键改用 `Ctrl+Shift`。macOS 下 `Ctrl` 和 `Option` 从不被占用，只有 `⌘` 组合键是应用快捷键。
 
 ## 运行

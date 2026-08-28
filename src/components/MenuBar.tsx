@@ -12,7 +12,7 @@ import { exportAppData, importAppData } from "../dataTransfer";
 import { commandHistory } from "../history";
 import { IS_MAC, IS_WINDOWS, shortcutLabel as sc } from "../platform";
 import { useActiveTab, useStore } from "../store";
-import type { GutterMode } from "../terminal";
+import type { GutterMode, RightClickAction } from "../terminal";
 import { getController } from "../terminalRegistry";
 import type { ThemeMode } from "../types";
 
@@ -182,6 +182,10 @@ export function MenuBar(props: Props) {
   const setTheme = useStore((s) => s.setTheme);
   const suggestionsEnabled = useStore((s) => s.suggestionsEnabled);
   const setSuggestionsEnabled = useStore((s) => s.setSuggestionsEnabled);
+  const rightClickAction = useStore((s) => s.rightClickAction);
+  const setRightClickAction = useStore((s) => s.setRightClickAction);
+  const copyOnSelect = useStore((s) => s.copyOnSelect);
+  const setCopyOnSelect = useStore((s) => s.setCopyOnSelect);
   const resetSettings = useStore((s) => s.resetSettings);
   const setStatus = useStore((s) => s.setStatus);
   const requestCloseTab = useStore((s) => s.requestCloseTab);
@@ -215,6 +219,12 @@ export function MenuBar(props: Props) {
     label,
     checked: theme === mode,
     action: () => setTheme(mode),
+  });
+
+  const rightClickEntry = (label: string, action: RightClickAction): Entry => ({
+    label,
+    checked: rightClickAction === action,
+    action: () => setRightClickAction(action),
   });
 
   const menus: Menu[] = [
@@ -277,24 +287,31 @@ export function MenuBar(props: Props) {
         {
           label: "Copy",
           shortcut: sc("⌘C", "Ctrl+Shift+C"),
-          action: withActive((id) => {
-            const term = getController(id)?.term;
-            if (term?.hasSelection())
-              void navigator.clipboard.writeText(term.getSelection());
-          }),
+          action: withActive((id) => getController(id)?.copySelection()),
         },
         {
           label: "Paste",
           shortcut: sc("⌘V", "Ctrl+Shift+V"),
-          action: withActive(async (id) => {
-            const text = await navigator.clipboard.readText();
-            if (text) getController(id)?.term.paste(text);
-          }),
+          action: withActive((id) => getController(id)?.pasteFromClipboard()),
         },
         {
           label: "Select All",
           shortcut: sc("⌘A", "Ctrl+Shift+A"),
-          action: withActive((id) => getController(id)?.term.selectAll()),
+          action: withActive((id) => getController(id)?.selectAll()),
+        },
+        "separator",
+        {
+          label: "Copy on Select",
+          checked: copyOnSelect,
+          action: () => setCopyOnSelect(!copyOnSelect),
+        },
+        {
+          label: "Right Click",
+          children: [
+            rightClickEntry("Copy or Paste", "copyPaste"),
+            rightClickEntry("Paste", "paste"),
+            rightClickEntry("Show Menu", "menu"),
+          ],
         },
         "separator",
         {
@@ -391,7 +408,7 @@ export function MenuBar(props: Props) {
           action: () => {
             void (async () => {
               const confirmed = await ask(
-                "Restore panel visibility, timestamp and line display, theme, font sizes, scrollback, and command suggestions to their defaults?",
+                "Restore panel visibility, timestamp and line display, theme, font sizes, scrollback, command suggestions, and mouse copy / paste to their defaults?",
                 {
                   title: "Restore Default Settings",
                   kind: "warning",

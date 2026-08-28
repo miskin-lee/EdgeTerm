@@ -84,6 +84,13 @@ Context-specific keys:
 - **Command-suggestion popup** — `↓` steps into the list, `↑` / `↓` move through it, `Enter` or `Tab` accepts, `Esc` dismisses it. While the popup is only showing (nothing selected), every other key still reaches the shell.
 - **Links in terminal output** — `⌘`-click on macOS, `Ctrl`-click on Windows / Linux.
 
+Mouse copy / paste follows the usual terminal conventions and is set under **Edit**:
+
+- **Edit → Right Click** — *Copy or Paste* (the Windows console convention and the default on Windows: right-click copies the selection if there is one, otherwise pastes), *Show Menu* (the default on macOS / Linux: a menu with Copy, Paste, Select All and Clear Buffer; the word under the pointer is selected first) or *Paste* (PuTTY / MobaXterm style).
+- **Middle-click** always pastes the clipboard.
+- **Edit → Copy on Select** — copies every selection to the clipboard as it is made (PuTTY / iTerm2 style; off by default).
+- Programs that take over the mouse (vim, tmux with mouse support, htop) receive the clicks instead; on Windows / Linux hold `Shift` to bypass them.
+
 On Windows / Linux, plain `Ctrl+letter` is always passed through to the shell (`Ctrl+C` interrupts, `Ctrl+W` kills a word, `Ctrl+K` kills to end of line), and `Alt+letter` is left to readline's Meta layer except for `Alt+N` and `Alt+K`, which readline does not bind. That is why the editing and search shortcuts use `Ctrl+Shift` there. On macOS, `Ctrl` and `Option` are never taken from the shell; only `⌘` combinations are app shortcuts.
 
 ## Running locally

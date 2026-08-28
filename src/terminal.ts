@@ -25,6 +25,15 @@ import {
 
 export type GutterMode = "off" | "line" | "time" | "both";
 
+/**
+ * What a right click in the terminal does, when no program has taken over
+ * the mouse. `copyPaste` is the Windows console convention (copy the
+ * selection if there is one, otherwise paste), `menu` the macOS / Linux one
+ * (a context menu; the word under the pointer is selected first, as in
+ * VS Code), and `paste` is what PuTTY and MobaXterm do.
+ */
+export type RightClickAction = "copyPaste" | "paste" | "menu";
+
 function openTerminalWebLink(event: MouseEvent, uri: string) {
   // Opening terminal output on an unmodified click makes accidental launches
   // too easy. Match native terminal behavior on macOS and other platforms.
@@ -191,6 +200,8 @@ export class TerminalController {
   private locked = false;
   /** Command history capture + completion popup. Opt-in via the Edit menu. */
   private suggestionsOn = false;
+  /** Write every new selection to the clipboard (Edit → Copy on Select). */
+  private copyOnSelect = false;
   private inputAnchor: InputAnchor | null = null;
   private readonly popup: HTMLElement;
   /** Rows currently displayed; [] while the popup is hidden. */
@@ -245,7 +256,13 @@ export class TerminalController {
       minimumContrastRatio: 4.5,
       drawBoldTextInBrightColors: true,
       macOptionIsMeta: true,
-      rightClickSelectsWord: true,
+      // Set by setMouseOptions: only the "menu" right-click mode wants the
+      // word under the pointer selected first.
+      rightClickSelectsWord: false,
+    });
+
+    this.term.onSelectionChange(() => {
+      if (this.copyOnSelect && this.term.hasSelection()) this.copySelection();
     });
 
     this.zmodemNotice = document.createElement("div");
@@ -400,16 +417,12 @@ export class TerminalController {
         // Consumed even without a selection so it never reaches the shell
         // as an accidental ^C.
         event.preventDefault();
-        if (this.term.hasSelection()) {
-          void navigator.clipboard.writeText(this.term.getSelection());
-        }
+        this.copySelection();
         return false;
       }
       if (ctrlShiftOnly && key === "v") {
         event.preventDefault();
-        void navigator.clipboard.readText().then((text) => {
-          if (text) this.term.paste(text);
-        });
+        this.pasteFromClipboard();
         return false;
       }
 
@@ -513,6 +526,56 @@ export class TerminalController {
 
   focus() {
     this.term.focus();
+  }
+
+  /**
+   * Mouse copy / paste preferences. `rightClickSelectsWord` follows the
+   * right-click mode: in "menu" mode a right click selects the word under
+   * the pointer so the menu's Copy has something to copy (VS Code on macOS);
+   * in the paste modes it must stay off, or a right click meant to paste
+   * would select a word and copy it instead.
+   */
+  setMouseOptions(rightClick: RightClickAction, copyOnSelect: boolean) {
+    this.copyOnSelect = copyOnSelect;
+    this.term.options.rightClickSelectsWord = rightClick === "menu";
+  }
+
+  hasSelection(): boolean {
+    return this.term.hasSelection();
+  }
+
+  /** Copies the selection to the clipboard; false when there is none. */
+  copySelection(): boolean {
+    if (!this.term.hasSelection()) return false;
+    void navigator.clipboard.writeText(this.term.getSelection());
+    return true;
+  }
+
+  clearSelection() {
+    this.term.clearSelection();
+  }
+
+  selectAll() {
+    this.term.selectAll();
+  }
+
+  /**
+   * Pastes the clipboard as typed input. xterm applies bracketed paste and
+   * drops it while the terminal is locked (`disableStdin`).
+   */
+  pasteFromClipboard() {
+    void navigator.clipboard.readText().then((text) => {
+      if (text) this.term.paste(text);
+    });
+  }
+
+  /**
+   * True while a program in the terminal (vim, tmux, htop…) has enabled
+   * mouse reporting, in which case clicks belong to it rather than to the
+   * app's copy / paste handling.
+   */
+  isMouseTracked(): boolean {
+    return this.term.modes.mouseTrackingMode !== "none";
   }
 
   clear() {

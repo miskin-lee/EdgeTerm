@@ -340,8 +340,8 @@
     <section id="data">
       <h2><span class="sec-icon">💾</span><span data-i18n="en">Export &amp; Import</span><span data-i18n="zh">数据导出与导入</span></h2>
       <p>
-        <span data-i18n="en"><span class="menu-path">Session → Export Data…</span> saves everything you have set up into one <code>.edgeterm</code> file (plain JSON inside): saved sessions with their groups, the Sender's saved commands, and the display settings (panels, gutter mode, theme, font sizes, scrollback, command suggestions). Use it as a backup or to move to another computer.</span>
-        <span data-i18n="zh"><span class="menu-path">Session → Export Data…</span> 把你配置好的一切保存为一个 <code>.edgeterm</code> 文件（内容为 JSON）：保存的会话及其分组、Sender 的常用命令，以及显示设置（面板显示、侧栏模式、主题、字号、回滚行数、命令建议）。可用于备份或迁移到另一台电脑。</span>
+        <span data-i18n="en"><span class="menu-path">Session → Export Data…</span> saves everything you have set up into one <code>.edgeterm</code> file (plain JSON inside): saved sessions with their groups, the Sender's saved commands, and the display settings (panels, gutter mode, theme, font sizes, scrollback, command suggestions, mouse copy / paste). Use it as a backup or to move to another computer.</span>
+        <span data-i18n="zh"><span class="menu-path">Session → Export Data…</span> 把你配置好的一切保存为一个 <code>.edgeterm</code> 文件（内容为 JSON）：保存的会话及其分组、Sender 的常用命令，以及显示设置（面板显示、侧栏模式、主题、字号、回滚行数、命令建议、鼠标复制 / 粘贴）。可用于备份或迁移到另一台电脑。</span>
       </p>
       <p>
         <span data-i18n="en"><span class="menu-path">Session → Import Data…</span> accepts only <code>.edgeterm</code> files, checks that the contents really are an EdgeTerm export of a known version, shows what the file contains, and merges it after you confirm: entries with the same id replace the local ones, everything else is added, and nothing already on this machine is deleted. Settings in the file are applied immediately.</span>
@@ -379,6 +379,10 @@
         <tr><td><kbd>⌘C</kbd> / <kbd>⌘V</kbd></td><td><kbd>Ctrl+Shift+C</kbd> / <kbd>Ctrl+Shift+V</kbd></td><td><span data-i18n="en">Copy / paste inside the terminal</span><span data-i18n="zh">终端内复制 / 粘贴</span></td></tr>
         <tr><td><kbd>⌘A</kbd></td><td><kbd>Ctrl+Shift+A</kbd></td><td><span data-i18n="en">Select the whole terminal buffer</span><span data-i18n="zh">全选终端缓冲区</span></td></tr>
       </table></div>
+      <p>
+        <span data-i18n="en">Mouse copy / paste follows the usual terminal conventions. <span class="menu-path">Edit → Right Click</span> chooses what a right click does: <strong>Copy or Paste</strong> (the Windows console convention and the default on Windows — copies the selection if there is one, otherwise pastes), <strong>Show Menu</strong> (the default on macOS / Linux — Copy, Paste, Select All and Clear Buffer, with the word under the pointer selected first) or <strong>Paste</strong>. Middle-click always pastes. <span class="menu-path">Edit → Copy on Select</span> copies every selection as it is made (off by default). Programs that take over the mouse, such as vim or tmux, receive the clicks instead; on Windows / Linux hold <kbd>Shift</kbd> to bypass them.</span>
+        <span data-i18n="zh">鼠标复制 / 粘贴沿用各平台终端的惯例。<span class="menu-path">Edit → Right Click</span> 决定右键的行为：<strong>Copy or Paste</strong>（Windows 控制台惯例，Windows 下的默认值——有选区时复制，否则粘贴）、<strong>Show Menu</strong>（macOS / Linux 下的默认值——弹出 Copy / Paste / Select All / Clear Buffer 菜单，并先选中指针所在的单词）或 <strong>Paste</strong>。中键始终粘贴。<span class="menu-path">Edit → Copy on Select</span> 让选中即复制（默认关闭）。vim、tmux 等接管了鼠标的程序会收到这些点击；Windows / Linux 下按住 <kbd>Shift</kbd> 可绕过它们。</span>
+      </p>
       <p class="dim">
         <span data-i18n="en">On Windows and Linux plain <kbd>Ctrl+letter</kbd> is passed through to the shell (<kbd>Ctrl+C</kbd> interrupts, <kbd>Ctrl+W</kbd> kills a word) and <kbd>Alt+letter</kbd> is readline's Meta layer (<kbd>Alt+F</kbd> / <kbd>Alt+B</kbd> jump by word), which is why the editing shortcuts use <kbd>Ctrl+Shift</kbd> there.</span>
         <span data-i18n="zh">Windows / Linux 下 <kbd>Ctrl+字母</kbd> 会原样发送给 Shell（<kbd>Ctrl+C</kbd> 中断、<kbd>Ctrl+W</kbd> 删词），<kbd>Alt+字母</kbd> 则是 readline 的 Meta 键位（<kbd>Alt+F</kbd> / <kbd>Alt+B</kbd> 按词跳转），因此编辑类快捷键改用 <kbd>Ctrl+Shift</kbd>。</span>
