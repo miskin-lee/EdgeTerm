@@ -42,6 +42,8 @@ The only runtime dependency is that system WebView: Windows 11 and up-to-date Wi
 
 SSH/SFTP/FTP passwords and SSH private-key passphrases are stored in `credentials.json` in the application configuration directory, readable only by the current system user. They are never returned to the frontend or written to `sessions.json`. As a result, saved sessions can reconnect after EdgeTerm restarts without triggering the macOS Keychain system-password authorization dialog.
 
+`credentials.json` is not plain text: it is sealed with ChaCha20-Poly1305 under a key derived (HKDF-SHA256) from the machine id (`IOPlatformUUID` on macOS, `MachineGuid` on Windows, `/etc/machine-id` on Linux), the account name and a random salt kept in the file. There is nothing to set up or type: the file opens automatically on the machine and account that wrote it, and a copy is useless anywhere else. Be clear about what this does and does not cover: it protects the file at rest and in backups, but any program running under your account on the same machine can derive the same key, so a compromised account means a compromised password store. A file that cannot be opened (moved to another machine, or the machine id changed after an OS reinstall) is ignored and replaced on the next save; the sessions themselves are unaffected and simply ask for their passwords again. Files written by earlier versions are sealed on first start.
+
 Standard FTP does not encrypt credentials or file contents. Use FTP only on a trusted network; use SSH/SFTP when transport security is required.
 
 **Interface** (based on the WindTerm layout)

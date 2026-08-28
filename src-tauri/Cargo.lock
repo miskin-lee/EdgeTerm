@@ -1274,6 +1274,7 @@ dependencies = [
  "encoding_rs",
  "parking_lot",
  "portable-pty",
+ "ring",
  "russh",
  "russh-sftp",
  "serde",

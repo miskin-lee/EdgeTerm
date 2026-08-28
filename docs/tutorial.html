@@ -180,8 +180,8 @@
       </ul>
       <div class="callout">
         <span class="callout-tag"><span data-i18n="en">Security</span><span data-i18n="zh">安全</span></span>
-        <span data-i18n="en">Passwords and passphrases are stored in <code>credentials.json</code> inside the app's config directory, readable only by your system user. They are never sent to the frontend or written into <code>sessions.json</code>, and saved sessions reconnect after a restart without triggering the macOS Keychain password dialog.</span>
-        <span data-i18n="zh">密码和私钥口令保存在应用配置目录下的 <code>credentials.json</code> 中，仅当前系统用户可读；不会返回给前端，也不会写入 <code>sessions.json</code>。重启后已保存会话可直接重连，不会触发 macOS 钥匙串的电脑密码授权框。</span>
+        <span data-i18n="en">Passwords and passphrases are stored in <code>credentials.json</code> inside the app's config directory, readable only by your system user. They are never sent to the frontend or written into <code>sessions.json</code>, and saved sessions reconnect after a restart without triggering the macOS Keychain password dialog. The file is sealed (ChaCha20-Poly1305) with a key derived from the machine id and your account name, so it opens automatically here and is useless when copied elsewhere; it protects the file at rest, not against programs running under your own account.</span>
+        <span data-i18n="zh">密码和私钥口令保存在应用配置目录下的 <code>credentials.json</code> 中，仅当前系统用户可读；不会返回给前端，也不会写入 <code>sessions.json</code>。重启后已保存会话可直接重连，不会触发 macOS 钥匙串的电脑密码授权框。该文件以机器 ID 和当前用户名派生的密钥加密（ChaCha20-Poly1305），本机自动打开、拷到别处无法解密；它保护的是静态文件，不防同一账户下运行的程序。</span>
       </div>
 
       <h3>FTP</h3>

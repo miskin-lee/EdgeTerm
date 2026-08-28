@@ -42,6 +42,8 @@
 
 SSH / SFTP / FTP 密码和 SSH 私钥口令保存在应用配置目录下仅当前系统用户可读的 `credentials.json` 中，不会返回给前端，也不会写入 `sessions.json`。因此重启 EdgeTerm 后可直接连接已保存的会话，不会触发 macOS Keychain 的电脑密码授权框。
 
+`credentials.json` 不是明文：它用 ChaCha20-Poly1305 加密，密钥由机器 ID（macOS `IOPlatformUUID`、Windows `MachineGuid`、Linux `/etc/machine-id`）、当前用户名和文件内的随机 salt 经 HKDF-SHA256 派生，无需设置、无需输入——在写入它的这台机器和账户上自动打开，拷到别处则无法解密。请清楚它的边界：它保护的是静态文件和备份，同一台机器、同一账户下运行的任何程序都能派生出同一把密钥，账户被攻破就等于密码库被攻破。无法打开的文件（换了机器、重装系统后机器 ID 变化）会被忽略并在下次保存时替换，会话配置本身不受影响，只需重新输入密码。旧版本写下的明文文件会在首次启动时自动加密。
+
 标准 FTP 不加密凭据和文件内容，只应在可信网络中使用；需要传输安全时请使用 SSH / SFTP。
 
 **界面**（对应 WindTerm 的布局）

@@ -42,13 +42,17 @@ parking_lot = "0.12"
 uuid = { version = "1", features = ["v4", "serde"] }
 base64 = "0.22"
 dirs = "6"
+# Already in the tree through russh; used directly to seal credentials.json
+# (HKDF-SHA256 + ChaCha20-Poly1305).
+ring = "0.17"
 
 [target."cfg(any(target_os = \"macos\", windows, target_os = \"linux\"))".dependencies]
 tauri-plugin-updater = "2"
 
-# Drive enumeration and volume labels for the Filer's "This PC" view.
+# Drive enumeration and volume labels for the Filer's "This PC" view, and the
+# registry MachineGuid the credential key is bound to.
 [target."cfg(windows)".dependencies]
-windows-sys = { version = "0.59", features = ["Win32_Storage_FileSystem", "Win32_System_WindowsProgramming"] }
+windows-sys = { version = "0.59", features = ["Win32_Storage_FileSystem", "Win32_System_WindowsProgramming", "Win32_System_Registry"] }
 
 [profile.release]
 codegen-units = 1

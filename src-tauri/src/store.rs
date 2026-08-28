@@ -1,7 +1,11 @@
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
+use std::sync::OnceLock;
 
+use base64::{engine::general_purpose::STANDARD as B64, Engine as _};
 use parking_lot::Mutex;
+use ring::rand::SecureRandom;
+use ring::{aead, hkdf};
 use serde::{Deserialize, Serialize};
 
 use crate::error::{AppError, Result};
@@ -27,11 +31,155 @@ struct StoredSecrets {
     passphrase: Option<String>,
 }
 
+/// `credentials.json` on disk: the secret map sealed with a key bound to this
+/// machine and user account (`VaultKey`). Every field is required, so a plain
+/// map never parses as an envelope and vice versa (see `CredentialsFile`).
+#[derive(Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct EncryptedCredentials {
+    /// Marker so a human (or a grep) can tell the two layouts apart.
+    encrypted: bool,
+    kdf: String,
+    cipher: String,
+    salt: String,
+    nonce: String,
+    ciphertext: String,
+}
+
+#[derive(Deserialize)]
+#[serde(untagged)]
+enum CredentialsFile {
+    Encrypted(EncryptedCredentials),
+    Plain(HashMap<String, StoredSecrets>),
+}
+
+const VAULT_KDF: &str = "hkdf-sha256";
+const VAULT_CIPHER: &str = "chacha20-poly1305";
+const VAULT_INFO: &[u8] = b"EdgeTerm credentials.json v1";
+const VAULT_SALT_LEN: usize = 16;
+const VAULT_KEY_LEN: usize = 32;
+const VAULT_NONCE_LEN: usize = 12;
+
+/// The key `credentials.json` is sealed with. It is derived — never stored —
+/// from the machine id and the account name (`machine_key_material`) plus a
+/// random salt kept in the file, so a copy of the file is useless on another
+/// machine or account, yet it opens without any prompt on this one. Anything
+/// running as this user on this machine can derive the same key: this
+/// protects the file at rest, not against a compromised account.
+struct VaultKey {
+    key: [u8; VAULT_KEY_LEN],
+    salt: Vec<u8>,
+}
+
+impl VaultKey {
+    fn fresh() -> Self {
+        let mut salt = vec![0u8; VAULT_SALT_LEN];
+        // A failing system RNG means the OS has no entropy source at all;
+        // nothing else in the app (SSH included) would work either.
+        ring::rand::SystemRandom::new()
+            .fill(&mut salt)
+            .expect("system random number generator");
+        Self::from_salt(salt)
+    }
+
+    fn from_salt(salt: Vec<u8>) -> Self {
+        let mut key = [0u8; VAULT_KEY_LEN];
+        hkdf::Salt::new(hkdf::HKDF_SHA256, &salt)
+            .extract(machine_key_material())
+            .expand(&[VAULT_INFO], hkdf::HKDF_SHA256)
+            .and_then(|okm| okm.fill(&mut key))
+            .expect("HKDF output length matches the key length");
+        VaultKey { key, salt }
+    }
+}
+
+/// What the vault key is derived from, computed once per process: an app
+/// constant, the OS machine id and the account name. Without a machine id
+/// (unusual: a stripped-down container) the key is bound to the account only.
+fn machine_key_material() -> &'static [u8] {
+    static MATERIAL: OnceLock<Vec<u8>> = OnceLock::new();
+    MATERIAL.get_or_init(|| {
+        let machine = machine_id().unwrap_or_else(|| {
+            eprintln!(
+                "EdgeTerm: no machine id available; credentials are bound to the user name only"
+            );
+            String::new()
+        });
+        let user = std::env::var("USER")
+            .or_else(|_| std::env::var("USERNAME"))
+            .unwrap_or_default();
+        format!("EdgeTerm\0{machine}\0{user}").into_bytes()
+    })
+}
+
+/// `IOPlatformUUID`, set at manufacture and stable across OS reinstalls.
+#[cfg(target_os = "macos")]
+fn machine_id() -> Option<String> {
+    let output = std::process::Command::new("ioreg")
+        .args(["-rd1", "-c", "IOPlatformExpertDevice"])
+        .output()
+        .ok()?;
+    let text = String::from_utf8_lossy(&output.stdout);
+    text.lines()
+        .find(|line| line.contains("IOPlatformUUID"))
+        .and_then(|line| line.rsplit('"').nth(1))
+        .map(str::to_string)
+        .filter(|id| !id.is_empty())
+}
+
+/// `HKLM\SOFTWARE\Microsoft\Cryptography\MachineGuid`, generated at
+/// Windows installation.
+#[cfg(windows)]
+fn machine_id() -> Option<String> {
+    use windows_sys::Win32::System::Registry::{RegGetValueW, HKEY_LOCAL_MACHINE, RRF_RT_REG_SZ};
+
+    let subkey: Vec<u16> = "SOFTWARE\\Microsoft\\Cryptography\0".encode_utf16().collect();
+    let value: Vec<u16> = "MachineGuid\0".encode_utf16().collect();
+    let mut buffer = [0u16; 128];
+    let mut size = (buffer.len() * std::mem::size_of::<u16>()) as u32;
+    // SAFETY: every pointer refers to a live local buffer or NUL-terminated
+    // string, and `size` carries the buffer's byte length.
+    let status = unsafe {
+        RegGetValueW(
+            HKEY_LOCAL_MACHINE,
+            subkey.as_ptr(),
+            value.as_ptr(),
+            RRF_RT_REG_SZ,
+            std::ptr::null_mut(),
+            buffer.as_mut_ptr().cast(),
+            &mut size,
+        )
+    };
+    if status != 0 {
+        return None;
+    }
+    let chars = (size as usize / std::mem::size_of::<u16>()).min(buffer.len());
+    let text = String::from_utf16_lossy(&buffer[..chars]);
+    let id = text.trim_end_matches('\0').trim().to_string();
+    (!id.is_empty()).then_some(id)
+}
+
+/// systemd's `/etc/machine-id`, with the D-Bus copy as a fallback.
+#[cfg(target_os = "linux")]
+fn machine_id() -> Option<String> {
+    ["/etc/machine-id", "/var/lib/dbus/machine-id"]
+        .iter()
+        .find_map(|path| std::fs::read_to_string(path).ok())
+        .map(|raw| raw.trim().to_string())
+        .filter(|id| !id.is_empty())
+}
+
+#[cfg(not(any(target_os = "macos", windows, target_os = "linux")))]
+fn machine_id() -> Option<String> {
+    None
+}
+
 /// Session profiles, remembered SSH/SFTP/FTP credentials, and Sender commands persisted
 /// in the application config directory.
 ///
 /// `sessions.json` never contains credentials and is safe to return to the UI.
-/// `credentials.json` is readable only by the current OS user and is consulted
+/// `credentials.json` is readable only by the current OS user, is sealed with
+/// a key bound to this machine and account (`VaultKey`) and is consulted
 /// solely while opening a saved session.  Keeping credentials app-local avoids
 /// the macOS Keychain authorization dialog that otherwise reappears when an
 /// unsigned development build changes identity between restarts.
@@ -49,6 +197,7 @@ pub struct Store {
     command_history_path: PathBuf,
     profiles: Mutex<Vec<SessionProfile>>,
     credentials: Mutex<HashMap<String, StoredSecrets>>,
+    vault_key: VaultKey,
     groups: Mutex<Vec<SessionGroup>>,
     sender_commands: Mutex<Vec<SavedCommand>>,
     command_history: Mutex<Vec<CommandHistoryEntry>>,
@@ -63,8 +212,26 @@ impl Store {
         let mut profiles: Vec<SessionProfile> = read_json(&path).unwrap_or_default();
         // Older files may have contained credentials. Move them into the
         // private credential map when loading, then keep the UI copy redacted.
-        let mut credentials: HashMap<String, StoredSecrets> =
-            read_json(&credentials_path_for(&path)).unwrap_or_default();
+        let mut reseal = false;
+        let (mut credentials, vault_key) = match read_json(&credentials_path_for(&path)) {
+            Some(CredentialsFile::Encrypted(envelope)) => match open_credentials(&envelope) {
+                Ok(opened) => opened,
+                // Another machine or account, or a damaged file: the secrets
+                // are unrecoverable, so start over rather than refuse to run.
+                // The next save replaces the file.
+                Err(error) => {
+                    eprintln!("EdgeTerm: {error}; saved passwords are unavailable");
+                    (HashMap::new(), VaultKey::fresh())
+                }
+            },
+            // Written before sealing existed: seal it now rather than leave
+            // the clear text around until the next save.
+            Some(CredentialsFile::Plain(map)) => {
+                reseal = !map.is_empty();
+                (map, VaultKey::fresh())
+            }
+            None => (HashMap::new(), VaultKey::fresh()),
+        };
         let groups_path = groups_path_for(&path);
         let groups = read_json(&groups_path).unwrap_or_default();
         let sender_commands_path = sender_commands_path_for(&path);
@@ -95,11 +262,12 @@ impl Store {
             path,
             profiles: Mutex::new(profiles),
             credentials: Mutex::new(credentials),
+            vault_key,
             groups: Mutex::new(groups),
             sender_commands: Mutex::new(sender_commands),
             command_history: Mutex::new(command_history),
         };
-        if imported_legacy_credentials {
+        if imported_legacy_credentials || reseal {
             // Best effort migration. A later explicit save will surface any
             // filesystem error to the caller.
             let _ = store.persist();
@@ -133,7 +301,6 @@ impl Store {
         if profile.id.is_empty() {
             profile.id = uuid::Uuid::new_v4().to_string();
         }
-
         sync_secrets(&profile, &mut self.credentials.lock());
         profile.password = None;
         profile.passphrase = None;
@@ -505,6 +672,8 @@ impl Store {
         Ok(summary)
     }
 
+    // --- persistence ----------------------------------------------------------
+
     fn persist(&self) -> Result<()> {
         let parent = self
             .path
@@ -514,9 +683,16 @@ impl Store {
 
         let profiles = serde_json::to_string_pretty(&*self.profiles.lock())?;
         write_owner_only(&self.path, &profiles)?;
+        self.persist_credentials()
+    }
 
-        let credentials = serde_json::to_string_pretty(&*self.credentials.lock())?;
-        write_owner_only(&self.credentials_path, &credentials)
+    fn persist_credentials(&self) -> Result<()> {
+        let plaintext = serde_json::to_vec(&*self.credentials.lock())?;
+        let envelope = seal_credentials(&self.vault_key, &plaintext)?;
+        write_owner_only(
+            &self.credentials_path,
+            &serde_json::to_string_pretty(&envelope)?,
+        )
     }
 
     fn persist_groups(&self) -> Result<()> {
@@ -644,6 +820,72 @@ fn unix_millis() -> i64 {
         .duration_since(std::time::UNIX_EPOCH)
         .map(|elapsed| elapsed.as_millis() as i64)
         .unwrap_or(0)
+}
+
+/// Encrypts the secret map under `key` with a fresh random nonce.
+fn seal_credentials(key: &VaultKey, plaintext: &[u8]) -> Result<EncryptedCredentials> {
+    let mut nonce = [0u8; VAULT_NONCE_LEN];
+    ring::rand::SystemRandom::new()
+        .fill(&mut nonce)
+        .map_err(|_| AppError::new("random number generator unavailable"))?;
+    let sealing = aead::LessSafeKey::new(
+        aead::UnboundKey::new(&aead::CHACHA20_POLY1305, &key.key)
+            .map_err(|_| AppError::new("invalid vault key"))?,
+    );
+    let mut in_out = plaintext.to_vec();
+    sealing
+        .seal_in_place_append_tag(
+            aead::Nonce::assume_unique_for_key(nonce),
+            aead::Aad::empty(),
+            &mut in_out,
+        )
+        .map_err(|_| AppError::new("failed to encrypt credentials"))?;
+    Ok(EncryptedCredentials {
+        encrypted: true,
+        kdf: VAULT_KDF.to_string(),
+        cipher: VAULT_CIPHER.to_string(),
+        salt: B64.encode(&key.salt),
+        nonce: B64.encode(nonce),
+        ciphertext: B64.encode(&in_out),
+    })
+}
+
+/// Derives this machine's key for `envelope` and decrypts the secret map. A
+/// file from another machine or account fails the authentication tag.
+fn open_credentials(
+    envelope: &EncryptedCredentials,
+) -> Result<(HashMap<String, StoredSecrets>, VaultKey)> {
+    if envelope.kdf != VAULT_KDF || envelope.cipher != VAULT_CIPHER {
+        return Err(AppError::new(
+            "credentials.json was written by a newer EdgeTerm (unknown cipher)",
+        ));
+    }
+    let decode = |field: &str, value: &str| {
+        B64.decode(value)
+            .map_err(|_| AppError::new(format!("credentials.json is corrupt: bad {field}")))
+    };
+    let salt = decode("salt", &envelope.salt)?;
+    let nonce: [u8; VAULT_NONCE_LEN] = decode("nonce", &envelope.nonce)?
+        .try_into()
+        .map_err(|_| AppError::new("credentials.json is corrupt: bad nonce"))?;
+    let mut in_out = decode("ciphertext", &envelope.ciphertext)?;
+    let key = VaultKey::from_salt(salt);
+    let opening = aead::LessSafeKey::new(
+        aead::UnboundKey::new(&aead::CHACHA20_POLY1305, &key.key)
+            .map_err(|_| AppError::new("invalid vault key"))?,
+    );
+    let plaintext = opening
+        .open_in_place(
+            aead::Nonce::assume_unique_for_key(nonce),
+            aead::Aad::empty(),
+            &mut in_out,
+        )
+        .map_err(|_| {
+            AppError::new("credentials.json cannot be opened on this machine or account")
+        })?;
+    let secrets = serde_json::from_slice(plaintext)
+        .map_err(|_| AppError::new("credentials.json is corrupt"))?;
+    Ok((secrets, key))
 }
 
 fn sync_secrets(profile: &SessionProfile, credentials: &mut HashMap<String, StoredSecrets>) {
