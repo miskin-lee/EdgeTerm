@@ -308,6 +308,19 @@ export const onSessionState = (
 export const onQuitRequested = (handler: () => void): Promise<UnlistenFn> =>
   listen("app:quit-requested", () => handler());
 
+// --- window chrome (Windows) ------------------------------------------------
+
+export type WindowControlAction = "minimize" | "toggle-maximize";
+
+/**
+ * Minimize / maximize / restore the undecorated Windows window through the
+ * same `WM_SYSCOMMAND` route as native caption buttons, which keeps the DWM
+ * grow / shrink animation (`window.toggleMaximize()` does not; see
+ * `window_control` in lib.rs). Windows only.
+ */
+export const windowControl = (action: WindowControlAction): Promise<void> =>
+  invoke("window_control", { action });
+
 // --- encoding helpers -------------------------------------------------------
 
 export function base64ToBytes(base64: string): Uint8Array {

@@ -49,10 +49,11 @@ ring = "0.17"
 [target."cfg(any(target_os = \"macos\", windows, target_os = \"linux\"))".dependencies]
 tauri-plugin-updater = "2"
 
-# Drive enumeration and volume labels for the Filer's "This PC" view, and the
-# registry MachineGuid the credential key is bound to.
+# Drive enumeration and volume labels for the Filer's "This PC" view, the
+# registry MachineGuid the credential key is bound to, and the WM_SYSCOMMAND
+# route behind the menubar's window controls (see `window_control`).
 [target."cfg(windows)".dependencies]
-windows-sys = { version = "0.59", features = ["Win32_Storage_FileSystem", "Win32_System_WindowsProgramming", "Win32_System_Registry"] }
+windows-sys = { version = "0.59", features = ["Win32_Storage_FileSystem", "Win32_System_WindowsProgramming", "Win32_System_Registry", "Win32_UI_WindowsAndMessaging"] }
 
 [profile.release]
 codegen-units = 1

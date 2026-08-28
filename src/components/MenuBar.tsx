@@ -1,4 +1,4 @@
-import { type ReactElement, useEffect, useRef, useState } from "react";
+import { type MouseEvent as ReactMouseEvent, type ReactElement, useEffect, useRef, useState } from "react";
 import {
   getCurrentWindow,
   type Window as TauriWindow,
@@ -8,6 +8,7 @@ import { openUrl } from "@tauri-apps/plugin-opener";
 
 import appIcon from "../../src-tauri/icons/32x32.png";
 import { toggleSessionConnection } from "../actions";
+import { windowControl } from "../api";
 import { exportAppData, importAppData } from "../dataTransfer";
 import { commandHistory } from "../history";
 import { IS_MAC, IS_WINDOWS, shortcutLabel as sc } from "../platform";
@@ -83,14 +84,17 @@ const RESTORE_ICON = (
 const CLOSE_ICON = <path d="M0.5 0.5l9 9M9.5 0.5l-9 9" />;
 
 function WindowControls({ maximized }: { maximized: boolean }) {
-  // The middle button toggles against the window's real state rather than
-  // calling maximize() / unmaximize() from the cached `maximized` flag: it is
-  // right even if the flag lags, and it is the one maximize command the
-  // capability grants (`core:window:allow-toggle-maximize`); plain maximize /
-  // unmaximize are not in `core:window:default` and would be rejected.
-  const toggleMaximize = (win: TauriWindow) => win.toggleMaximize();
+  // Minimize / maximize go through `windowControl` (WM_SYSCOMMAND, like the
+  // native caption buttons) rather than `win.minimize()` /
+  // `win.toggleMaximize()`: the tao path behind those refreshes the frame
+  // right after `ShowWindow`, which kills the DWM grow / shrink animation on
+  // the undecorated window. The middle button toggles against the window's
+  // real state (IsZoomed) rather than the cached `maximized` flag, so it is
+  // right even if the flag lags. Close stays on the window API so the
+  // close-requested hook still guards live sessions.
+  const toggleMaximize = () => windowControl("toggle-maximize");
   const controls: WindowControl[] = [
-    { label: "Minimize", icon: MINIMIZE_ICON, action: (win) => win.minimize() },
+    { label: "Minimize", icon: MINIMIZE_ICON, action: () => windowControl("minimize") },
     maximized
       ? { label: "Restore Down", icon: RESTORE_ICON, action: toggleMaximize }
       : { label: "Maximize", icon: MAXIMIZE_ICON, action: toggleMaximize },
@@ -428,11 +432,30 @@ export function MenuBar(props: Props) {
     },
   ];
 
+  // Windows: a double-click on the drag region maximizes / restores. Tauri's
+  // injected drag script would do that too (`internal_toggle_maximize` on the
+  // document mousedown listener), but through the animation-less tao path, so
+  // take the double-click here first, on the same elements the script treats
+  // as the drag region (the bar itself and the app icon, not the menu titles),
+  // and stop it before it reaches the document. Single clicks still fall
+  // through to the script's `start_dragging`.
+  const onDragRegionMouseDown = IS_WINDOWS
+    ? (event: ReactMouseEvent<HTMLDivElement>) => {
+        if (event.button !== 0 || event.detail !== 2) return;
+        if (!(event.target instanceof HTMLElement)) return;
+        if (!event.target.hasAttribute("data-tauri-drag-region")) return;
+        event.preventDefault();
+        event.stopPropagation();
+        void windowControl("toggle-maximize").catch(() => {});
+      }
+    : undefined;
+
   return (
     <div
       className={`menubar${IS_MAC ? " is-mac" : ""}${IS_MAC && !macFullscreen ? " has-traffic-lights" : ""}`}
       ref={barRef}
       data-tauri-drag-region
+      onMouseDown={onDragRegionMouseDown}
     >
       {IS_WINDOWS && (
         <img

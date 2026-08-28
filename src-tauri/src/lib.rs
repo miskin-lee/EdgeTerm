@@ -37,6 +37,54 @@ fn create_main_window(app: &tauri::App) -> tauri::Result<()> {
     Ok(())
 }
 
+/// Minimize / maximize / restore the main window on Windows.
+///
+/// The menubar's window controls (and a double-click on the drag region) call
+/// this instead of `window.minimize()` / `window.toggleMaximize()`. Those go
+/// through tao's `set_maximized`, which follows `ShowWindow(SW_MAXIMIZE)` with
+/// a `SetWindowLong` + `SetWindowPos(SWP_FRAMECHANGED)` style refresh, and on
+/// the undecorated window that cuts the DWM grow / shrink animation short, so
+/// the window just snaps between sizes. Posting `WM_SYSCOMMAND` is exactly
+/// what the native caption buttons send: `DefWindowProc` does the
+/// `ShowWindow` itself and nothing else touches the frame, so DWM animates
+/// the transition. tao still tracks the result through `WM_SIZE` /
+/// `WM_SYSCOMMAND`, so `isMaximized()` stays right.
+#[tauri::command]
+fn window_control(window: tauri::Window, action: String) -> std::result::Result<(), String> {
+    #[cfg(target_os = "windows")]
+    {
+        use windows_sys::Win32::UI::WindowsAndMessaging::{
+            IsZoomed, PostMessageW, SC_MAXIMIZE, SC_MINIMIZE, SC_RESTORE, WM_SYSCOMMAND,
+        };
+
+        let hwnd = window.hwnd().map_err(|e| e.to_string())?.0
+            as windows_sys::Win32::Foundation::HWND;
+        // SAFETY: `hwnd` is the live handle of a window tauri owns; IsZoomed
+        // only reads its state and PostMessageW copies its arguments, so
+        // neither cares that the command runs off the window's thread.
+        let command = match action.as_str() {
+            "minimize" => SC_MINIMIZE,
+            "toggle-maximize" => {
+                if unsafe { IsZoomed(hwnd) } != 0 {
+                    SC_RESTORE
+                } else {
+                    SC_MAXIMIZE
+                }
+            }
+            other => return Err(format!("unknown window action: {other}")),
+        };
+        if unsafe { PostMessageW(hwnd, WM_SYSCOMMAND, command as usize, 0) } == 0 {
+            return Err(format!("failed to post WM_SYSCOMMAND for {action}"));
+        }
+        Ok(())
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        let _ = window;
+        Err(format!("window_control({action}) is only available on Windows"))
+    }
+}
+
 /// The default macOS menu's Quit item sends `terminate:` straight to
 /// NSApplication, so ⌘Q would kill the app without the webview ever seeing
 /// it — bypassing the close-requested hook that guards live sessions. Swap
@@ -140,6 +188,7 @@ pub fn run() {
             commands::local_rename,
             commands::local_remove,
             commands::list_serial_ports,
+            window_control,
         ])
         .run(tauri::generate_context!())
         .expect("error while running EdgeTerm");
