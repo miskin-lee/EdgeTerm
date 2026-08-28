@@ -8,7 +8,7 @@ use std::time::{Duration, Instant, SystemTime};
 
 use suppaftp::list::File as FtpFile;
 use suppaftp::types::FileType;
-use suppaftp::{FtpError, FtpStream, Mode};
+use suppaftp::{FtpError, FtpStream, Mode, Status};
 use tauri::AppHandle;
 use tokio::sync::mpsc::UnboundedReceiver;
 
@@ -35,6 +35,10 @@ pub struct FtpConnection {
     stream: FtpStream,
     home: String,
     decode_listings: Arc<AtomicBool>,
+    /// Cleared once the server refuses MLSD as unknown or unimplemented, so
+    /// later listings go straight to LIST instead of paying a passive data
+    /// connection and a command round trip for a guaranteed failure.
+    mlsd_supported: bool,
 }
 
 impl FtpConnection {
@@ -123,6 +127,7 @@ pub fn connect(profile: &SessionProfile) -> Result<FtpConnection> {
         stream,
         home,
         decode_listings,
+        mlsd_supported: true,
     })
 }
 
@@ -430,9 +435,18 @@ fn list_directory(connection: &mut FtpConnection, path: &str) -> Result<DirListi
         .cwd(if path.is_empty() { "." } else { path })?;
     let base = connection.stream.pwd()?;
 
-    let mlsd_entries = match connection.listing_command(|ftp| ftp.mlsd(None)) {
-        Ok(lines) => parse_listing(&base, &lines, FtpFile::from_mlsx_line),
-        Err(_) => None,
+    let mlsd_entries = if connection.mlsd_supported {
+        match connection.listing_command(|ftp| ftp.mlsd(None)) {
+            Ok(lines) => parse_listing(&base, &lines, FtpFile::from_mlsx_line),
+            Err(error) => {
+                if mlsd_unsupported(&error) {
+                    connection.mlsd_supported = false;
+                }
+                None
+            }
+        }
+    } else {
+        None
     };
     let list_entries = if mlsd_entries.is_none() {
         connection
@@ -453,6 +467,21 @@ fn list_directory(connection: &mut FtpConnection, path: &str) -> Result<DirListi
         path: base,
         entries,
     })
+}
+
+/// A 500 / 502 reply means the server does not implement MLSD at all (vsftpd,
+/// for one, answers `500 Unknown command`). Anything else — a dropped data
+/// connection, a timeout, a per-directory refusal — may be transient, so the
+/// next listing tries MLSD again.
+fn mlsd_unsupported(error: &FtpError) -> bool {
+    matches!(
+        error,
+        FtpError::UnexpectedResponse(response)
+            if matches!(
+                response.status,
+                Status::BadCommand | Status::NotImplemented | Status::CommandNotImplemented
+            )
+    )
 }
 
 fn parse_listing<F>(base: &str, lines: &[String], mut parse: F) -> Option<Vec<FileEntry>>
@@ -784,13 +813,15 @@ fn report_transfer_progress(
 mod tests {
     use super::{
         control_encoding_proxy, copy_in_chunks, decode_protocol_bytes, encode_control_bytes,
-        entry_from_file, parse_listing, passive_data_address, ENCODING_GBK, ENCODING_UNKNOWN,
-        TRANSFER_CHUNK_SIZE,
+        entry_from_file, mlsd_unsupported, parse_listing, passive_data_address, ENCODING_GBK,
+        ENCODING_UNKNOWN, TRANSFER_CHUNK_SIZE,
     };
     use std::sync::atomic::{AtomicU8, Ordering};
     use std::sync::Arc;
     use std::{io::BufRead, io::BufReader, io::Write, net::TcpListener, net::TcpStream};
     use suppaftp::list::File as FtpFile;
+    use suppaftp::types::Response;
+    use suppaftp::{FtpError, Status};
 
     #[test]
     fn parses_mlsd_entries_into_remote_listing() {
@@ -906,5 +937,22 @@ mod tests {
                 .all(|pair| pair[1] - pair[0] <= TRANSFER_CHUNK_SIZE as u64),
             "no transfer step may exceed the fixed-size buffer"
         );
+    }
+
+    #[test]
+    fn mlsd_refusal_is_remembered_but_transient_failures_are_not() {
+        let refused = |status: Status| {
+            FtpError::UnexpectedResponse(Response::new(status, b"500 Unknown command.".to_vec()))
+        };
+        assert!(mlsd_unsupported(&refused(Status::BadCommand)));
+        assert!(mlsd_unsupported(&refused(Status::NotImplemented)));
+        assert!(mlsd_unsupported(&refused(Status::CommandNotImplemented)));
+
+        // A per-directory refusal or a broken data connection must not
+        // disable MLSD for the rest of the session.
+        assert!(!mlsd_unsupported(&refused(Status::FileUnavailable)));
+        assert!(!mlsd_unsupported(&FtpError::ConnectionError(
+            std::io::Error::new(std::io::ErrorKind::TimedOut, "data connection timed out")
+        )));
     }
 }
