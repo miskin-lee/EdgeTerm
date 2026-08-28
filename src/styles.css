@@ -64,6 +64,7 @@
 
   --scrollbar-thumb: #424242;
   --scrollbar-thumb-hover: #4f4f4f;
+  --term-scrollbar-thumb-hover: #7a7a7a;
   --row-separator: rgba(255, 255, 255, 0.07);
   --swatch-ring: rgba(255, 255, 255, 0.1);
 
@@ -124,6 +125,7 @@
 
   --scrollbar-thumb: #c1c1c1;
   --scrollbar-thumb-hover: #9a9a9a;
+  --term-scrollbar-thumb-hover: #6f6f6f;
   --row-separator: rgba(0, 0, 0, 0.08);
   --swatch-ring: rgba(0, 0, 0, 0.15);
 
@@ -1373,6 +1375,26 @@ textarea:focus {
 
 .term-host .xterm {
   height: 100%;
+}
+
+/* Buffer scrollbar: wider than the app default so it's an easy drag target,
+   and the thumb both grows and brightens under the pointer. */
+.term-host .xterm-viewport::-webkit-scrollbar {
+  width: 12px;
+}
+
+.term-host .xterm-viewport::-webkit-scrollbar-thumb {
+  background: var(--scrollbar-thumb);
+  border: 3px solid transparent;
+  border-radius: 7px;
+  background-clip: content-box;
+}
+
+.term-host .xterm-viewport::-webkit-scrollbar-thumb:hover,
+.term-host .xterm-viewport::-webkit-scrollbar-thumb:active {
+  background: var(--term-scrollbar-thumb-hover);
+  border-width: 2px;
+  background-clip: content-box;
 }
 
 /* Semantic link underline: the decoration element is an empty overlay sized
