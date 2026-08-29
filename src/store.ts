@@ -2,7 +2,7 @@ import { create } from "zustand";
 
 import * as api from "./api";
 import { commandHistory } from "./history";
-import { IS_WINDOWS } from "./platform";
+import { IS_MAC } from "./platform";
 import type { GutterMode, RightClickAction } from "./terminal";
 import { disposeController, getController } from "./terminalRegistry";
 import type {
@@ -64,16 +64,15 @@ const PANELS_KEY = "edgeterm.panels";
 const THEME_KEY = "edgeterm.theme";
 const SUGGESTIONS_KEY = "edgeterm.suggestions";
 const RIGHT_CLICK_KEY = "edgeterm.rightClick";
-const COPY_ON_SELECT_KEY = "edgeterm.copyOnSelect";
 
 /**
- * Windows console convention (conhost, Windows Terminal, VS Code on Windows):
- * right click copies the selection or pastes. macOS and Linux terminals open
- * a context menu instead and paste on middle click.
+ * macOS terminals open a context menu on right click. Everywhere else the
+ * Windows console convention (conhost, Windows Terminal, PuTTY) applies:
+ * right click copies the selection or pastes.
  */
-export const DEFAULT_RIGHT_CLICK: RightClickAction = IS_WINDOWS
-  ? "copyPaste"
-  : "menu";
+export const DEFAULT_RIGHT_CLICK: RightClickAction = IS_MAC
+  ? "menu"
+  : "copyPaste";
 
 // Opt-in: command capture and the completion popup stay off until the user
 // enables them in the Edit menu.
@@ -85,24 +84,13 @@ const loadSuggestionsEnabled = (): boolean => {
   }
 };
 
-// Off by default, as in Windows Terminal and VS Code: it silently replaces
-// the clipboard on every selection, which surprises users who did not ask
-// for it. PuTTY / iTerm2 users can turn it on in the Edit menu.
-const loadCopyOnSelect = (): boolean => {
-  try {
-    return localStorage.getItem(COPY_ON_SELECT_KEY) === "on";
-  } catch {
-    return false;
-  }
-};
-
 // The parse* helpers validate a stored or imported value and return null for
 // anything unknown, so both localStorage and a data file get the same checks.
 const parseTheme = (value: unknown): ThemeMode | null =>
   value === "dark" || value === "light" ? value : null;
 
 const parseRightClickAction = (value: unknown): RightClickAction | null =>
-  value === "copyPaste" || value === "paste" || value === "menu"
+  value === "copyPaste" || value === "menu"
     ? value
     : null;
 
@@ -248,7 +236,6 @@ export interface AppSettings {
   terminalScrollback: number;
   suggestionsEnabled: boolean;
   rightClickAction: RightClickAction;
-  copyOnSelect: boolean;
 }
 
 interface AppStore {
@@ -266,8 +253,6 @@ interface AppStore {
   suggestionsEnabled: boolean;
   /** What a right click in the terminal does; see `RightClickAction`. */
   rightClickAction: RightClickAction;
-  /** Copy every terminal selection to the clipboard as it is made. */
-  copyOnSelect: boolean;
   panels: Record<PanelName, boolean>;
   status: string;
   error: string | null;
@@ -335,7 +320,6 @@ interface AppStore {
   setTerminalScrollback: (rows: number) => void;
   setSuggestionsEnabled: (enabled: boolean) => void;
   setRightClickAction: (action: RightClickAction) => void;
-  setCopyOnSelect: (enabled: boolean) => void;
   resetSettings: () => void;
   /** The preferences a data export carries; see `applySettings`. */
   exportSettings: () => AppSettings;
@@ -365,7 +349,6 @@ export const useStore = create<AppStore>((set, get) => ({
   terminalScrollback: loadScrollback(),
   suggestionsEnabled: loadSuggestionsEnabled(),
   rightClickAction: loadRightClickAction(),
-  copyOnSelect: loadCopyOnSelect(),
   panels: loadPanels(),
   status: "Ready",
   error: null,
@@ -586,15 +569,6 @@ export const useStore = create<AppStore>((set, get) => ({
     }
   },
 
-  setCopyOnSelect(enabled) {
-    set({ copyOnSelect: enabled });
-    try {
-      localStorage.setItem(COPY_ON_SELECT_KEY, enabled ? "on" : "off");
-    } catch {
-      // The setting still applies for this run when storage is unavailable.
-    }
-  },
-
   resetSettings() {
     set({
       panels: { ...DEFAULT_PANELS },
@@ -605,7 +579,6 @@ export const useStore = create<AppStore>((set, get) => ({
       terminalScrollback: TERMINAL_SCROLLBACK.default,
       suggestionsEnabled: false,
       rightClickAction: DEFAULT_RIGHT_CLICK,
-      copyOnSelect: false,
     });
     try {
       localStorage.removeItem(PANELS_KEY);
@@ -616,7 +589,6 @@ export const useStore = create<AppStore>((set, get) => ({
       localStorage.removeItem(TERMINAL_SCROLLBACK_KEY);
       localStorage.removeItem(SUGGESTIONS_KEY);
       localStorage.removeItem(RIGHT_CLICK_KEY);
-      localStorage.removeItem(COPY_ON_SELECT_KEY);
     } catch {
       // The defaults still apply for this run when storage is unavailable.
     }
@@ -633,7 +605,6 @@ export const useStore = create<AppStore>((set, get) => ({
       terminalScrollback: state.terminalScrollback,
       suggestionsEnabled: state.suggestionsEnabled,
       rightClickAction: state.rightClickAction,
-      copyOnSelect: state.copyOnSelect,
     };
   },
 
@@ -666,9 +637,6 @@ export const useStore = create<AppStore>((set, get) => ({
     }
     const rightClickAction = parseRightClickAction(values.rightClickAction);
     if (rightClickAction) state.setRightClickAction(rightClickAction);
-    if (typeof values.copyOnSelect === "boolean") {
-      state.setCopyOnSelect(values.copyOnSelect);
-    }
   },
 
   bumpSenderLibrary() {

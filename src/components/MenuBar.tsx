@@ -188,8 +188,6 @@ export function MenuBar(props: Props) {
   const setSuggestionsEnabled = useStore((s) => s.setSuggestionsEnabled);
   const rightClickAction = useStore((s) => s.rightClickAction);
   const setRightClickAction = useStore((s) => s.setRightClickAction);
-  const copyOnSelect = useStore((s) => s.copyOnSelect);
-  const setCopyOnSelect = useStore((s) => s.setCopyOnSelect);
   const resetSettings = useStore((s) => s.resetSettings);
   const setStatus = useStore((s) => s.setStatus);
   const requestCloseTab = useStore((s) => s.requestCloseTab);
@@ -305,15 +303,9 @@ export function MenuBar(props: Props) {
         },
         "separator",
         {
-          label: "Copy on Select",
-          checked: copyOnSelect,
-          action: () => setCopyOnSelect(!copyOnSelect),
-        },
-        {
           label: "Right Click",
           children: [
             rightClickEntry("Copy or Paste", "copyPaste"),
-            rightClickEntry("Paste", "paste"),
             rightClickEntry("Show Menu", "menu"),
           ],
         },

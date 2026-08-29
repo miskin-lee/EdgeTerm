@@ -28,11 +28,11 @@ export type GutterMode = "off" | "line" | "time" | "both";
 /**
  * What a right click in the terminal does, when no program has taken over
  * the mouse. `copyPaste` is the Windows console convention (copy the
- * selection if there is one, otherwise paste), `menu` the macOS / Linux one
- * (a context menu; the word under the pointer is selected first, as in
- * VS Code), and `paste` is what PuTTY and MobaXterm do.
+ * selection if there is one, otherwise paste), `menu` the macOS one (a
+ * context menu; the word under the pointer is selected first, as in
+ * VS Code).
  */
-export type RightClickAction = "copyPaste" | "paste" | "menu";
+export type RightClickAction = "copyPaste" | "menu";
 
 function openTerminalWebLink(event: MouseEvent, uri: string) {
   // Opening terminal output on an unmodified click makes accidental launches
@@ -200,8 +200,6 @@ export class TerminalController {
   private locked = false;
   /** Command history capture + completion popup. Opt-in via the Edit menu. */
   private suggestionsOn = false;
-  /** Write every new selection to the clipboard (Edit → Copy on Select). */
-  private copyOnSelect = false;
   private inputAnchor: InputAnchor | null = null;
   private readonly popup: HTMLElement;
   /** Rows currently displayed; [] while the popup is hidden. */
@@ -259,13 +257,9 @@ export class TerminalController {
       minimumContrastRatio: 4.5,
       drawBoldTextInBrightColors: true,
       macOptionIsMeta: true,
-      // Set by setMouseOptions: only the "menu" right-click mode wants the
+      // Set by setRightClickAction: only the "menu" mode wants the
       // word under the pointer selected first.
       rightClickSelectsWord: false,
-    });
-
-    this.term.onSelectionChange(() => {
-      if (this.copyOnSelect && this.term.hasSelection()) this.copySelection();
     });
 
     this.zmodemNotice = document.createElement("div");
@@ -569,14 +563,13 @@ export class TerminalController {
   }
 
   /**
-   * Mouse copy / paste preferences. `rightClickSelectsWord` follows the
-   * right-click mode: in "menu" mode a right click selects the word under
-   * the pointer so the menu's Copy has something to copy (VS Code on macOS);
-   * in the paste modes it must stay off, or a right click meant to paste
-   * would select a word and copy it instead.
+   * `rightClickSelectsWord` follows the right-click mode: in "menu" mode a
+   * right click selects the word under the pointer so the menu's Copy has
+   * something to copy (VS Code on macOS); in "copyPaste" mode it must stay
+   * off, or a right click meant to paste would select a word and copy it
+   * instead.
    */
-  setMouseOptions(rightClick: RightClickAction, copyOnSelect: boolean) {
-    this.copyOnSelect = copyOnSelect;
+  setRightClickAction(rightClick: RightClickAction) {
     this.term.options.rightClickSelectsWord = rightClick === "menu";
   }
 

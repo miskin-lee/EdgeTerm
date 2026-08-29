@@ -98,10 +98,9 @@ export function ensureController(id: string): TerminalController {
     useStore.getState().terminalScrollback,
     useStore.getState().theme,
   );
-  const { suggestionsEnabled, rightClickAction, copyOnSelect } =
-    useStore.getState();
+  const { suggestionsEnabled, rightClickAction } = useStore.getState();
   controller.setSuggestions(suggestionsEnabled);
-  controller.setMouseOptions(rightClickAction, copyOnSelect);
+  controller.setRightClickAction(rightClickAction);
   setController(id, controller);
   return controller;
 }

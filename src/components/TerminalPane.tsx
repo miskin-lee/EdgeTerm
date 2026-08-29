@@ -82,7 +82,6 @@ function TerminalHost({ tab, active }: { tab: Tab; active: boolean }) {
   const terminalScrollback = useStore((s) => s.terminalScrollback);
   const suggestionsEnabled = useStore((s) => s.suggestionsEnabled);
   const rightClickAction = useStore((s) => s.rightClickAction);
-  const copyOnSelect = useStore((s) => s.copyOnSelect);
   const [menu, setMenu] = useState<TerminalMenu | null>(null);
   const closeMenu = useCallback(() => setMenu(null), []);
   const id = tab.info.id;
@@ -105,9 +104,6 @@ function TerminalHost({ tab, active }: { tab: Tab; active: boolean }) {
         // conhost / Windows Terminal: the selection is consumed by the copy.
         if (controller.copySelection()) controller.clearSelection();
         else controller.pasteFromClipboard();
-        break;
-      case "paste":
-        controller.pasteFromClipboard();
         break;
       case "menu":
         setMenu({
@@ -194,8 +190,8 @@ function TerminalHost({ tab, active }: { tab: Tab; active: boolean }) {
   }, [id, suggestionsEnabled]);
 
   useEffect(() => {
-    getController(id)?.setMouseOptions(rightClickAction, copyOnSelect);
-  }, [id, rightClickAction, copyOnSelect]);
+    getController(id)?.setRightClickAction(rightClickAction);
+  }, [id, rightClickAction]);
 
   useEffect(() => {
     if (!active) return;
