@@ -1,8 +1,9 @@
 <p align="center">
-  <img src="docs/icon.png" alt="EdgeTerm logo" width="128" height="128">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/logo-dark.png">
+    <img src="docs/logo.png" alt="EdgeTerm" width="480">
+  </picture>
 </p>
-
-<h1 align="center">EdgeTerm</h1>
 
 [English](README.md) | [简体中文](README.zh-CN.md)
 
