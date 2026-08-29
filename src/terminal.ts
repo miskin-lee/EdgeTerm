@@ -214,11 +214,14 @@ export class TerminalController {
   private dismissedInput = "";
   private popupSyncScheduled = false;
   /**
-   * Semantic coloring is render-driven: only rows in and around the viewport
-   * are colored, on the frame they become visible or change. Keeping the
-   * live marker count near the viewport size (instead of one per scrollback
-   * line) is what keeps write throughput flat — xterm walks every live
-   * marker each time the buffer trims a line.
+   * Semantic coloring is viewport-driven: only rows in and around the
+   * viewport are colored, on the frame they become visible or change. Three
+   * hooks feed it, each timed to run before the paint it affects: new output
+   * via `onWriteParsed`, user scrolling via the viewport's DOM `scroll`
+   * event, and `onRender` as the after-paint catch-all. Keeping the live
+   * marker count near the viewport size (instead of one per scrollback line)
+   * is what keeps write throughput flat — xterm walks every live marker each
+   * time the buffer trims a line.
    */
   private semanticRows: SemanticRow[] = [];
   /** Reused cell for buffer walks, to avoid per-cell allocation. */
@@ -309,6 +312,20 @@ export class TerminalController {
         this.pendingShellClear = false;
         this.clearBufferAndMetadata();
       }
+      // New output: xterm has updated the buffer and queued its repaint but
+      // not painted yet, so decorations registered here land in that same
+      // frame. Coloring only from `onRender` (which fires *after* the
+      // renderer has drawn) showed every freshly written row plain for one
+      // frame before it was recolored — a visible flash on `ls -la`.
+      //
+      // This fires once per parse slice (xterm parses for up to 12 ms, then
+      // yields), so during an output flood it runs about once per frame and
+      // takes over the work the `onRender` pass would otherwise do; that
+      // pass then finds the rows unchanged and costs a viewport of string
+      // compares. Two slices in one frame cost one extra viewport of regex
+      // work (~0.5 ms); a throttle would bring back a half-viewport flash
+      // when a listing arrives split across slices, so there is none.
+      this.refreshSemanticColors();
       // The shell's echo of a keystroke lands here; recompute the suggestions
       // from the buffer only while the user is composing a command.
       if (this.inputAnchor) this.schedulePopupSync();
@@ -326,6 +343,10 @@ export class TerminalController {
 
     this.term.onLineFeed(() => this.recordLine());
     this.term.onRender(() => {
+      // Catch-all for rows the write and scroll hooks did not see (resize
+      // rebuilds, the cursor leaving a line, a second parse slice in the
+      // same frame). Runs after the paint, so anything it colors shows up a
+      // frame late; in the steady state it finds nothing to do.
       this.refreshSemanticColors();
       this.syncGutter();
     });
@@ -478,7 +499,8 @@ export class TerminalController {
     // The browser coalesces `scroll` events to one per frame per element,
     // so during an output flood (xterm sets `scrollTop` itself) this is at
     // most one viewport of string compares per frame; rows colored here
-    // keep their state and are skipped by the `onRender` pass.
+    // keep their state and are skipped by the `onRender` pass. New output
+    // is handled by the `onWriteParsed` hook in the constructor.
     this.term.element
       ?.querySelector(".xterm-viewport")
       ?.addEventListener("scroll", () => {
@@ -1059,11 +1081,12 @@ export class TerminalController {
    * movement, copying and full-screen applications continue to behave normally.
    */
   /**
-   * Recolors the viewport after each render. Rows keep their state (marker,
-   * last-seen text, decorations) while they stay near the viewport; a row is
-   * only re-processed when its text changes, so an idle screen costs a few
-   * string compares per frame and a full-speed flood costs one viewport of
-   * regex work per frame instead of per line.
+   * Recolors the viewport. Rows keep their state (marker, last-seen text,
+   * decorations) while they stay near the viewport; a row is only
+   * re-processed when its text changes, so calling this from several hooks
+   * per frame is cheap: an idle screen costs a few string compares per call
+   * and a full-speed flood costs one viewport of regex work per frame
+   * instead of per line.
    */
   private refreshSemanticColors() {
     const buf = this.term.buffer.active;
