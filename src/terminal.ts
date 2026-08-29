@@ -467,6 +467,24 @@ export class TerminalController {
     // re-parenting above.
     this.host.appendChild(this.popup);
 
+    // User scrolling (wheel, trackpad, scrollbar drag) reaches xterm through
+    // the viewport element's DOM `scroll` event and never fires
+    // `term.onScroll`. Coloring only on `onRender` would paint the rows
+    // that just scrolled in plain first and recolor them a frame later,
+    // which shows as a visible color pass during a fast scroll. This
+    // listener is registered after xterm's own, so it runs once xterm has
+    // updated `viewportY` and queued its repaint but before that frame's
+    // animation-frame callbacks: the decorations land in the same paint.
+    // The browser coalesces `scroll` events to one per frame per element,
+    // so during an output flood (xterm sets `scrollTop` itself) this is at
+    // most one viewport of string compares per frame; rows colored here
+    // keep their state and are skipped by the `onRender` pass.
+    this.term.element
+      ?.querySelector(".xterm-viewport")
+      ?.addEventListener("scroll", () => {
+        if (!this.disposed) this.refreshSemanticColors();
+      });
+
     // WebGL is a large win on heavy output but is unavailable in some
     // environments; the canvas/DOM renderer remains a working fallback.
     try {
