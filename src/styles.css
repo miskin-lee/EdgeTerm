@@ -2597,3 +2597,14 @@ textarea:focus {
     transform: translateX(300%);
   }
 }
+
+.about-link {
+  color: inherit;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: pointer;
+}
+
+.about-link:hover {
+  color: var(--fg);
+}

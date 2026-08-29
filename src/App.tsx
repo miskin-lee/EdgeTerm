@@ -1,4 +1,5 @@
 import { getCurrentWindow } from "@tauri-apps/api/window";
+import { openUrl } from "@tauri-apps/plugin-opener";
 import { exit } from "@tauri-apps/plugin-process";
 import {
   useCallback,
@@ -35,6 +36,8 @@ import { useActiveTab, useStore } from "./store";
 import { allControllers, getController } from "./terminalRegistry";
 import { isFileSession, type SessionProfile, type SessionState } from "./types";
 import { useUpdater } from "./updater";
+
+const REPO_URL = "https://github.com/miskin-lee/EdgeTerm";
 
 const clamp = (value: number, min: number, max: number) =>
   Math.min(max, Math.max(min, value));
@@ -439,14 +442,24 @@ export default function App() {
                 EdgeTerm{updater.appVersion ? ` ${updater.appVersion}` : ""}
               </strong>
               <span>
-                A lightweight terminal, SSH, FTP and serial client built with
-                Rust + Tauri. The installer is under 5 MB and the whole app is a
-                single native binary, so it starts fast.
+                A small, fast terminal, SSH, SFTP, FTP and serial client. The
+                installer is tiny, it starts instantly, and it stays out of
+                your way.
               </span>
               <span style={{ color: "var(--fg-faint)" }}>
-                Local shell via portable-pty · SSH and SFTP via russh · FTP via
-                SuppaFTP · serial via serialport · terminal rendering by
-                xterm.js
+                Made by miskin ·{" "}
+                <a
+                  className="about-link"
+                  href={REPO_URL}
+                  onClick={(event) => {
+                    event.preventDefault();
+                    void openUrl(REPO_URL).catch((error) => {
+                      console.error("Failed to open repository:", error);
+                    });
+                  }}
+                >
+                  github.com/miskin-lee/EdgeTerm
+                </a>
               </span>
             </div>
             <div className="dialog-footer">
