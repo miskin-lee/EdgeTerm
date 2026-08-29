@@ -37,7 +37,7 @@ A small, lightweight, high-performance terminal, SSH, SFTP, FTP, and serial clie
 - **Timestamp and line-number gutter** — WindTerm's most recognizable feature. Every output line includes `[HH:MM:SS.SSS]` and a cumulative line number, with the cursor line highlighted. Four display modes are available from the `Session` menu.
 - **Session** (left): saved connection profiles in a collapsible tree; double-click to connect. Right-click a heading or a group to create (nested) groups, rename or delete them; right-click a session to connect, edit, move it to another group, or delete it. The New Session dialog lets you choose which group a session is saved to.
 - **Filer** (right): a file browser that automatically switches to SFTP for SSH sessions, with file and folder upload (including drag & drop), file and folder download, create-directory, and delete operations. Other terminal sessions browse the local filesystem.
-- **Sender** (bottom): batch sending with text or hexadecimal input, line-by-line or character-by-character modes, repeat counts, configurable intervals, and targeting of the current session or all sessions. Saved commands are scoped — to one session, a Session panel group, a session kind (serial / SSH / shell) or everywhere — and the Sender lists the ones that apply to the active tab, most specific first.
+- **Sender** (bottom): send text or hexadecimal input with a chosen line ending (none / LF / CRLF) to the current session or to all open sessions at once. Saved commands are scoped — to one session, a Session panel group, a session kind (serial / SSH / shell) or everywhere — and the Sender lists the ones that apply to the active tab, most specific first.
 
 **Command suggestions**
 
