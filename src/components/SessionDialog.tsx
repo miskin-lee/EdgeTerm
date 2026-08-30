@@ -10,6 +10,7 @@ import {
   sectionLabel,
 } from "../sessionGroups";
 import { useStore } from "../store";
+import { useDialogDrag } from "./useDialogDrag";
 import {
   colorForSession,
   randomSessionColor,
@@ -117,6 +118,8 @@ function nextColorIndex(
 
 export function SessionDialog({ initial, onClose }: Props) {
   const colorPickerRef = useRef<HTMLDivElement>(null);
+  const { dialogRef, handleProps: dragHandleProps } =
+    useDialogDrag<HTMLDivElement>();
   const [profile, setProfile] = useState<SessionProfile>(() =>
     initial
       ? {
@@ -268,13 +271,14 @@ export function SessionDialog({ initial, onClose }: Props) {
   return (
     <div className="dialog-backdrop" onMouseDown={onClose}>
       <div
+        ref={dialogRef}
         className="dialog session-dialog"
         role="dialog"
         aria-modal="true"
         aria-labelledby="session-dialog-title"
         onMouseDown={(event) => event.stopPropagation()}
       >
-        <div className="dialog-header">
+        <div className="dialog-header is-drag-handle" {...dragHandleProps}>
           <div>
             <div id="session-dialog-title" className="session-dialog-title">
               {initial?.id ? "Edit Session" : "New Session"}

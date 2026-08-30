@@ -1866,6 +1866,13 @@ textarea:focus {
   font-size: 13px;
 }
 
+/* A header that drags the dialog around (see useDialogDrag). */
+.dialog-header.is-drag-handle {
+  user-select: none;
+  -webkit-user-select: none;
+  touch-action: none;
+}
+
 .dialog-body {
   padding: 14px 16px;
   display: flex;
