@@ -313,10 +313,10 @@ export const onQuitRequested = (handler: () => void): Promise<UnlistenFn> =>
 export type WindowControlAction = "minimize" | "toggle-maximize";
 
 /**
- * Minimize / maximize / restore the undecorated Windows window through the
+ * Minimize / maximize / restore the main window. On Windows this takes the
  * same `WM_SYSCOMMAND` route as native caption buttons, which keeps the DWM
- * grow / shrink animation (`window.toggleMaximize()` does not; see
- * `window_control` in lib.rs). Windows only.
+ * grow / shrink animation (`window.toggleMaximize()` does not); elsewhere it
+ * forwards to the window (see `window_control` in lib.rs).
  */
 export const windowControl = (action: WindowControlAction): Promise<void> =>
   invoke("window_control", { action });

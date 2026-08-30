@@ -7,7 +7,7 @@ import {
 } from "react";
 
 import { ensureController } from "../actions";
-import { IS_MAC } from "../platform";
+import { IS_MAC, shortcutLabel as sc } from "../platform";
 import { useStore, type Tab } from "../store";
 import type { TerminalController } from "../terminal";
 import { getController } from "../terminalRegistry";
@@ -47,8 +47,8 @@ export function TerminalPane({ onNewSession }: Props) {
           <div className="term-empty-hint">
             <span>No session is open.</span>
             <span>
-              Press <kbd>⌘N</kbd> for a new session, or pick one from the
-              Session panel.
+              Press <kbd>{sc("⌘N", "Alt+N")}</kbd> for a new session, or pick
+              one from the Session panel.
             </span>
           </div>
           <button className="btn is-primary" onClick={onNewSession}>

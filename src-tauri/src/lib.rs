@@ -13,12 +13,16 @@ use commands::AppState;
 /// Build the main window from `tauri.conf.json` (`create: false` there keeps
 /// Tauri from creating it first).
 ///
-/// `titleBarStyle: "Overlay"` only exists on macOS, so on Windows the native
-/// title bar would still sit above the menubar. Drop the decorations there and
-/// let the menubar draw the window controls itself (see `MenuBar.tsx`); tao
-/// keeps edge resizing, the DWM shadow and the maximized work-area fit for
-/// undecorated windows. Linux keeps the native frame: undecorated windows
-/// behave too differently across window managers.
+/// The menubar is the title bar: it is the drag region and shares its row
+/// with the window controls (see `MenuBar.tsx`), the VS Code arrangement.
+/// - macOS keeps `titleBarStyle: "Overlay"`: the native traffic lights are
+///   painted over the menubar, which leaves room for them.
+/// - Windows and Linux drop the native decorations and the menubar draws the
+///   app icon and minimize / maximize / close itself. tao keeps edge resizing
+///   on both (a hit-test on the undecorated GTK window, X11 and Wayland
+///   alike), plus the DWM shadow and the maximized work-area fit on Windows.
+///   Linux loses the GTK client-side shadow, which is the price of not
+///   carrying a 46px GNOME header bar above the menubar.
 fn create_main_window(app: &tauri::App) -> tauri::Result<()> {
     let config = app
         .config()
@@ -29,7 +33,7 @@ fn create_main_window(app: &tauri::App) -> tauri::Result<()> {
         .expect("tauri.conf.json defines the main window");
     #[allow(unused_mut)]
     let mut builder = tauri::WebviewWindowBuilder::from_config(app.handle(), &config)?;
-    #[cfg(target_os = "windows")]
+    #[cfg(any(target_os = "windows", target_os = "linux"))]
     {
         builder = builder.decorations(false);
     }
@@ -37,10 +41,12 @@ fn create_main_window(app: &tauri::App) -> tauri::Result<()> {
     Ok(())
 }
 
-/// Minimize / maximize / restore the main window on Windows.
+/// Minimize / maximize / restore the main window.
 ///
 /// The menubar's window controls (and a double-click on the drag region) call
-/// this instead of `window.minimize()` / `window.toggleMaximize()`. Those go
+/// this instead of `window.minimize()` / `window.toggleMaximize()`. On Linux
+/// (and macOS, for the drag-region double-click) it simply forwards to the
+/// window. On Windows those go
 /// through tao's `set_maximized`, which follows `ShowWindow(SW_MAXIMIZE)` with
 /// a `SetWindowLong` + `SetWindowPos(SWP_FRAMECHANGED)` style refresh, and on
 /// the undecorated window that cuts the DWM grow / shrink animation short, so
@@ -80,8 +86,18 @@ fn window_control(window: tauri::Window, action: String) -> std::result::Result<
     }
     #[cfg(not(target_os = "windows"))]
     {
-        let _ = window;
-        Err(format!("window_control({action}) is only available on Windows"))
+        let err = |e: tauri::Error| e.to_string();
+        match action.as_str() {
+            "minimize" => window.minimize().map_err(err),
+            "toggle-maximize" => {
+                if window.is_maximized().map_err(err)? {
+                    window.unmaximize().map_err(err)
+                } else {
+                    window.maximize().map_err(err)
+                }
+            }
+            other => Err(format!("unknown window action: {other}")),
+        }
     }
 }
 

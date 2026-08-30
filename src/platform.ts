@@ -5,11 +5,7 @@
  */
 export const IS_MAC: boolean = __EDGETERM_MAC__;
 
-/**
- * True when built for Windows, where the main window is undecorated and the
- * menubar draws the window controls itself (see `create_main_window` in
- * `src-tauri/src/lib.rs`).
- */
+/** True when built for Windows (shell placeholder, path conventions). */
 export const IS_WINDOWS: boolean = __EDGETERM_WINDOWS__;
 
 /** Pick the shortcut label for the current platform. */

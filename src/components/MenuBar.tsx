@@ -11,7 +11,7 @@ import { toggleSessionConnection } from "../actions";
 import { windowControl } from "../api";
 import { exportAppData, importAppData } from "../dataTransfer";
 import { commandHistory } from "../history";
-import { IS_MAC, IS_WINDOWS, shortcutLabel as sc } from "../platform";
+import { IS_MAC, shortcutLabel as sc } from "../platform";
 import { useActiveTab, useStore } from "../store";
 import type { GutterMode, RightClickAction } from "../terminal";
 import { getController } from "../terminalRegistry";
@@ -20,13 +20,18 @@ import type { ThemeMode } from "../types";
 const TUTORIAL_URL = "https://miskin-lee.github.io/EdgeTerm/tutorial.html";
 
 // The menubar is also the title bar: it is the window drag region and shares
-// its row with the window controls.
+// its row with the window controls, laid out like VS Code's custom title bar.
 // - macOS: `titleBarStyle: "Overlay"` paints the traffic lights over our
 //   content, so the bar leaves room for them (except in native fullscreen,
 //   where macOS hides them).
-// - Windows: the window is undecorated (see `create_main_window` in lib.rs),
-//   so the bar shows the app icon and draws minimize / maximize / close itself.
-// - Linux keeps the native title bar above the menubar.
+// - Windows and Linux: the window is undecorated (see `create_main_window`
+//   in lib.rs), so the bar follows VS Code's three-part layout: app icon and
+//   menus on the left, the window title centred, minimize / maximize / close
+//   on the right. Double-clicking the app icon closes the window (the
+//   system-menu convention VS Code keeps on both platforms).
+//
+// The window title (`<session> - EdgeTerm`, VS Code's `<file> - <app>`
+// shape) is also pushed to the OS so the taskbar / overview shows the same.
 
 /** Track a boolean window property, re-reading it whenever the window resizes. */
 function useWindowFlag(
@@ -84,12 +89,12 @@ const RESTORE_ICON = (
 const CLOSE_ICON = <path d="M0.5 0.5l9 9M9.5 0.5l-9 9" />;
 
 function WindowControls({ maximized }: { maximized: boolean }) {
-  // Minimize / maximize go through `windowControl` (WM_SYSCOMMAND, like the
-  // native caption buttons) rather than `win.minimize()` /
-  // `win.toggleMaximize()`: the tao path behind those refreshes the frame
-  // right after `ShowWindow`, which kills the DWM grow / shrink animation on
-  // the undecorated window. The middle button toggles against the window's
-  // real state (IsZoomed) rather than the cached `maximized` flag, so it is
+  // Minimize / maximize go through `windowControl` rather than
+  // `win.minimize()` / `win.toggleMaximize()`: on Windows the tao path behind
+  // those refreshes the frame right after `ShowWindow`, which kills the DWM
+  // grow / shrink animation on the undecorated window (elsewhere the command
+  // just forwards to the window). The middle button toggles against the
+  // window's real state rather than the cached `maximized` flag, so it is
   // right even if the flag lags. Close stays on the window API so the
   // close-requested hook still guards live sessions.
   const toggleMaximize = () => windowControl("toggle-maximize");
@@ -174,10 +179,17 @@ export function MenuBar(props: Props) {
   const [open, setOpen] = useState<string | null>(null);
   const barRef = useRef<HTMLDivElement>(null);
   const macFullscreen = useWindowFlag(IS_MAC, readFullscreen);
-  const maximized = useWindowFlag(IS_WINDOWS, readMaximized);
+  const maximized = useWindowFlag(!IS_MAC, readMaximized);
 
   const activeId = useStore((s) => s.activeId);
-  const activeState = useActiveTab()?.state;
+  const activeTab = useActiveTab();
+  const activeState = activeTab?.state;
+  const windowTitle = activeTab
+    ? `${activeTab.info.name}${IS_MAC ? " \u2014 " : " - "}EdgeTerm`
+    : "EdgeTerm";
+  useEffect(() => {
+    getCurrentWindow().setTitle(windowTitle).catch(() => {});
+  }, [windowTitle]);
   const panels = useStore((s) => s.panels);
   const togglePanel = useStore((s) => s.togglePanel);
   const gutterMode = useStore((s) => s.gutterMode);
@@ -424,23 +436,26 @@ export function MenuBar(props: Props) {
     },
   ];
 
-  // Windows: a double-click on the drag region maximizes / restores. Tauri's
-  // injected drag script would do that too (`internal_toggle_maximize` on the
-  // document mousedown listener), but through the animation-less tao path, so
-  // take the double-click here first, on the same elements the script treats
-  // as the drag region (the bar itself and the app icon, not the menu titles),
-  // and stop it before it reaches the document. Single clicks still fall
-  // through to the script's `start_dragging`.
-  const onDragRegionMouseDown = IS_WINDOWS
-    ? (event: ReactMouseEvent<HTMLDivElement>) => {
-        if (event.button !== 0 || event.detail !== 2) return;
-        if (!(event.target instanceof HTMLElement)) return;
-        if (!event.target.hasAttribute("data-tauri-drag-region")) return;
-        event.preventDefault();
-        event.stopPropagation();
-        void windowControl("toggle-maximize").catch(() => {});
-      }
-    : undefined;
+  // A double-click on the drag region maximizes / restores (on the app icon
+  // it closes the window instead, as in VS Code). Tauri's injected drag
+  // script would toggle too (`internal_toggle_maximize` on the document
+  // mousedown listener), but on Windows through the animation-less tao path,
+  // so take the double-click here first, on the same elements the script
+  // treats as the drag region (everything carrying the attribute, not the
+  // menu titles), and stop it before it reaches the document. Single clicks
+  // still fall through to the script's `start_dragging`.
+  const onDragRegionMouseDown = (event: ReactMouseEvent<HTMLDivElement>) => {
+    if (event.button !== 0 || event.detail !== 2) return;
+    if (!(event.target instanceof HTMLElement)) return;
+    if (!event.target.hasAttribute("data-tauri-drag-region")) return;
+    event.preventDefault();
+    event.stopPropagation();
+    if (event.target.classList.contains("menubar-icon")) {
+      void getCurrentWindow().close().catch(() => {});
+      return;
+    }
+    void windowControl("toggle-maximize").catch(() => {});
+  };
 
   return (
     <div
@@ -449,95 +464,104 @@ export function MenuBar(props: Props) {
       data-tauri-drag-region
       onMouseDown={onDragRegionMouseDown}
     >
-      {IS_WINDOWS && (
-        <img
-          className="menubar-icon"
-          src={appIcon}
-          alt=""
-          draggable={false}
-          data-tauri-drag-region
-        />
-      )}
-      {menus.map((menu) => (
-        <div
-          key={menu.title}
-          className={`menu-item${open === menu.title ? " is-open" : ""}`}
-          onMouseDown={() => setOpen(open === menu.title ? null : menu.title)}
-          onMouseEnter={() => open && setOpen(menu.title)}
-        >
-          {menu.title}
-          {open === menu.title && (
-            // When a dropdown has checkable entries, every entry in it
-            // (submenu parents included) renders the check column so labels
-            // share one left edge. Dropdowns without any stay compact.
-            <div className="menu-dropdown">
-              {menu.entries.map((entry, index) => {
-                if (entry === "separator") {
-                  return <div key={index} className="menu-separator" />;
-                }
-                const showCheck = hasCheckable(menu.entries);
-                if (entry.children) {
-                  const children = entry.children;
-                  const showChildCheck = hasCheckable(children);
+      <div className="menubar-left" data-tauri-drag-region>
+        {!IS_MAC && (
+          <img
+            className="menubar-icon"
+            src={appIcon}
+            alt=""
+            draggable={false}
+            data-tauri-drag-region
+          />
+        )}
+        {menus.map((menu) => (
+          <div
+            key={menu.title}
+            className={`menu-item${open === menu.title ? " is-open" : ""}`}
+            onMouseDown={() => setOpen(open === menu.title ? null : menu.title)}
+            onMouseEnter={() => open && setOpen(menu.title)}
+          >
+            {menu.title}
+            {open === menu.title && (
+              // When a dropdown has checkable entries, every entry in it
+              // (submenu parents included) renders the check column so labels
+              // share one left edge. Dropdowns without any stay compact.
+              <div className="menu-dropdown">
+                {menu.entries.map((entry, index) => {
+                  if (entry === "separator") {
+                    return <div key={index} className="menu-separator" />;
+                  }
+                  const showCheck = hasCheckable(menu.entries);
+                  if (entry.children) {
+                    const children = entry.children;
+                    const showChildCheck = hasCheckable(children);
+                    return (
+                      <div
+                        key={entry.label}
+                        className="menu-submenu-entry"
+                        onMouseDown={(event) => event.stopPropagation()}
+                      >
+                        <div className="menu-entry" role="menuitem">
+                          {showCheck && <MenuCheck />}
+                          <span className="menu-entry-label">{entry.label}</span>
+                          <span className="menu-submenu-arrow" aria-hidden="true">
+                            ›
+                          </span>
+                        </div>
+                        <div className="menu-dropdown menu-submenu">
+                          {children.map((child) => (
+                            <button
+                              key={child.label}
+                              className={`menu-entry${child.checked ? " is-checked" : ""}`}
+                              onMouseDown={(event) => {
+                                event.stopPropagation();
+                                setOpen(null);
+                                child.action?.();
+                              }}
+                            >
+                              {showChildCheck && (
+                                <MenuCheck checked={child.checked} />
+                              )}
+                              <span className="menu-entry-label">
+                                {child.label}
+                              </span>
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    );
+                  }
                   return (
-                    <div
+                    <button
                       key={entry.label}
-                      className="menu-submenu-entry"
-                      onMouseDown={(event) => event.stopPropagation()}
+                      className={`menu-entry${entry.checked ? " is-checked" : ""}`}
+                      onMouseDown={(event) => {
+                        event.stopPropagation();
+                        setOpen(null);
+                        entry.action?.();
+                      }}
                     >
-                      <div className="menu-entry" role="menuitem">
-                        {showCheck && <MenuCheck />}
-                        <span className="menu-entry-label">{entry.label}</span>
-                        <span className="menu-submenu-arrow" aria-hidden="true">
-                          ›
-                        </span>
-                      </div>
-                      <div className="menu-dropdown menu-submenu">
-                        {children.map((child) => (
-                          <button
-                            key={child.label}
-                            className={`menu-entry${child.checked ? " is-checked" : ""}`}
-                            onMouseDown={(event) => {
-                              event.stopPropagation();
-                              setOpen(null);
-                              child.action?.();
-                            }}
-                          >
-                            {showChildCheck && (
-                              <MenuCheck checked={child.checked} />
-                            )}
-                            <span className="menu-entry-label">
-                              {child.label}
-                            </span>
-                          </button>
-                        ))}
-                      </div>
-                    </div>
+                      {showCheck && <MenuCheck checked={entry.checked} />}
+                      <span className="menu-entry-label">{entry.label}</span>
+                      {entry.shortcut && (
+                        <span className="menu-shortcut">{entry.shortcut}</span>
+                      )}
+                    </button>
                   );
-                }
-                return (
-                  <button
-                    key={entry.label}
-                    className={`menu-entry${entry.checked ? " is-checked" : ""}`}
-                    onMouseDown={(event) => {
-                      event.stopPropagation();
-                      setOpen(null);
-                      entry.action?.();
-                    }}
-                  >
-                    {showCheck && <MenuCheck checked={entry.checked} />}
-                    <span className="menu-entry-label">{entry.label}</span>
-                    {entry.shortcut && (
-                      <span className="menu-shortcut">{entry.shortcut}</span>
-                    )}
-                  </button>
-                );
-              })}
-            </div>
-          )}
+                })}
+              </div>
+            )}
+          </div>
+        ))}
+      </div>
+      {!IS_MAC && (
+        <div className="menubar-center" data-tauri-drag-region>
+          <span className="menubar-title" data-tauri-drag-region>
+            {windowTitle}
+          </span>
         </div>
-      ))}
-      {IS_WINDOWS && <WindowControls maximized={maximized} />}
+      )}
+      {!IS_MAC && <WindowControls maximized={maximized} />}
     </div>
   );
 }
