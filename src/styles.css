@@ -1990,7 +1990,14 @@ textarea:focus {
   background: var(--bg-panel-alt);
 }
 
+/* No vertical padding on the select: WebKitGTK's Adwaita theme adds its own
+   5px above and below the text inside the menulist (macOS / Chromium add
+   next to nothing), and once that inner block overflows the content box
+   WebKit stops centring it and pins it to the top, so the text sat ~4px
+   low on Linux. With 26px of content height it fits and centres again. */
 .session-field select {
+  padding-top: 0;
+  padding-bottom: 0;
   color-scheme: inherit;
 }
 
