@@ -21,7 +21,7 @@ fn temp_dir(tag: &str) -> PathBuf {
     dir
 }
 
-fn profile(kind: SessionKind) -> SessionProfile {
+pub(crate) fn profile(kind: SessionKind) -> SessionProfile {
     SessionProfile {
         id: String::new(),
         name: "test".into(),
@@ -37,6 +37,7 @@ fn profile(kind: SessionKind) -> SessionProfile {
         password: None,
         private_key_path: None,
         passphrase: None,
+        jump_profile_id: None,
         port_name: None,
         baud_rate: None,
         data_bits: None,
@@ -232,6 +233,76 @@ fn store_assigns_ids_and_round_trips_profiles() {
 
     store.delete(&saved.id).expect("delete");
     assert!(store.list().is_empty());
+
+    std::fs::remove_dir_all(&dir).ok();
+}
+
+#[test]
+fn store_resolves_jump_host_chains_and_refuses_loops() {
+    let dir = temp_dir("jump");
+    let store = Store::load_from(dir.join("sessions.json"));
+
+    let mut bastion = profile(SessionKind::Ssh);
+    bastion.name = "bastion".into();
+    bastion.host = Some("bastion.example".into());
+    bastion.password = Some("pw-bastion".into());
+    let bastion = store.save(bastion).expect("save bastion");
+
+    let mut master = profile(SessionKind::Ssh);
+    master.name = "master".into();
+    master.host = Some("10.0.0.1".into());
+    master.jump_profile_id = Some(bastion.id.clone());
+    let master = store.save(master).expect("save master");
+
+    let mut node = profile(SessionKind::Sftp);
+    node.name = "node".into();
+    node.host = Some("10.0.0.7".into());
+    node.jump_profile_id = Some(master.id.clone());
+    let node = store.save(node).expect("save node");
+
+    // First hop first, and each hop carries its stored credentials so the
+    // connection code can authenticate on it.
+    let chain = store.jump_chain(&node).expect("chain");
+    let names: Vec<&str> = chain.iter().map(|p| p.name.as_str()).collect();
+    assert_eq!(names, ["bastion", "master"]);
+    assert_eq!(chain[0].password.as_deref(), Some("pw-bastion"));
+    assert!(store.jump_chain(&bastion).expect("direct").is_empty());
+
+    // bastion → node → master → bastion would loop: refused, not saved.
+    let mut looped = store.get(&bastion.id).expect("get").expect("bastion");
+    looped.jump_profile_id = Some(node.id.clone());
+    assert!(store.save(looped).is_err());
+    assert!(store
+        .get(&bastion.id)
+        .expect("get")
+        .expect("bastion")
+        .jump_profile_id
+        .is_none());
+
+    // A jump host must be an existing SSH transport, and only an SSH
+    // transport can have one: anything else falls back to a direct
+    // connection, like a stale group id.
+    let mut stale = profile(SessionKind::Ssh);
+    stale.jump_profile_id = Some("no-such-profile".into());
+    assert!(store.save(stale).expect("save").jump_profile_id.is_none());
+    let mut plain_ftp = profile(SessionKind::Ftp);
+    plain_ftp.name = "ftp".into();
+    let plain_ftp = store.save(plain_ftp).expect("save ftp");
+    let mut via_ftp = profile(SessionKind::Ssh);
+    via_ftp.jump_profile_id = Some(plain_ftp.id.clone());
+    assert!(store.save(via_ftp).expect("save").jump_profile_id.is_none());
+    let mut local = profile(SessionKind::Local);
+    local.jump_profile_id = Some(bastion.id.clone());
+    assert!(store.save(local).expect("save").jump_profile_id.is_none());
+
+    // The reference survives a restart, and a deleted jump host is reported
+    // when the dependent session is opened rather than silently bypassed.
+    let reloaded = Store::load_from(dir.join("sessions.json"));
+    let node = reloaded.get(&node.id).expect("get").expect("node");
+    assert_eq!(node.jump_profile_id.as_deref(), Some(master.id.as_str()));
+    reloaded.delete(&master.id).expect("delete master");
+    let error = reloaded.jump_chain(&node).expect_err("missing jump host");
+    assert!(error.to_string().contains("no longer exists"), "{error}");
 
     std::fs::remove_dir_all(&dir).ok();
 }

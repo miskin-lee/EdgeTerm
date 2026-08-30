@@ -68,12 +68,16 @@ function FolderIcon({ open }: { open: boolean }) {
 }
 
 /** One-line connection target, used for the row tooltip and delete prompt. */
-function describeProfile(profile: SessionProfile): string {
+function describeProfile(
+  profile: SessionProfile,
+  jumpHost?: SessionProfile,
+): string {
+  const via = jumpHost ? ` via ${jumpHost.name}` : "";
   switch (profile.kind) {
     case "ssh":
-      return `${profile.username ?? ""}@${profile.host ?? ""}:${profile.port ?? 22}`;
+      return `${profile.username ?? ""}@${profile.host ?? ""}:${profile.port ?? 22}${via}`;
     case "sftp":
-      return `${profile.username ?? ""}@${profile.host ?? ""}:${profile.port ?? 22}`;
+      return `${profile.username ?? ""}@${profile.host ?? ""}:${profile.port ?? 22}${via}`;
     case "ftp":
       return `${profile.username || "anonymous"}@${profile.host ?? ""}:${profile.port ?? 21}`;
     case "serial":
@@ -380,7 +384,10 @@ export function SessionPanel({ onEditProfile, onNewSession }: Props) {
       style={{ paddingLeft: 8 + INDENT * depth }}
       onDoubleClick={() => void openSession(profile)}
       onContextMenu={(event) => openMenu(event, profileMenu(profile))}
-      title={describeProfile(profile)}
+      title={describeProfile(
+        profile,
+        profiles.find((p) => p.id && p.id === profile.jumpProfileId),
+      )}
     >
       <span
         className="row-dot"

@@ -62,6 +62,14 @@ pub struct SessionProfile {
     pub private_key_path: Option<String>,
     #[serde(default)]
     pub passphrase: Option<String>,
+    /// Saved SSH / SFTP profile to tunnel through (OpenSSH's `ProxyJump`):
+    /// the transport to that host is opened first and this session's SSH
+    /// handshake runs inside a `direct-tcpip` channel on it, so a host only
+    /// reachable from the jump host's network can be opened directly. The
+    /// jump profile may itself name a jump host, giving a chain; see
+    /// `Store::jump_chain`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub jump_profile_id: Option<String>,
 
     // --- serial ---
     #[serde(default)]
@@ -80,7 +88,18 @@ pub struct SessionProfile {
     pub flow_control: Option<String>,
 }
 
+/// Longest jump-host chain a session may be tunnelled through. Deeper chains
+/// are almost certainly a configuration mistake and each hop costs a full
+/// handshake, so the store refuses them rather than following them.
+pub const MAX_JUMP_HOPS: usize = 8;
+
 impl SessionProfile {
+    /// Whether the profile rides an SSH transport, and can therefore be a jump
+    /// host or use one.
+    pub fn is_ssh_transport(&self) -> bool {
+        matches!(self.kind, SessionKind::Ssh | SessionKind::Sftp)
+    }
+
     /// The Shell field with surrounding whitespace removed, or the platform's
     /// default shell when it is empty. A blank field is "use the default" so
     /// clearing it never tries to spawn a program called "".

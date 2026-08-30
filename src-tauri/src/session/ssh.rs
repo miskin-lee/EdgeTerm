@@ -200,6 +200,25 @@ fn describe_host_key_change(
 pub struct SshConnection {
     handle: Arc<Handle<Client>>,
     channel: Channel<Msg>,
+    hops: Hops,
+}
+
+/// The jump-host transports a session runs over, first hop first (empty for
+/// a direct connection). Every later transport is an SSH session inside a
+/// `direct-tcpip` channel of the previous one, and dropping a hop's handle
+/// ends its russh session and with it everything tunnelled through it, so
+/// the hops live exactly as long as the session they carry and are torn
+/// down last hop first.
+struct Hops(Vec<Handle<Client>>);
+
+impl Hops {
+    async fn disconnect(self) {
+        for hop in self.0.into_iter().rev() {
+            let _ = hop
+                .disconnect(russh::Disconnect::ByApplication, "", "en")
+                .await;
+        }
+    }
 }
 
 pub enum ConnectOutcome {
@@ -213,6 +232,7 @@ pub enum ConnectOutcome {
 /// session with no shell channel or PTY. See `spawn_sftp`.
 pub struct SftpConnection {
     handle: Arc<Handle<Client>>,
+    hops: Hops,
 }
 
 pub enum SftpConnectOutcome {
@@ -220,9 +240,23 @@ pub enum SftpConnectOutcome {
     HostKeyChanged(HostKeyChange),
 }
 
+/// An authenticated transport together with the jump-host transports it
+/// runs over.
+struct Transport {
+    handle: Handle<Client>,
+    hops: Hops,
+}
+
 /// An authenticated transport, or the host-key decision that has to be made
 /// before one can be established. Shared by the shell and SFTP entry points.
 enum HandleOutcome {
+    Ready(Transport),
+    HostKeyChanged(HostKeyChange),
+}
+
+/// One hop of a connection: its transport, or the host-key decision that
+/// stopped the chain there.
+enum HopOutcome {
     Ready(Handle<Client>),
     HostKeyChanged(HostKeyChange),
 }
@@ -230,7 +264,55 @@ enum HandleOutcome {
 /// Opens the transport and authenticates, applying the trust-on-first-use host
 /// key policy. It stops short of requesting any channel, so both an interactive
 /// shell and a bare SFTP subsystem can be layered on top of the same handshake.
-async fn connect_handle(profile: &SessionProfile) -> Result<HandleOutcome> {
+///
+/// `jumps` are the jump hosts to go through, first hop first (OpenSSH's
+/// `ProxyJump`): each is connected in turn, the next one through a
+/// `direct-tcpip` channel of the previous, and the profile's own handshake
+/// runs through the last. A refused host key anywhere in the chain stops it
+/// there and reports that host, so the user can accept it and try again.
+async fn connect_handle(
+    profile: &SessionProfile,
+    jumps: &[SessionProfile],
+) -> Result<HandleOutcome> {
+    let mut hops: Vec<Handle<Client>> = Vec::with_capacity(jumps.len());
+    for (index, jump) in jumps.iter().enumerate() {
+        let via = index.checked_sub(1).map(|previous| Via {
+            handle: &hops[previous],
+            label: jumps[previous].address(),
+        });
+        match connect_hop(jump, via.as_ref()).await? {
+            HopOutcome::Ready(handle) => hops.push(handle),
+            HopOutcome::HostKeyChanged(change) => {
+                return Ok(HandleOutcome::HostKeyChanged(change));
+            }
+        }
+    }
+    let via = jumps.last().map(|jump| Via {
+        handle: hops.last().expect("one hop per jump host"),
+        label: jump.address(),
+    });
+    match connect_hop(profile, via.as_ref()).await? {
+        HopOutcome::Ready(handle) => Ok(HandleOutcome::Ready(Transport {
+            handle,
+            hops: Hops(hops),
+        })),
+        HopOutcome::HostKeyChanged(change) => Ok(HandleOutcome::HostKeyChanged(change)),
+    }
+}
+
+/// The jump host a hop is opened through: the transport to tunnel over and
+/// its `host:port` for error messages.
+struct Via<'a> {
+    handle: &'a Handle<Client>,
+    label: String,
+}
+
+/// Opens one SSH transport and authenticates on it — directly, or inside a
+/// `direct-tcpip` channel of `via` when the host sits behind a jump host.
+/// The host-key policy and the credentials are the profile's own either way:
+/// the handshake is end to end and the jump host only ever carries
+/// ciphertext, so no key or password has to exist on it.
+async fn connect_hop(profile: &SessionProfile, via: Option<&Via<'_>>) -> Result<HopOutcome> {
     let host = profile
         .host
         .clone()
@@ -250,24 +332,39 @@ async fn connect_handle(profile: &SessionProfile) -> Result<HandleOutcome> {
         nodelay: true,
         ..Default::default()
     });
+    let handler = Client {
+        host: host.clone(),
+        port,
+    };
 
-    let mut handle = match client::connect(
-        config,
-        (host.as_str(), port),
-        Client {
-            host: host.clone(),
-            port,
-        },
-    )
-    .await
-    {
+    let connected = match via {
+        None => client::connect(config, (host.as_str(), port), handler).await,
+        Some(via) => {
+            // What OpenSSH's `-W host:port` asks the jump host for: a plain
+            // TCP connection from it to the target, which then carries the
+            // target's own SSH handshake.
+            let tunnel = via
+                .handle
+                .channel_open_direct_tcpip(host.as_str(), u32::from(port), "127.0.0.1", 0)
+                .await
+                .map_err(|e| {
+                    AppError::new(format!(
+                        "jump host {} cannot reach {host}:{port}: {e}",
+                        via.label
+                    ))
+                })?;
+            client::connect_stream(config, tunnel.into_stream(), handler).await
+        }
+    };
+
+    let mut handle = match connected {
         Ok(handle) => handle,
         Err(HandshakeError::HostKeyChanged {
             known_hosts,
             line,
             key,
         }) => {
-            return Ok(HandleOutcome::HostKeyChanged(describe_host_key_change(
+            return Ok(HopOutcome::HostKeyChanged(describe_host_key_change(
                 &host,
                 port,
                 &known_hosts,
@@ -276,21 +373,25 @@ async fn connect_handle(profile: &SessionProfile) -> Result<HandleOutcome> {
             )?));
         }
         Err(HandshakeError::Ssh(e)) => {
-            return Err(AppError::new(format!("cannot reach {host}:{port}: {e}")));
+            return Err(AppError::new(match via {
+                None => format!("cannot reach {host}:{port}: {e}"),
+                Some(via) => format!("cannot reach {host}:{port} via {}: {e}", via.label),
+            }));
         }
     };
 
     authenticate(&mut handle, profile, &username).await?;
-    Ok(HandleOutcome::Ready(handle))
+    Ok(HopOutcome::Ready(handle))
 }
 
-pub async fn connect(profile: &SessionProfile) -> Result<ConnectOutcome> {
-    let handle = match connect_handle(profile).await? {
-        HandleOutcome::Ready(handle) => Arc::new(handle),
+pub async fn connect(profile: &SessionProfile, jumps: &[SessionProfile]) -> Result<ConnectOutcome> {
+    let Transport { handle, hops } = match connect_handle(profile, jumps).await? {
+        HandleOutcome::Ready(transport) => transport,
         HandleOutcome::HostKeyChanged(change) => {
             return Ok(ConnectOutcome::HostKeyChanged(change));
         }
     };
+    let handle = Arc::new(handle);
 
     let channel = handle.channel_open_session().await?;
     channel
@@ -302,18 +403,28 @@ pub async fn connect(profile: &SessionProfile) -> Result<ConnectOutcome> {
     let _ = channel.set_env(false, "TERM_PROGRAM", "EdgeTerm").await;
     channel.request_shell(true).await?;
 
-    Ok(ConnectOutcome::Ready(SshConnection { handle, channel }))
+    Ok(ConnectOutcome::Ready(SshConnection {
+        handle,
+        channel,
+        hops,
+    }))
 }
 
 /// Opens an SFTP-only session: the same SSH handshake and authentication as a
 /// shell session, but no channel is requested up front. The SFTP subsystem is
 /// opened lazily on the first file request, exactly as it is for a shell
 /// session's Filer.
-pub async fn connect_sftp(profile: &SessionProfile) -> Result<SftpConnectOutcome> {
-    match connect_handle(profile).await? {
-        HandleOutcome::Ready(handle) => Ok(SftpConnectOutcome::Ready(SftpConnection {
-            handle: Arc::new(handle),
-        })),
+pub async fn connect_sftp(
+    profile: &SessionProfile,
+    jumps: &[SessionProfile],
+) -> Result<SftpConnectOutcome> {
+    match connect_handle(profile, jumps).await? {
+        HandleOutcome::Ready(Transport { handle, hops }) => {
+            Ok(SftpConnectOutcome::Ready(SftpConnection {
+                handle: Arc::new(handle),
+                hops,
+            }))
+        }
         HandleOutcome::HostKeyChanged(change) => Ok(SftpConnectOutcome::HostKeyChanged(change)),
     }
 }
@@ -436,7 +547,11 @@ pub fn spawn(
     mut rx: UnboundedReceiver<SessionCommand>,
 ) {
     tauri::async_runtime::spawn(async move {
-        let SshConnection { handle, channel } = conn;
+        let SshConnection {
+            handle,
+            channel,
+            hops,
+        } = conn;
         let (mut reader, writer) = channel.split();
         let mut pump = OutputPump::new(app.clone(), id.clone());
         let mut sftp: Option<Arc<SftpSession>> = None;
@@ -510,6 +625,10 @@ pub fn spawn(
                 exit_status.map(|c| format!("exit status {c}")),
             );
         }
+        let _ = handle
+            .disconnect(russh::Disconnect::ByApplication, "", "en")
+            .await;
+        hops.disconnect().await;
     });
 }
 
@@ -526,7 +645,7 @@ pub fn spawn_sftp(
     mut rx: UnboundedReceiver<SessionCommand>,
 ) {
     tauri::async_runtime::spawn(async move {
-        let handle = conn.handle;
+        let SftpConnection { handle, hops } = conn;
         let mut sftp: Option<Arc<SftpSession>> = None;
         // Set when the frontend asked for the close; see `emit_state`.
         let mut close_requested = false;
@@ -573,6 +692,7 @@ pub fn spawn_sftp(
         let _ = handle
             .disconnect(russh::Disconnect::ByApplication, "", "en")
             .await;
+        hops.disconnect().await;
     });
 }
 
@@ -955,8 +1075,13 @@ mod tests {
     use russh::keys::PublicKey;
 
     use super::{
-        copy_in_chunks, replace_host_key, verify_host_key, HandshakeError, TRANSFER_CHUNK_SIZE,
+        connect, connect_sftp, copy_in_chunks, ensure_sftp, replace_host_key, run_sftp,
+        verify_host_key, ConnectOutcome, HandshakeError, SftpConnectOutcome, SftpRequest,
+        SftpResponse, TRANSFER_CHUNK_SIZE,
     };
+    use crate::model::{AuthKind, SessionKind, SessionProfile};
+    use russh::ChannelMsg;
+    use std::time::Duration;
 
     const HOST: &str = "192.0.2.10";
     const ED25519_A: &str =
@@ -1009,6 +1134,120 @@ mod tests {
                 let _ = std::fs::remove_dir_all(dir);
             }
         }
+    }
+
+    /// `user@host:port` from the environment variable `var`, as a profile
+    /// authenticating with the private key named by `EDGETERM_TEST_KEY`.
+    fn profile_from_env(var: &str) -> SessionProfile {
+        let spec = std::env::var(var).unwrap_or_else(|_| panic!("{var} must be user@host:port"));
+        let (user, address) = spec.split_once('@').expect("user@host:port");
+        let (host, port) = address.rsplit_once(':').expect("user@host:port");
+        let mut profile = crate::tests::profile(SessionKind::Ssh);
+        profile.name = var.to_string();
+        profile.host = Some(host.to_string());
+        profile.port = Some(port.parse().expect("numeric port"));
+        profile.username = Some(user.to_string());
+        profile.auth = Some(AuthKind::PublicKey);
+        profile.private_key_path = Some(
+            std::env::var("EDGETERM_TEST_KEY").expect("EDGETERM_TEST_KEY names a private key"),
+        );
+        profile
+    }
+
+    /// End-to-end check of a tunnelled connection against real servers, so
+    /// it is ignored by default. Run it with
+    /// `EDGETERM_TEST_JUMP=user@host:port EDGETERM_TEST_TARGET=user@host:port
+    /// EDGETERM_TEST_KEY=/path/to/key cargo test -- --ignored jump_host`.
+    /// The target must be reachable from the jump host and both must accept
+    /// the key. HOME is pointed at a scratch directory so the developer's
+    /// own known_hosts is never touched.
+    #[tokio::test]
+    #[ignore]
+    async fn shell_and_sftp_open_through_a_jump_host() {
+        let jump = profile_from_env("EDGETERM_TEST_JUMP");
+        let target = profile_from_env("EDGETERM_TEST_TARGET");
+        let scratch = KnownHosts::new();
+        let home = scratch.path().parent().expect("scratch dir").to_path_buf();
+        std::fs::create_dir_all(home.join(".ssh")).expect("create .ssh");
+        std::env::set_var("HOME", &home);
+
+        // A shell through the tunnel: what the shell prints comes back. The
+        // marker is computed so the echoed command line cannot match it.
+        let mut conn = match connect(&target, std::slice::from_ref(&jump))
+            .await
+            .expect("connect through the jump host")
+        {
+            ConnectOutcome::Ready(conn) => conn,
+            ConnectOutcome::HostKeyChanged(change) => panic!("{}", change.message),
+        };
+        conn.channel
+            .data(&b"echo edgeterm-$((40+2)); exit\n"[..])
+            .await
+            .expect("send command");
+        let mut output = Vec::new();
+        let seen = tokio::time::timeout(Duration::from_secs(20), async {
+            loop {
+                match conn.channel.wait().await {
+                    Some(ChannelMsg::Data { data }) => {
+                        output.extend_from_slice(&data);
+                        if output.windows(11).any(|w| w == b"edgeterm-42") {
+                            break true;
+                        }
+                    }
+                    Some(ChannelMsg::Eof) | Some(ChannelMsg::Close) | None => break false,
+                    Some(_) => {}
+                }
+            }
+        })
+        .await
+        .expect("shell output within the timeout");
+        assert!(
+            seen,
+            "marker missing from {}",
+            String::from_utf8_lossy(&output)
+        );
+        conn.hops.disconnect().await;
+
+        // SFTP through the same kind of tunnel.
+        let sftp = match connect_sftp(&target, std::slice::from_ref(&jump))
+            .await
+            .expect("sftp through the jump host")
+        {
+            SftpConnectOutcome::Ready(conn) => conn,
+            SftpConnectOutcome::HostKeyChanged(change) => panic!("{}", change.message),
+        };
+        let mut slot = None;
+        let session = ensure_sftp(&sftp.handle, &mut slot)
+            .await
+            .expect("sftp subsystem");
+        match run_sftp(session, SftpRequest::List { path: "/".into() })
+            .await
+            .expect("list /")
+        {
+            SftpResponse::Listing(listing) => assert!(!listing.entries.is_empty()),
+            other => panic!("unexpected response: {other:?}"),
+        }
+        sftp.hops.disconnect().await;
+
+        // Both hops went through the host key policy: each was learned.
+        let known_hosts = std::fs::read_to_string(home.join(".ssh").join("known_hosts"))
+            .expect("known_hosts was written");
+        for hop in [&jump, &target] {
+            let entry = format!("[{}]:{}", hop.host.as_deref().unwrap(), hop.port.unwrap());
+            assert!(
+                known_hosts.contains(&entry),
+                "{entry} missing from {known_hosts}"
+            );
+        }
+
+        // A target the jump host cannot reach is reported as such.
+        let mut unreachable = target.clone();
+        unreachable.port = Some(1);
+        let error = connect(&unreachable, std::slice::from_ref(&jump))
+            .await
+            .err()
+            .expect("port 1 is closed");
+        assert!(error.to_string().contains("jump host"), "{error}");
     }
 
     #[test]

@@ -11,6 +11,11 @@ export function isFileSession(kind: SessionKind): boolean {
   return kind === "ftp" || kind === "sftp";
 }
 
+/** Sessions that ride an SSH transport, and so can be or use a jump host. */
+export function isSshTransport(kind: SessionKind): boolean {
+  return kind === "ssh" || kind === "sftp";
+}
+
 export type ThemeMode = "dark" | "light";
 
 export interface SessionProfile {
@@ -36,6 +41,12 @@ export interface SessionProfile {
   password?: string | null;
   privateKeyPath?: string | null;
   passphrase?: string | null;
+  /**
+   * Saved SSH / SFTP profile to tunnel through (ProxyJump), for a host that
+   * is only reachable from that session's network. The jump profile may
+   * itself name a jump host, giving a chain.
+   */
+  jumpProfileId?: string | null;
 
   // serial
   portName?: string | null;

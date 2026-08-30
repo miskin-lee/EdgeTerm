@@ -28,7 +28,7 @@ A small, lightweight, high-performance terminal, SSH, SFTP, FTP, and serial clie
 | Type | Backend | Description |
 | --- | --- | --- |
 | Local shell | `portable-pty` | A real pseudoterminal with synchronized window resizing; the Shell field takes a command line with arguments, such as `wsl.exe -d Ubuntu` or `pwsh -NoLogo` |
-| SSH | `russh` + `russh-sftp` | Password, public-key, and ssh-agent authentication; SFTP reuses the same connection with streaming file and folder transfers |
+| SSH | `russh` + `russh-sftp` | Password, public-key, and ssh-agent authentication; jump hosts (ProxyJump) through another saved session, chained if needed; SFTP reuses the same connection with streaming file and folder transfers |
 | SFTP | `russh` + `russh-sftp` | A file-transfer-only session over SSH — same authentication and host-key policy, opened straight into the dual-pane file manager with no terminal |
 | FTP | `suppaftp` | Password or anonymous authentication; passive-mode browsing, UTF-8/GBK filename decoding, and streaming file and folder transfers in both directions |
 | Serial | `serialport` | Configurable baud rate, data bits, stop bits, parity, and flow control |

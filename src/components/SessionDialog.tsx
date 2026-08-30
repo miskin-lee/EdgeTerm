@@ -13,6 +13,7 @@ import { useStore } from "../store";
 import { useDialogDrag } from "./useDialogDrag";
 import {
   colorForSession,
+  isSshTransport,
   randomSessionColor,
   SESSION_COLORS,
   type SerialPortDesc,
@@ -72,6 +73,42 @@ const COMMON_BAUD_RATES = [
   460800, 500000, 576000, 921600, 1000000, 1500000, 2000000, 3000000,
   4000000,
 ];
+
+/**
+ * Saved SSH transports `profile` may be tunnelled through: every SSH / SFTP
+ * profile except itself and those whose own jump chain already leads back to
+ * it, which would loop. Mirrors the cycle check in the backend's
+ * `Store::save`, so the menu never offers a choice that save would refuse.
+ */
+function jumpHostChoices(
+  profile: SessionProfile,
+  profiles: SessionProfile[],
+): SessionProfile[] {
+  const byId = new Map(profiles.map((p) => [p.id, p]));
+  const leadsBackHere = (candidate: SessionProfile): boolean => {
+    const seen = new Set<string>();
+    let current: SessionProfile | undefined = candidate;
+    while (current) {
+      if (current.id === profile.id) return true;
+      if (seen.has(current.id)) return false;
+      seen.add(current.id);
+      current = current.jumpProfileId
+        ? byId.get(current.jumpProfileId)
+        : undefined;
+    }
+    return false;
+  };
+  return profiles.filter(
+    (p) =>
+      p.id &&
+      p.id !== profile.id &&
+      isSshTransport(p.kind) &&
+      !(profile.id && leadsBackHere(p)),
+  );
+}
+
+const describeJumpHost = (p: SessionProfile) =>
+  `${p.name} — ${p.username ?? ""}@${p.host ?? ""}:${p.port ?? 22}`;
 
 function validateProfile(profile: SessionProfile): string | null {
   if (profile.kind !== "serial") return null;
@@ -135,7 +172,14 @@ export function SessionDialog({ initial, onClose }: Props) {
 
   const upsertProfile = useStore((s) => s.upsertProfile);
   const groups = useStore((s) => s.groups);
+  const profiles = useStore((s) => s.profiles);
   const groupChoices = flattenGroups(groups, profile.kind);
+  const jumpChoices = jumpHostChoices(profile, profiles);
+  // The chosen jump session was deleted (or now loops back here): keep it
+  // visible so the user sees what is wrong; saving drops it.
+  const jumpHostMissing =
+    !!profile.jumpProfileId &&
+    !jumpChoices.some((p) => p.id === profile.jumpProfileId);
 
   useEffect(() => {
     if (profile.kind !== "serial") return;
@@ -156,7 +200,44 @@ export function SessionDialog({ initial, onClose }: Props) {
   const normalized = (): SessionProfile => ({
     ...profile,
     name: profile.name.trim() || defaultName(),
+    // A jump host only means something on an SSH transport; drop one left
+    // over from before the protocol was switched.
+    jumpProfileId: isSshTransport(profile.kind)
+      ? profile.jumpProfileId || null
+      : null,
   });
+
+  // ProxyJump: tunnel this session through another saved SSH session.
+  // Offered for SSH and SFTP alike, since both ride the same transport.
+  const renderJumpHostField = () => (
+    <>
+      <label className="session-field is-wide">
+        <span className="session-field-label">Jump host</span>
+        <select
+          value={profile.jumpProfileId ?? ""}
+          onChange={(event) =>
+            patch({ jumpProfileId: event.target.value || null })
+          }
+        >
+          <option value="">None — connect directly</option>
+          {jumpHostMissing && (
+            <option value={profile.jumpProfileId ?? ""}>
+              (deleted session)
+            </option>
+          )}
+          {jumpChoices.map((p) => (
+            <option key={p.id} value={p.id}>
+              {describeJumpHost(p)}
+            </option>
+          ))}
+        </select>
+      </label>
+      <small className="session-field-hint is-wide">
+        Connect through a saved SSH session (ProxyJump) to reach a host that
+        is only visible from its network.
+      </small>
+    </>
+  );
 
   // The authentication block shared by SSH and SFTP: they ride the same
   // transport, so both offer password, public-key, and ssh-agent auth with the
@@ -469,6 +550,7 @@ export function SessionDialog({ initial, onClose }: Props) {
                 </label>
 
                 {renderServerAuthFields()}
+                {renderJumpHostField()}
               </div>
             </section>
           )}
@@ -552,7 +634,10 @@ export function SessionDialog({ initial, onClose }: Props) {
                 </label>
 
                 {profile.kind === "sftp" ? (
-                  renderServerAuthFields()
+                  <>
+                    {renderServerAuthFields()}
+                    {renderJumpHostField()}
+                  </>
                 ) : (
                   <>
                     <label className="session-field">

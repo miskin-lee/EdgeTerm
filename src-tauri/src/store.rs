@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::sync::OnceLock;
 
@@ -11,7 +11,7 @@ use serde::{Deserialize, Serialize};
 use crate::error::{AppError, Result};
 use crate::model::{
     AppData, AuthKind, CommandHistoryEntry, CommandScope, DataSummary, SavedCommand, SessionGroup,
-    SessionKind, SessionProfile, APP_DATA_APP, APP_DATA_EXTENSION, APP_DATA_FORMAT,
+    SessionKind, SessionProfile, APP_DATA_APP, APP_DATA_EXTENSION, APP_DATA_FORMAT, MAX_JUMP_HOPS,
 };
 
 const MAX_SAVED_COMMANDS: usize = 1000;
@@ -133,7 +133,9 @@ fn machine_id() -> Option<String> {
 fn machine_id() -> Option<String> {
     use windows_sys::Win32::System::Registry::{RegGetValueW, HKEY_LOCAL_MACHINE, RRF_RT_REG_SZ};
 
-    let subkey: Vec<u16> = "SOFTWARE\\Microsoft\\Cryptography\0".encode_utf16().collect();
+    let subkey: Vec<u16> = "SOFTWARE\\Microsoft\\Cryptography\0"
+        .encode_utf16()
+        .collect();
     let value: Vec<u16> = "MachineGuid\0".encode_utf16().collect();
     let mut buffer = [0u16; 128];
     let mut size = (buffer.len() * std::mem::size_of::<u16>()) as u32;
@@ -297,6 +299,44 @@ impl Store {
         }))
     }
 
+    /// The jump hosts `profile` is tunnelled through, first hop first, each
+    /// carrying its stored credentials. Follows `jump_profile_id` outward from
+    /// the profile until a session with no jump host is reached. A jump
+    /// session that no longer exists, is not an SSH transport, or leads round
+    /// in a circle is an error: silently connecting directly instead could
+    /// reach a different machine of the same name on another network.
+    pub fn jump_chain(&self, profile: &SessionProfile) -> Result<Vec<SessionProfile>> {
+        let mut hops = Vec::new();
+        let mut visited = HashSet::new();
+        if !profile.id.is_empty() {
+            visited.insert(profile.id.clone());
+        }
+        let mut next = profile.jump_profile_id.clone();
+        while let Some(id) = next {
+            if !visited.insert(id.clone()) {
+                return Err(AppError::new("the jump host chain loops back on itself"));
+            }
+            if hops.len() == MAX_JUMP_HOPS {
+                return Err(AppError::new(format!(
+                    "the jump host chain is longer than {MAX_JUMP_HOPS} hops"
+                )));
+            }
+            let hop = self
+                .get(&id)?
+                .ok_or_else(|| AppError::new("the jump host session no longer exists"))?;
+            if !hop.is_ssh_transport() {
+                return Err(AppError::new(format!(
+                    "the jump host session \"{}\" is not an SSH session",
+                    hop.name
+                )));
+            }
+            next = hop.jump_profile_id.clone();
+            hops.push(hop);
+        }
+        hops.reverse();
+        Ok(hops)
+    }
+
     pub fn save(&self, mut profile: SessionProfile) -> Result<SessionProfile> {
         if profile.id.is_empty() {
             profile.id = uuid::Uuid::new_v4().to_string();
@@ -304,6 +344,23 @@ impl Store {
         sync_secrets(&profile, &mut self.credentials.lock());
         profile.password = None;
         profile.passphrase = None;
+
+        // A jump host is another saved SSH transport. A reference that points
+        // nowhere (the jump session was deleted, or the kind was switched away
+        // from SSH in the editor) is dropped like a stale group id; a chain
+        // that would loop back through this profile is refused outright.
+        if let Some(jump_id) = profile.jump_profile_id.clone() {
+            let exists = self
+                .profiles
+                .lock()
+                .iter()
+                .any(|p| p.id == jump_id && p.is_ssh_transport());
+            if jump_id.is_empty() || !exists || !profile.is_ssh_transport() {
+                profile.jump_profile_id = None;
+            } else {
+                self.jump_chain(&profile)?;
+            }
+        }
 
         // A stale or foreign group id (deleted group, category switched in the
         // editor) must not strand the profile: fall back to the section root.
