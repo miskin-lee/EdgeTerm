@@ -77,3 +77,7 @@
 
 Release 不做 macOS 公证和 Windows Authenticode 代码签名，macOS 应用只使用 ad-hoc 签名，首次安装时系统仍可能弹出安全提示。
 
+
+## 许可证
+
+EdgeTerm 以 [GNU General Public License v3.0](LICENSE) 授权。分发的衍生作品必须以相同许可证发布并提供完整源码。

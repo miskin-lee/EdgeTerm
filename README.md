@@ -76,3 +76,7 @@ Local shell, SSH, and serial terminals automatically detect ZMODEM sessions. Run
 Installed copies check the latest Release on startup and can update in place; **Help → Check for Updates…** does the same on demand.
 
 Releases are not notarized on macOS or code-signed with Windows Authenticode; the macOS application uses ad hoc signing only, so the operating system may show a security warning on first install.
+
+## License
+
+EdgeTerm is licensed under the [GNU General Public License v3.0](LICENSE). Derivative works that are distributed must be released under the same license with their full source code.
