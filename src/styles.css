@@ -2230,6 +2230,8 @@ textarea:focus {
   color: var(--fg-dim);
   font-family: var(--font-mono);
   user-select: text;
+  /* File paths have no spaces to wrap at; break them rather than overflow. */
+  overflow-wrap: anywhere;
 }
 
 .confirm-dialog-hint {

@@ -436,6 +436,8 @@ export const useStore = create<AppStore>((set, get) => ({
 
   async closeTab(id) {
     await api.closeSession(id).catch(() => undefined);
+    // Files from this session opened in local editors stop syncing back.
+    await api.stopRemoteEdits(id).catch(() => undefined);
     disposeController(id);
     const current = get();
     const remaining = current.tabs.filter((tab) => tab.info.id !== id);

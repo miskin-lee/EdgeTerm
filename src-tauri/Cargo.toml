@@ -46,6 +46,7 @@ dirs = "6"
 # Already in the tree through russh; used directly to seal credentials.json
 # (HKDF-SHA256 + ChaCha20-Poly1305).
 ring = "0.17"
+notify = "8"
 
 [target."cfg(any(target_os = \"macos\", windows, target_os = \"linux\"))".dependencies]
 tauri-plugin-updater = "2"

@@ -2,6 +2,7 @@ mod commands;
 mod error;
 mod fs_local;
 mod model;
+mod remote_edit;
 mod session;
 mod store;
 
@@ -9,6 +10,7 @@ mod store;
 mod tests;
 
 use commands::AppState;
+use tauri::Manager;
 
 /// Build the main window from `tauri.conf.json` (`create: false` there keeps
 /// Tauri from creating it first).
@@ -150,11 +152,14 @@ pub fn run() {
             create_main_window(app)?;
             #[cfg(target_os = "macos")]
             install_menu(app)?;
+            // Off the startup path; no watch of this run exists yet.
+            std::thread::spawn(remote_edit::clean_leftovers);
             Ok(())
         })
         .manage(AppState {
             sessions: Default::default(),
             store: store::Store::load(),
+            remote_edits: Default::default(),
         })
         .invoke_handler(tauri::generate_handler![
             commands::list_profiles,
@@ -203,9 +208,21 @@ pub fn run() {
             commands::local_create_file,
             commands::local_rename,
             commands::local_remove,
+            commands::open_local_path,
+            commands::open_with_dialog,
+            commands::remote_edit_path,
+            commands::watch_remote_edit,
+            commands::stop_remote_edits,
             commands::list_serial_ports,
             window_control,
         ])
-        .run(tauri::generate_context!())
-        .expect("error while running EdgeTerm");
+        .build(tauri::generate_context!())
+        .expect("error while building EdgeTerm")
+        .run(|app, event| {
+            if let tauri::RunEvent::Exit = event {
+                // Copies of remote files opened in local editors have no one
+                // to sync them once the app is gone.
+                app.state::<AppState>().remote_edits.stop_all(app);
+            }
+        });
 }

@@ -284,6 +284,49 @@ export const localRename = (from: string, to: string) =>
 export const localRemove = (path: string, isDir: boolean) =>
   invoke<void>("local_remove", { path, isDir });
 
+/** Opens a local file with the default application, or with `app` if given. */
+export const openLocalPath = (path: string, app?: string) =>
+  invoke<void>("open_local_path", { path, with: app ?? null });
+
+/** Windows only: the system "Open with" chooser for a local file. */
+export const openWithDialog = (path: string) =>
+  invoke<void>("open_with_dialog", { path });
+
+// --- remote files edited locally -------------------------------------------
+
+/**
+ * Where a remote file opened in a local application is downloaded to. While
+ * the file is being watched this is the same path again, so reopening it
+ * refreshes the copy the editor already has.
+ */
+export const remoteEditPath = (id: string, remote: string, name: string) =>
+  invoke<string>("remote_edit_path", { id, remote, name });
+
+/**
+ * From now on, every change to `local` is uploaded back to `remote`. Call it
+ * right after the download so the fresh copy is the baseline.
+ */
+export const watchRemoteEdit = (id: string, local: string, remote: string) =>
+  invoke<void>("watch_remote_edit", { id, local, remote });
+
+/** Stops watching every file opened from a session; for a tab closed for good. */
+export const stopRemoteEdits = (id: string) =>
+  invoke<void>("stop_remote_edits", { id });
+
+export interface RemoteEditEvent {
+  sessionId: string;
+  remotePath: string;
+  name: string;
+  /** `kept`: the watch ended with unsent changes; the copy stays on disk. */
+  status: "uploading" | "synced" | "error" | "kept";
+  message: string | null;
+}
+
+export const onRemoteEditState = (
+  handler: (event: RemoteEditEvent) => void,
+): Promise<UnlistenFn> =>
+  listen<RemoteEditEvent>("remote-edit:state", (e) => handler(e.payload));
+
 // --- serial -----------------------------------------------------------------
 
 export const listSerialPorts = () =>

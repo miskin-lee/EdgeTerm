@@ -12,6 +12,7 @@ use crate::model::{
     SerialPortDesc, SessionGroup, SessionInfo, SessionKind, SessionProfile, ZmodemFileInfo,
     APP_DATA_EXTENSION,
 };
+use crate::remote_edit::RemoteEdits;
 use crate::session::ssh::{ConnectOutcome, SftpConnectOutcome};
 use crate::session::{
     self, SessionCommand, SessionHandle, SessionManager, SftpRequest, SftpResponse,
@@ -22,6 +23,7 @@ use crate::store::{self, Store};
 pub struct AppState {
     pub sessions: SessionManager,
     pub store: Store,
+    pub remote_edits: RemoteEdits,
 }
 
 // --- profiles ---------------------------------------------------------------
@@ -570,6 +572,75 @@ pub fn local_create_file(path: String) -> Result<()> {
 #[tauri::command]
 pub fn local_is_directory(path: String) -> bool {
     fs_local::is_directory(&path)
+}
+
+/// Opens a local file with the system default application, or with `with`
+/// (a macOS `.app` bundle, a Windows executable or a Unix program path) when
+/// given. Errors only cover launching; whatever the program does afterwards is
+/// its own business.
+#[tauri::command]
+pub fn open_local_path(path: String, with: Option<String>) -> Result<()> {
+    tauri_plugin_opener::open_path(&path, with.as_deref()).map_err(err)
+}
+
+/// Shows the Windows "Open with" chooser for a local file. Other platforms
+/// have no system-wide chooser; the front end picks an application itself.
+#[tauri::command]
+pub fn open_with_dialog(path: String) -> Result<()> {
+    #[cfg(windows)]
+    {
+        // The shell's classic entry point behind Explorer's "Open with…".
+        std::process::Command::new("rundll32.exe")
+            .arg("shell32.dll,OpenAs_RunDLL")
+            .arg(&path)
+            .spawn()
+            .map_err(err)?;
+        Ok(())
+    }
+    #[cfg(not(windows))]
+    {
+        let _ = path;
+        Err(AppError::new(
+            "the system \"Open with\" dialog is only available on Windows",
+        ))
+    }
+}
+
+/// Where a remote file opened in a local application is downloaded to; the
+/// same place again while the file is still being watched. See
+/// `remote_edit::RemoteEdits::local_path`.
+#[tauri::command]
+pub fn remote_edit_path(
+    state: State<'_, AppState>,
+    id: String,
+    remote: String,
+    name: String,
+) -> Result<String> {
+    let path = state.remote_edits.local_path(&id, &remote, &name)?;
+    Ok(path.to_string_lossy().into_owned())
+}
+
+/// Starts sending `local` back to `remote` on session `id` whenever it
+/// changes. Called right after the download, so the copy is the baseline.
+#[tauri::command]
+pub fn watch_remote_edit(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    id: String,
+    local: String,
+    remote: String,
+) -> Result<()> {
+    state
+        .remote_edits
+        .watch(app, id, std::path::PathBuf::from(local), remote)
+}
+
+/// Stops watching every file opened from session `id` and removes the synced
+/// copies; for when its tab is closed for good (a disconnect keeps the
+/// watchers, see `RemoteEdits`).
+#[tauri::command]
+pub fn stop_remote_edits(app: AppHandle, state: State<'_, AppState>, id: String) {
+    state.remote_edits.stop_session(&app, &id);
 }
 
 #[tauri::command]

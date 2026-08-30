@@ -1,15 +1,24 @@
 import { getCurrentWebview } from "@tauri-apps/api/webview";
 import { open as openDialog, save as saveDialog } from "@tauri-apps/plugin-dialog";
-import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type MouseEvent,
+} from "react";
 
 import * as api from "../../api";
+import { IS_MAC, IS_WINDOWS } from "../../platform";
 import { useActiveTab, useStore } from "../../store";
-import { ContextMenu } from "../ContextMenu";
+import { ContextMenu, type MenuItem } from "../ContextMenu";
+import { DeleteEntryDialog } from "../DeleteEntryDialog";
 import { FileIcon } from "../FileIcon";
 import type { FileEntry, ThemeMode } from "../../types";
 
 interface TransferState {
-  kind: "upload" | "download";
+  /** `sync` is a remote file edited locally being sent back after a save. */
+  kind: "upload" | "download" | "sync";
   name: string;
   transferred: number;
   total: number;
@@ -20,6 +29,12 @@ interface TransferState {
 interface TransferRateSample {
   time: number;
   transferred: number;
+}
+
+interface MenuState {
+  x: number;
+  y: number;
+  items: MenuItem[];
 }
 
 export function FilerPanel() {
@@ -48,6 +63,9 @@ export function FilerPanel() {
   // upload button's click fires the menu is already gone; remember whether it
   // was open so the button toggles instead of reopening.
   const uploadMenuWasOpen = useRef(false);
+  const [menu, setMenu] = useState<MenuState | null>(null);
+  const [pendingDelete, setPendingDelete] = useState<FileEntry | null>(null);
+  const [openWithApps, setOpenWithApps] = useState<string[]>(loadOpenWithApps);
   const [transfer, setTransfer] = useState<TransferState | null>(null);
   const [dragOverList, setDragOverList] = useState(false);
   const listRef = useRef<HTMLDivElement>(null);
@@ -55,6 +73,7 @@ export function FilerPanel() {
   const pathRef = useRef(path);
   const busyRef = useRef(busy);
   const uploadDroppedFilesRef = useRef<(paths: string[]) => void>(() => {});
+  const remoteEditRef = useRef<(event: api.RemoteEditEvent) => void>(() => {});
   const transferClearTimer = useRef<number | null>(null);
   const transferRateSamples = useRef<TransferRateSample[]>([]);
 
@@ -144,6 +163,8 @@ export function FilerPanel() {
     );
   };
 
+  const closeMenu = useCallback(() => setMenu(null), []);
+
   const load = useCallback(
     async (target: string) => {
       setBusy(true);
@@ -202,9 +223,8 @@ export function FilerPanel() {
     else setSelected(entry.path);
   };
 
-  const download = async () => {
-    const entry = entries.find((e) => e.path === selected);
-    if (!entry || !remoteId) return;
+  const download = async (entry: FileEntry) => {
+    if (!remoteId) return;
     let target: string | null = null;
     if (entry.isDir) {
       // A folder lands inside the chosen directory under its own name, so an
@@ -292,6 +312,30 @@ export function FilerPanel() {
     void uploadPaths(paths);
   };
 
+  // Progress of remote files edited locally, whichever tab is active: the
+  // footer shows the save going out, and a failure lands in the error line.
+  remoteEditRef.current = (event) => {
+    if (event.status === "uploading") {
+      beginTransfer("sync", event.name);
+    } else if (event.status === "synced") {
+      finishTransfer("complete");
+    } else if (event.status === "kept") {
+      setError(`${event.name}: ${event.message ?? "local copy kept"}`);
+    } else {
+      setError(`Sync ${event.name}: ${event.message ?? "failed"}`);
+      finishTransfer("error");
+    }
+  };
+
+  useEffect(() => {
+    const unlisten = api.onRemoteEditState((event) =>
+      remoteEditRef.current(event),
+    );
+    return () => {
+      void unlisten.then((off) => off()).catch(() => {});
+    };
+  }, []);
+
   useEffect(() => {
     const unlisten = getCurrentWebview().onDragDropEvent(({ payload }) => {
       if (payload.type === "leave") {
@@ -347,9 +391,8 @@ export function FilerPanel() {
     await uploadPaths(pickedPaths(picked));
   };
 
-  const removeSelected = async () => {
-    const entry = entries.find((e) => e.path === selected);
-    if (!entry) return;
+  const removeEntry = async (entry: FileEntry) => {
+    setPendingDelete(null);
     setBusy(true);
     try {
       if (remoteId) await api.sftpRemove(remoteId, entry.path, entry.isDir);
@@ -361,6 +404,168 @@ export function FilerPanel() {
       setBusy(false);
     }
   };
+
+  const copyText = (text: string) => {
+    navigator.clipboard.writeText(text).catch((e) => setError(String(e)));
+  };
+
+  /**
+   * The local path to hand to an application: the entry itself for local
+   * sessions, otherwise a copy downloaded into the temp folder that the
+   * backend then watches, sending every save back to the server. Null when
+   * the download failed (the error is already shown).
+   */
+  const localCopyOf = async (entry: FileEntry): Promise<string | null> => {
+    if (!remoteId) return entry.path;
+    setBusy(true);
+    setError(null);
+    beginTransfer("download", entry.name);
+    try {
+      const target = await api.remoteEditPath(remoteId, entry.path, entry.name);
+      await api.sftpDownload(
+        remoteId,
+        entry.path,
+        target,
+        updateTransferProgress,
+      );
+      await api.watchRemoteEdit(remoteId, target, entry.path);
+      finishTransfer("complete");
+      return target;
+    } catch (e) {
+      setError(String(e));
+      finishTransfer("error");
+      return null;
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  /** Opens a file with the default application, or with `app` when given. */
+  const openEntry = async (entry: FileEntry, app?: string) => {
+    const target = await localCopyOf(entry);
+    if (!target) return;
+    try {
+      await api.openLocalPath(target, app);
+      if (app) setOpenWithApps(rememberOpenWithApp(app));
+    } catch (e) {
+      setError(String(e));
+    }
+  };
+
+  /**
+   * Lets the user pick the application first. Windows has a system chooser
+   * that also knows the registered handlers; elsewhere the application is a
+   * file to pick (a macOS `.app` bundle, a program on Linux).
+   */
+  const openEntryWith = async (entry: FileEntry) => {
+    if (IS_WINDOWS) {
+      const target = await localCopyOf(entry);
+      if (!target) return;
+      await api.openWithDialog(target).catch((e) => setError(String(e)));
+      return;
+    }
+    const picked = await openDialog({
+      title: `Open “${entry.name}” with…`,
+      multiple: false,
+      directory: false,
+      ...(IS_MAC
+        ? {
+            defaultPath: "/Applications",
+            filters: [{ name: "Applications", extensions: ["app"] }],
+          }
+        : { defaultPath: "/usr/bin" }),
+    });
+    if (typeof picked === "string") await openEntry(entry, picked);
+  };
+
+  const openMenu = (event: MouseEvent, items: MenuItem[]) => {
+    event.preventDefault();
+    event.stopPropagation();
+    setMenu({ x: event.clientX, y: event.clientY, items });
+  };
+
+  const openWithMenu = (entry: FileEntry): MenuItem => {
+    const other = {
+      label: openWithApps.length > 0 ? "Other…" : "Open With…",
+      disabled: busy,
+      action: () => void openEntryWith(entry),
+    };
+    if (openWithApps.length === 0) return other;
+    return {
+      label: "Open With",
+      children: [
+        ...openWithApps.map((app) => ({
+          label: appDisplayName(app),
+          disabled: busy,
+          action: () => void openEntry(entry, app),
+        })),
+        "separator",
+        other,
+      ],
+    };
+  };
+
+  const entryMenu = (entry: FileEntry): MenuItem[] => [
+    entry.isDir
+      ? { label: "Open", action: () => void load(entry.path) }
+      : { label: "Open", disabled: busy, action: () => void openEntry(entry) },
+    ...(entry.isDir ? [] : [openWithMenu(entry)]),
+    ...(remote
+      ? [
+          {
+            label: "Download…",
+            disabled: busy,
+            action: () => void download(entry),
+          },
+        ]
+      : []),
+    "separator",
+    { label: "Copy Path", action: () => copyText(entry.path) },
+    { label: "Copy Name", action: () => copyText(entry.name) },
+    "separator",
+    {
+      label: "Delete…",
+      danger: true,
+      disabled: busy || atDrivesRoot,
+      action: () => setPendingDelete(entry),
+    },
+  ];
+
+  /** Menu for the empty part of the list: actions on the current folder. */
+  const folderMenu = (): MenuItem[] => [
+    {
+      label: "New File…",
+      disabled: busy || !path || atDrivesRoot,
+      action: () => setCreating({ kind: "file", name: "" }),
+    },
+    {
+      label: "New Folder…",
+      disabled: busy || !path || atDrivesRoot,
+      action: () => setCreating({ kind: "folder", name: "" }),
+    },
+    ...(remote
+      ? [
+          "separator" as const,
+          {
+            label: "Upload Files…",
+            disabled: busy || !path,
+            action: () => void upload(),
+          },
+          {
+            label: "Upload Folder…",
+            disabled: busy || !path,
+            action: () => void uploadFolder(),
+          },
+        ]
+      : []),
+    "separator",
+    {
+      label: "Copy Folder Path",
+      disabled: !path || atDrivesRoot,
+      action: () => copyText(path),
+    },
+    { label: "Refresh", disabled: busy, action: () => void load(path) },
+  ];
 
   const commitNewEntry = async () => {
     const draft = creating;
@@ -404,12 +609,18 @@ export function FilerPanel() {
     : null;
   const transferLabel = transfer
     ? transfer.status === "complete"
-      ? `${transfer.kind === "upload" ? "Upload" : "Download"} complete`
+      ? transfer.kind === "sync"
+        ? "Synced"
+        : `${transfer.kind === "upload" ? "Upload" : "Download"} complete`
       : transfer.status === "error"
-        ? `${transfer.kind === "upload" ? "Upload" : "Download"} failed`
-        : transfer.kind === "upload"
-          ? "Uploading"
-          : "Downloading"
+        ? transfer.kind === "sync"
+          ? "Sync failed"
+          : `${transfer.kind === "upload" ? "Upload" : "Download"} failed`
+        : transfer.kind === "sync"
+          ? "Syncing"
+          : transfer.kind === "upload"
+            ? "Uploading"
+            : "Downloading"
     : "";
 
   const remoteTitle = (label: string) =>
@@ -417,6 +628,7 @@ export function FilerPanel() {
   // The Windows drive list is virtual: drives can be opened but not created,
   // deleted or navigated above.
   const atDrivesRoot = !remoteId && path === api.LOCAL_DRIVES_ROOT;
+  const selectedEntry = entries.find((e) => e.path === selected) ?? null;
 
   return (
     <div className="panel" style={{ flex: 1 }}>
@@ -470,7 +682,7 @@ export function FilerPanel() {
         </button>
         <button
           className="panel-action filer-action"
-          onClick={download}
+          onClick={() => selectedEntry && void download(selectedEntry)}
           title={remoteTitle("Download file or folder")}
           aria-label="Download file or folder"
           disabled={!remote || !selected || busy}
@@ -488,7 +700,7 @@ export function FilerPanel() {
         </button>
         <button
           className="panel-action filer-action filer-action-danger"
-          onClick={removeSelected}
+          onClick={() => selectedEntry && setPendingDelete(selectedEntry)}
           title="Delete"
           aria-label="Delete"
           disabled={!selected || busy || atDrivesRoot}
@@ -536,6 +748,7 @@ export function FilerPanel() {
       <div
         ref={listRef}
         className={`panel-body filer-list${dragOverList ? " is-drag-over" : ""}`}
+        onContextMenu={(event) => openMenu(event, folderMenu())}
         aria-label={
           remote
             ? `${tab?.info.protocol.toUpperCase()} file list. Drop files or folders here to upload.`
@@ -575,6 +788,10 @@ export function FilerPanel() {
               className={`row filer-entry is-${kind}${entry.path === selected ? " is-active" : ""}`}
               onMouseDown={() => setSelected(entry.path)}
               onDoubleClick={() => activate(entry)}
+              onContextMenu={(event) => {
+                setSelected(entry.path);
+                openMenu(event, entryMenu(entry));
+              }}
               title={entryTitle(entry)}
             >
               <FilerEntryIcon
@@ -590,6 +807,23 @@ export function FilerPanel() {
           );
         })}
       </div>
+
+      {menu && (
+        <ContextMenu
+          x={menu.x}
+          y={menu.y}
+          items={menu.items}
+          onClose={closeMenu}
+        />
+      )}
+      {pendingDelete && (
+        <DeleteEntryDialog
+          entry={pendingDelete}
+          location={remote ? (tab?.info.name ?? "remote") : "local"}
+          onConfirm={() => void removeEntry(pendingDelete)}
+          onCancel={() => setPendingDelete(null)}
+        />
+      )}
 
       <div className={`filer-footer${transfer ? " has-transfer" : ""}`}>
         {transfer ? (
@@ -741,6 +975,40 @@ function FilerActionIcon({ name }: { name: FilerActionIconName }) {
       {paths[name]}
     </svg>
   );
+}
+
+/** Applications the user has opened files with, most recent first. */
+const OPEN_WITH_KEY = "edgeterm.filerOpenWith";
+const OPEN_WITH_LIMIT = 6;
+
+function loadOpenWithApps(): string[] {
+  try {
+    const parsed: unknown = JSON.parse(
+      localStorage.getItem(OPEN_WITH_KEY) ?? "[]",
+    );
+    return Array.isArray(parsed)
+      ? parsed.filter((app): app is string => typeof app === "string")
+      : [];
+  } catch {
+    return [];
+  }
+}
+
+function rememberOpenWithApp(app: string): string[] {
+  const apps = [app, ...loadOpenWithApps().filter((known) => known !== app)];
+  const kept = apps.slice(0, OPEN_WITH_LIMIT);
+  try {
+    localStorage.setItem(OPEN_WITH_KEY, JSON.stringify(kept));
+  } catch {
+    // Storage full or unavailable: the menu still works for this session.
+  }
+  return kept;
+}
+
+/** `/Applications/Visual Studio Code.app` → `Visual Studio Code`. */
+function appDisplayName(app: string): string {
+  const base = localFileName(app);
+  return base.replace(/\.(app|exe)$/i, "");
 }
 
 function remoteParent(path: string): string {
