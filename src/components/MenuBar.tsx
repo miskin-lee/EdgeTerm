@@ -70,6 +70,46 @@ function useWindowFlag(
 const readFullscreen = (win: TauriWindow) => win.isFullscreen();
 const readMaximized = (win: TauriWindow) => win.isMaximized();
 
+// Windows / Linux: a press on the drag region does not hand the window to
+// the OS straight away. `startDragging` gives the press to the OS move loop
+// (`WM_NCLBUTTONDOWN` / `begin_move_drag`), which takes the mouse away from
+// the webview until the button is released: the page never sees that mouseup,
+// and on Windows the loop is entered through an IPC round trip, so a
+// double-click's second press races it and is eaten by it whenever it lands
+// first — the double-click then never reaches the page. Starting the drag
+// only once the pointer has moved past a small threshold (as GTK header bars
+// do) keeps plain clicks and double-clicks entirely inside the webview; the
+// window only misses the first few pixels of travel, which is not visible.
+const DRAG_THRESHOLD_PX = 4;
+
+/** Start the OS window drag once the pointer moves past the threshold. */
+function startDragOnMove(startX: number, startY: number): () => void {
+  function stop() {
+    document.removeEventListener("mousemove", onMove);
+    document.removeEventListener("mouseup", stop);
+    window.removeEventListener("blur", stop);
+  }
+  function onMove(event: MouseEvent) {
+    // A release the page never saw leaves `buttons` clear: the press is over.
+    if (!(event.buttons & 1)) {
+      stop();
+      return;
+    }
+    if (
+      Math.abs(event.clientX - startX) < DRAG_THRESHOLD_PX &&
+      Math.abs(event.clientY - startY) < DRAG_THRESHOLD_PX
+    ) {
+      return;
+    }
+    stop();
+    void getCurrentWindow().startDragging().catch(() => {});
+  }
+  document.addEventListener("mousemove", onMove);
+  document.addEventListener("mouseup", stop);
+  window.addEventListener("blur", stop);
+  return stop;
+}
+
 interface WindowControl {
   label: string;
   icon: ReactElement;
@@ -106,7 +146,7 @@ function WindowControls({ maximized }: { maximized: boolean }) {
     { label: "Close", icon: CLOSE_ICON, action: (win) => win.close(), className: " is-close" },
   ];
   return (
-    <div className="window-controls">
+    <div className="window-controls" data-tauri-drag-region>
       {controls.map((control) => (
         <button
           key={control.label}
@@ -178,6 +218,9 @@ interface Props {
 export function MenuBar(props: Props) {
   const [open, setOpen] = useState<string | null>(null);
   const barRef = useRef<HTMLDivElement>(null);
+  // Stops the pending drag-threshold watch of the last drag-region press.
+  const dragWatch = useRef<(() => void) | null>(null);
+  useEffect(() => () => dragWatch.current?.(), []);
   const macFullscreen = useWindowFlag(IS_MAC, readFullscreen);
   const maximized = useWindowFlag(!IS_MAC, readMaximized);
 
@@ -437,24 +480,39 @@ export function MenuBar(props: Props) {
   ];
 
   // A double-click on the drag region maximizes / restores (on the app icon
-  // it closes the window instead, as in VS Code). Tauri's injected drag
-  // script would toggle too (`internal_toggle_maximize` on the document
-  // mousedown listener), but on Windows through the animation-less tao path,
-  // so take the double-click here first, on the same elements the script
-  // treats as the drag region (everything carrying the attribute, not the
-  // menu titles), and stop it before it reaches the document. Single clicks
-  // still fall through to the script's `start_dragging`.
+  // it closes the window instead, as in VS Code); it is taken here on the
+  // same elements Tauri's injected drag script treats as the drag region
+  // (everything carrying the attribute, not the menu titles) and stopped
+  // before it reaches the script's document listener, which would otherwise
+  // toggle through the animation-less tao path on Windows. A single press is
+  // handled per platform: on macOS it falls through to the script, which
+  // starts the native drag from the mousedown itself; on Windows / Linux it
+  // is stopped as well and the drag starts from `startDragOnMove` once the
+  // pointer actually moves (see the note above it).
   const onDragRegionMouseDown = (event: ReactMouseEvent<HTMLDivElement>) => {
-    if (event.button !== 0 || event.detail !== 2) return;
+    if (event.button !== 0) return;
     if (!(event.target instanceof HTMLElement)) return;
     if (!event.target.hasAttribute("data-tauri-drag-region")) return;
-    event.preventDefault();
-    event.stopPropagation();
-    if (event.target.classList.contains("menubar-icon")) {
-      void getCurrentWindow().close().catch(() => {});
+    // The document-level dismiss listener never sees this press (stopped
+    // here, or by the script's `stopImmediatePropagation` on macOS).
+    setOpen(null);
+    dragWatch.current?.();
+    dragWatch.current = null;
+    if (event.detail === 2) {
+      event.preventDefault();
+      event.stopPropagation();
+      if (event.target.classList.contains("menubar-icon")) {
+        void getCurrentWindow().close().catch(() => {});
+        return;
+      }
+      void windowControl("toggle-maximize").catch(() => {});
       return;
     }
-    void windowControl("toggle-maximize").catch(() => {});
+    if (IS_MAC) return;
+    // No text selection, and keyboard focus stays in the terminal.
+    event.preventDefault();
+    event.stopPropagation();
+    dragWatch.current = startDragOnMove(event.clientX, event.clientY);
   };
 
   return (
