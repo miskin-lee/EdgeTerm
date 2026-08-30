@@ -86,8 +86,42 @@ jobs:
         shell: bash
         run: |
           short_sha="${GITHUB_SHA:0:7}"
-          release_notes="EdgeTerm v${APP_VERSION}, built from commit [\`${short_sha}\`](${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/commit/${GITHUB_SHA})."
-          release_notes+=$'\n\nThe application checks this release for signed updates automatically. Download the installer matching your operating system and CPU architecture for a manual installation.'
+          repo_url="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}"
+
+          # Nearest earlier release tag reachable from this commit. The current
+          # tag is excluded so re-running a draft still diffs against the
+          # previous release instead of producing an empty changelog.
+          previous_tag="$(git describe --tags --abbrev=0 --match 'v[0-9]*' --exclude "$TAG_NAME" "$GITHUB_SHA" 2>/dev/null || true)"
+          if [[ -n "$previous_tag" ]]; then
+            log_range="${previous_tag}..${GITHUB_SHA}"
+          else
+            log_range="$GITHUB_SHA"
+          fi
+
+          # One line per commit, newest first; version bumps are release
+          # plumbing rather than changes worth listing.
+          changelog="$(git log --no-merges --format="- %s ([%h](${repo_url}/commit/%H))" "$log_range" \
+            | grep -v -E '^- chore: bump version to ' || true)"
+
+          {
+            echo "EdgeTerm v${APP_VERSION}, built from commit [\`${short_sha}\`](${repo_url}/commit/${GITHUB_SHA})."
+            echo
+            if [[ -n "$changelog" ]]; then
+              if [[ -n "$previous_tag" ]]; then
+                echo "## Changes since ${previous_tag}"
+              else
+                echo "## Changes"
+              fi
+              echo
+              echo "$changelog"
+              echo
+            fi
+            if [[ -n "$previous_tag" ]]; then
+              echo "**Full Changelog**: ${repo_url}/compare/${previous_tag}...${TAG_NAME}"
+              echo
+            fi
+            echo "The application checks this release for signed updates automatically. Download the installer matching your operating system and CPU architecture for a manual installation."
+          } > release-notes.md
 
           if gh release view "$TAG_NAME" >/dev/null 2>&1; then
             is_draft="$(gh release view "$TAG_NAME" --json isDraft --jq .isDraft)"
@@ -98,12 +132,12 @@ jobs:
             gh release edit "$TAG_NAME" \
               --target "$GITHUB_SHA" \
               --title "$RELEASE_NAME" \
-              --notes "$release_notes"
+              --notes-file release-notes.md
           else
             gh release create "$TAG_NAME" \
               --target "$GITHUB_SHA" \
               --title "$RELEASE_NAME" \
-              --notes "$release_notes" \
+              --notes-file release-notes.md \
               --draft
           fi
 
