@@ -185,6 +185,9 @@ function TerminalHost({ tab, active }: { tab: Tab; active: boolean }) {
   }, [id, suggestionsEnabled]);
 
   useEffect(() => {
+    // The terminal keeps its WebGL renderer for the tabs shown recently
+    // and gives it up for the rest; see TerminalController.setVisible.
+    getController(id)?.setVisible(active);
     if (!active) return;
     // The pane is hidden while inactive, so it can only be measured and
     // focused once it is on screen again.

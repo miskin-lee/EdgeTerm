@@ -25,6 +25,32 @@ import {
 
 export type GutterMode = "off" | "line" | "time" | "both";
 
+/**
+ * How many terminals hold a WebGL renderer at once, most recently shown
+ * first. WebKit allows 16 live WebGL contexts per page and, on the 17th,
+ * takes the oldest one away; with one context per tab, opening enough tabs
+ * stranded the earliest ones on the DOM renderer for good, where a
+ * selection drag crawls (issue #14). A hidden tab has no use for the fast
+ * renderer and every context pins a window-sized GPU surface, so the least
+ * recently shown terminals give theirs up and load it again when shown.
+ * Six covers the tabs someone actually cycles through, keeps GPU memory to
+ * a few hundred megabytes and stays well clear of the limit.
+ */
+const WEBGL_MAX_TERMINALS = 6;
+/**
+ * A lost context (WKWebView reclaims them under memory pressure or after a
+ * long stay in the background) is recreated after a pause, a few times per
+ * window at most; a GPU that keeps dropping it leaves the terminal on the
+ * DOM renderer. Losses further apart than the window are separate incidents
+ * with a fresh budget.
+ */
+const WEBGL_RECOVERY_DELAY_MS = 2000;
+const WEBGL_RECOVERY_LIMIT = 3;
+const WEBGL_RECOVERY_WINDOW_MS = 60_000;
+
+/** Terminals holding a WebGL renderer, most recently shown first. */
+const webglTerminals: TerminalController[] = [];
+
 /** A working directory the shell announced with an OSC sequence. */
 export interface ReportedCwd {
   /** Host part of an OSC 7 URL; "" when the sequence carried none. */
@@ -254,6 +280,15 @@ export class TerminalController {
   /** The shell's latest OSC directory report; see `reportedCwd`. */
   private reported: ReportedCwd | null = null;
   private disposed = false;
+  /** The WebGL addon driving the terminal; null on the DOM renderer. */
+  private webgl: WebglAddon | null = null;
+  /** True while the pane is on screen; see setVisible. */
+  private visible = false;
+  private webglWarned = false;
+  /** Recoveries used in the current window; see WEBGL_RECOVERY_LIMIT. */
+  private webglRecoveries = 0;
+  private webglLastLoss = 0;
+  private webglTimer: number | null = null;
   /**
    * Cached so the per-frame gutter sync never reads layout. Recomputed only on
    * fit/resize, which is the only time it can change.
@@ -544,18 +579,145 @@ export class TerminalController {
         if (!this.disposed) this.refreshSemanticColors();
       });
 
-    // WebGL is a large win on heavy output but is unavailable in some
-    // environments; the canvas/DOM renderer remains a working fallback.
-    try {
-      const webgl = new WebglAddon();
-      webgl.onContextLoss(() => webgl.dispose());
-      this.term.loadAddon(webgl);
-    } catch {
-      /* fall back to the default renderer */
-    }
+    // WebGL comes with being shown (setVisible); it needs the host, so a
+    // terminal that was shown before it was attached loads it here.
+    if (this.visible) this.loadWebgl();
 
     this.fit();
     this.applyGutterMode();
+  }
+
+  /**
+   * Tells the terminal whether its pane is on screen. WebGL is loaded on
+   * showing and kept while hidden, so switching back to a recent tab costs
+   * nothing; the least recently shown terminals lose theirs past
+   * WEBGL_MAX_TERMINALS.
+   */
+  setVisible(visible: boolean) {
+    if (this.visible === visible) return;
+    this.visible = visible;
+    if (visible) this.loadWebgl();
+  }
+
+  /**
+   * WebGL is a large win on heavy output but is unavailable in some
+   * environments; the DOM renderer remains a working fallback. The fallback
+   * must not be permanent, though: with the semantic decorations in place,
+   * a selection drag on the DOM renderer repaints the whole viewport at
+   * ~6 fps (issue #14). A lost context is recreated on the recovery budget,
+   * and while the DOM renderer is active semantic coloring stays off (see
+   * refreshSemanticColors).
+   */
+  private loadWebgl() {
+    if (this.disposed || !this.host) return;
+    if (this.webgl) {
+      this.promoteWebgl();
+      return;
+    }
+    try {
+      const webgl = new WebglAddon();
+      webgl.onContextLoss(() => this.handleWebglLoss(webgl));
+      this.term.loadAddon(webgl);
+      this.setWebgl(webgl);
+    } catch (error) {
+      if (!this.webglWarned) {
+        this.webglWarned = true;
+        console.warn(
+          `terminal ${this.sessionId}: WebGL unavailable, using the DOM renderer`,
+          error,
+        );
+      }
+      // The GPU process may still be restarting after a loss; retry on
+      // that budget. A cold failure means no WebGL at all: no point.
+      if (Date.now() - this.webglLastLoss <= WEBGL_RECOVERY_WINDOW_MS) {
+        this.scheduleWebglRecovery();
+      }
+    }
+  }
+
+  private unloadWebgl() {
+    const webgl = this.webgl;
+    if (!webgl) return;
+    // The addon only detaches its canvas; the GPU context behind it (and
+    // its window-sized surface) lives on until garbage collection and keeps
+    // counting against WebKit's limit meanwhile. Lose it explicitly.
+    const canvas = this.webglCanvas();
+    webgl.dispose();
+    canvas
+      ?.getContext("webgl2")
+      ?.getExtension("WEBGL_lose_context")
+      ?.loseContext();
+    this.setWebgl(null);
+  }
+
+  /** The addon's canvas: the one in the screen without a render-layer class. */
+  private webglCanvas(): HTMLCanvasElement | null {
+    const screen = this.term.element?.querySelector(".xterm-screen");
+    if (!screen) return null;
+    for (const canvas of screen.querySelectorAll(":scope > canvas")) {
+      if (!canvas.className) return canvas as HTMLCanvasElement;
+    }
+    return null;
+  }
+
+  private handleWebglLoss(webgl: WebglAddon) {
+    // The addon reports the loss 3 s after the event; it may have been
+    // unloaded in between.
+    if (this.webgl !== webgl) return;
+    webgl.dispose();
+    this.setWebgl(null);
+    console.warn(`terminal ${this.sessionId}: WebGL context lost`);
+    const now = Date.now();
+    if (now - this.webglLastLoss > WEBGL_RECOVERY_WINDOW_MS) {
+      this.webglRecoveries = 0;
+    }
+    this.webglLastLoss = now;
+    this.scheduleWebglRecovery();
+  }
+
+  private scheduleWebglRecovery() {
+    // A hidden terminal simply loads WebGL again when it is shown.
+    if (this.disposed || !this.visible || this.webglTimer !== null) return;
+    if (this.webglRecoveries >= WEBGL_RECOVERY_LIMIT) {
+      console.warn(
+        `terminal ${this.sessionId}: WebGL did not come back after ` +
+          `${WEBGL_RECOVERY_LIMIT} attempts within a minute, staying on the DOM renderer`,
+      );
+      return;
+    }
+    this.webglRecoveries += 1;
+    this.webglTimer = window.setTimeout(() => {
+      this.webglTimer = null;
+      this.loadWebgl();
+    }, WEBGL_RECOVERY_DELAY_MS);
+  }
+
+  /**
+   * Records a renderer switch. Semantic state is dropped either way: rows
+   * recorded under one renderer would compare as "unchanged" and never be
+   * recolored under the next, and decorations must not linger on the DOM
+   * renderer.
+   */
+  private setWebgl(webgl: WebglAddon | null) {
+    this.webgl = webgl;
+    if (webgl) {
+      this.promoteWebgl();
+    } else {
+      const index = webglTerminals.indexOf(this);
+      if (index >= 0) webglTerminals.splice(index, 1);
+    }
+    this.disposeAllSemanticColors();
+    if (webgl) this.refreshSemanticColors();
+  }
+
+  /** Moves this terminal to the front of the holders, evicting past the limit. */
+  private promoteWebgl() {
+    const index = webglTerminals.indexOf(this);
+    if (index >= 0) webglTerminals.splice(index, 1);
+    webglTerminals.unshift(this);
+    while (webglTerminals.length > WEBGL_MAX_TERMINALS) {
+      webglTerminals.pop()?.unloadWebgl();
+    }
   }
 
   fit(): { cols: number; rows: number } | null {
@@ -763,6 +925,11 @@ export class TerminalController {
       window.clearTimeout(this.zmodemNoticeTimer);
       this.zmodemNoticeTimer = null;
     }
+    if (this.webglTimer !== null) {
+      window.clearTimeout(this.webglTimer);
+      this.webglTimer = null;
+    }
+    this.unloadWebgl();
     this.zmodem.dispose();
     this.term.dispose();
     this.root = null;
@@ -1123,6 +1290,11 @@ export class TerminalController {
    * instead of per line.
    */
   private refreshSemanticColors() {
+    // Semantic colors ride on decorations, which the DOM renderer repaints
+    // so slowly during a selection drag that the terminal drops to ~6 fps
+    // (issue #14). Plain text is the better trade while WebGL is off; a
+    // hidden terminal without it is recolored when it is shown.
+    if (!this.webgl) return;
     const buf = this.term.buffer.active;
     if (buf.type !== "normal" || this.term.rows === 0) return;
 
