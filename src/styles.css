@@ -1385,20 +1385,50 @@ textarea:focus {
 
 /* IDE-style completion popup: history commands matching the typed input,
    floated under the cursor row. Position is set from the terminal's cell
-   metrics; the look matches the app's menu dropdowns. */
+   metrics. Translucent panel (60% of its own color, which equals the
+   terminal background, so what shows through is the output underneath) with
+   a 1px backdrop blur — without it the rows and the same-size monospace
+   glyphs underneath fight each other, at 1px both stay readable. The
+   selected row is an accent wash fading left to right, no rail: an inset
+   bar follows the row's rounded corners and reads as a stray blob. Chosen
+   from six treatments compared side by side in both palettes. */
 .term-suggest {
   position: absolute;
   z-index: 7;
   min-width: 180px;
   padding: 3px;
   overflow: hidden;
-  background: var(--bg-panel-alt);
-  border: 1px solid var(--border-strong);
-  border-radius: 5px;
-  box-shadow: var(--shadow-menu);
+  background: color-mix(
+    in srgb,
+    color-mix(in srgb, var(--fg) 5%, var(--bg-panel-alt)) 60%,
+    transparent
+  );
+  border: 1px solid color-mix(in srgb, var(--border-strong) 70%, transparent);
+  border-radius: 6px;
+  -webkit-backdrop-filter: blur(1px);
+  backdrop-filter: blur(1px);
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.22);
   font-family:
     "JetBrains Mono", "SF Mono", Menlo, Consolas, "DejaVu Sans Mono", monospace;
   font-size: 12px;
+  animation: term-suggest-in 120ms ease-out;
+}
+
+@keyframes term-suggest-in {
+  from {
+    opacity: 0;
+    transform: translateY(-3px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .term-suggest {
+    animation: none;
+  }
 }
 
 .term-suggest.is-hidden {
@@ -1408,21 +1438,32 @@ textarea:focus {
 .term-suggest-item {
   display: block;
   overflow: hidden;
-  padding: 2px 8px;
-  border-radius: 3px;
-  color: var(--fg-dim);
+  padding: 3px 10px;
+  border-radius: 4px;
+  color: var(--fg);
   cursor: pointer;
   text-overflow: ellipsis;
+  /* Glow in the panel color separates the row text from the output showing
+     through, without opaquing the panel. */
+  text-shadow:
+    0 0 2px var(--bg-panel-alt),
+    0 0 4px var(--bg-panel-alt);
   white-space: pre;
+  transition: background-color 80ms ease-out;
 }
 
 .term-suggest-item:hover {
-  background: var(--bg-hover);
+  background: color-mix(in srgb, var(--fg) 8%, transparent);
 }
 
 .term-suggest-item.is-selected {
-  background: var(--bg-active);
-  color: var(--fg);
+  /* An even wash from the left edge to nothing at the right edge: no box
+     outline, no corner, just the accent bloom trailing off. */
+  background: linear-gradient(
+    90deg,
+    color-mix(in srgb, var(--accent) 20%, transparent),
+    transparent
+  );
 }
 
 .term-suggest-match {
@@ -1430,8 +1471,8 @@ textarea:focus {
   font-weight: 600;
 }
 
-/* --accent is illegible on the dark palette's --bg-active; the light
-   palette's selected row is pale, where --accent stays readable. */
+/* --accent is muddy on its own tint in the dark palette; lighten it there.
+   The light palette's tint is pale, where --accent stays readable. */
 .term-suggest-item.is-selected .term-suggest-match {
   color: #75beff;
 }

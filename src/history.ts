@@ -3,6 +3,17 @@ import type { CommandHistoryEntry } from "./api";
 
 const MAX_ENTRIES = 5000;
 const MAX_SUGGESTIONS = 8;
+/**
+ * A candidate must add at least this many characters beyond the input:
+ * picking `cd ..` for `cd .` costs more keystrokes than finishing it, and
+ * such rows only hide the output underneath.
+ */
+const MIN_GAIN = 3;
+/**
+ * Typed characters (whitespace excluded) before suggestions appear: a single
+ * letter matches too much of the history to be worth a popup.
+ */
+const MIN_INPUT = 2;
 
 /** One row of the completion popup. */
 export interface CommandSuggestion {
@@ -22,10 +33,11 @@ const HOST_BONUS = 2e15;
  * Reads are answered from memory on each keystroke; writes update memory
  * immediately and persist through the backend in the background.
  *
- * Suggestion lookup is IDE-style: every entry containing the typed input is a
- * candidate, ranked prefix-first, same-host-first, most-recent-first. The list
- * stays small enough that a linear scan per keystroke is well under a
- * millisecond.
+ * Suggestion lookup is IDE-style: once `MIN_INPUT` characters are typed,
+ * every entry containing the typed input and extending it by at least
+ * `MIN_GAIN` characters is a candidate, ranked prefix-first, same-host-first,
+ * most-recent-first. The list stays small enough that a linear scan per
+ * keystroke is well under a millisecond.
  */
 class CommandHistory {
   private entries: CommandHistoryEntry[] = [];
@@ -68,7 +80,7 @@ class CommandHistory {
   }
 
   suggest(input: string, host: string): CommandSuggestion[] {
-    if (!input) return [];
+    if (input.trim().length < MIN_INPUT) return [];
     // The same command may be remembered for several hosts; keep only the
     // best-scoring occurrence of each command text.
     const byCommand = new Map<
@@ -76,7 +88,7 @@ class CommandHistory {
       { score: number; matchStart: number }
     >();
     for (const entry of this.entries) {
-      if (entry.command === input) continue;
+      if (entry.command.length < input.length + MIN_GAIN) continue;
       const matchStart = entry.command.indexOf(input);
       if (matchStart === -1) continue;
       const score =
