@@ -99,9 +99,7 @@ export function ensureController(id: string): TerminalController {
     useStore.getState().terminalScrollback,
     useStore.getState().theme,
   );
-  const { suggestionsEnabled, rightClickAction } = useStore.getState();
-  controller.setSuggestions(suggestionsEnabled);
-  controller.setRightClickAction(rightClickAction);
+  controller.setSuggestions(useStore.getState().suggestionsEnabled);
   setController(id, controller);
   return controller;
 }

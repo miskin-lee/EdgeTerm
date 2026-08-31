@@ -13,7 +13,7 @@ import { exportAppData, importAppData } from "../dataTransfer";
 import { commandHistory } from "../history";
 import { IS_MAC, shortcutLabel as sc } from "../platform";
 import { useActiveTab, useStore } from "../store";
-import type { GutterMode, RightClickAction } from "../terminal";
+import type { GutterMode } from "../terminal";
 import { getController } from "../terminalRegistry";
 import type { ThemeMode } from "../types";
 
@@ -241,8 +241,6 @@ export function MenuBar(props: Props) {
   const setTheme = useStore((s) => s.setTheme);
   const suggestionsEnabled = useStore((s) => s.suggestionsEnabled);
   const setSuggestionsEnabled = useStore((s) => s.setSuggestionsEnabled);
-  const rightClickAction = useStore((s) => s.rightClickAction);
-  const setRightClickAction = useStore((s) => s.setRightClickAction);
   const resetSettings = useStore((s) => s.resetSettings);
   const setStatus = useStore((s) => s.setStatus);
   const requestCloseTab = useStore((s) => s.requestCloseTab);
@@ -276,12 +274,6 @@ export function MenuBar(props: Props) {
     label,
     checked: theme === mode,
     action: () => setTheme(mode),
-  });
-
-  const rightClickEntry = (label: string, action: RightClickAction): Entry => ({
-    label,
-    checked: rightClickAction === action,
-    action: () => setRightClickAction(action),
   });
 
   const menus: Menu[] = [
@@ -355,14 +347,6 @@ export function MenuBar(props: Props) {
           label: "Select All",
           shortcut: sc("⌘A", "Ctrl+Shift+A"),
           action: withActive((id) => getController(id)?.selectAll()),
-        },
-        "separator",
-        {
-          label: "Right Click",
-          children: [
-            rightClickEntry("Copy or Paste", "copyPaste"),
-            rightClickEntry("Show Menu", "menu"),
-          ],
         },
         "separator",
         {

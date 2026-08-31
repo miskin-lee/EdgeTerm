@@ -2,8 +2,7 @@ import { create } from "zustand";
 
 import * as api from "./api";
 import { commandHistory } from "./history";
-import { IS_MAC } from "./platform";
-import type { GutterMode, RightClickAction } from "./terminal";
+import type { GutterMode } from "./terminal";
 import { disposeController, getController } from "./terminalRegistry";
 import type {
   HostKeyChange,
@@ -63,16 +62,6 @@ const GUTTER_MODE_KEY = "edgeterm.gutterMode";
 const PANELS_KEY = "edgeterm.panels";
 const THEME_KEY = "edgeterm.theme";
 const SUGGESTIONS_KEY = "edgeterm.suggestions";
-const RIGHT_CLICK_KEY = "edgeterm.rightClick";
-
-/**
- * macOS terminals open a context menu on right click. Everywhere else the
- * Windows console convention (conhost, Windows Terminal, PuTTY) applies:
- * right click copies the selection or pastes.
- */
-export const DEFAULT_RIGHT_CLICK: RightClickAction = IS_MAC
-  ? "menu"
-  : "copyPaste";
 
 // Opt-in: command capture and the completion popup stay off until the user
 // enables them in the Edit menu.
@@ -88,23 +77,6 @@ const loadSuggestionsEnabled = (): boolean => {
 // anything unknown, so both localStorage and a data file get the same checks.
 const parseTheme = (value: unknown): ThemeMode | null =>
   value === "dark" || value === "light" ? value : null;
-
-const parseRightClickAction = (value: unknown): RightClickAction | null =>
-  value === "copyPaste" || value === "menu"
-    ? value
-    : null;
-
-const loadRightClickAction = (): RightClickAction => {
-  try {
-    return (
-      parseRightClickAction(localStorage.getItem(RIGHT_CLICK_KEY)) ??
-      DEFAULT_RIGHT_CLICK
-    );
-  } catch {
-    // Use the default when storage is unavailable.
-    return DEFAULT_RIGHT_CLICK;
-  }
-};
 
 const parseGutterMode = (value: unknown): GutterMode | null =>
   value === "both" || value === "line" || value === "time" || value === "off"
@@ -235,7 +207,6 @@ export interface AppSettings {
   bufferFontSize: number;
   terminalScrollback: number;
   suggestionsEnabled: boolean;
-  rightClickAction: RightClickAction;
 }
 
 interface AppStore {
@@ -251,8 +222,6 @@ interface AppStore {
   terminalScrollback: number;
   /** Command history recording + fish-style inline suggestions. */
   suggestionsEnabled: boolean;
-  /** What a right click in the terminal does; see `RightClickAction`. */
-  rightClickAction: RightClickAction;
   panels: Record<PanelName, boolean>;
   status: string;
   error: string | null;
@@ -326,7 +295,6 @@ interface AppStore {
   setBufferFontSize: (size: number) => void;
   setTerminalScrollback: (rows: number) => void;
   setSuggestionsEnabled: (enabled: boolean) => void;
-  setRightClickAction: (action: RightClickAction) => void;
   resetSettings: () => void;
   /** The preferences a data export carries; see `applySettings`. */
   exportSettings: () => AppSettings;
@@ -357,7 +325,6 @@ export const useStore = create<AppStore>((set, get) => ({
   bufferFontSize: loadFontSize(BUFFER_FONT_SIZE_KEY, BUFFER_FONT_SIZE),
   terminalScrollback: loadScrollback(),
   suggestionsEnabled: loadSuggestionsEnabled(),
-  rightClickAction: loadRightClickAction(),
   panels: loadPanels(),
   status: "Ready",
   error: null,
@@ -572,15 +539,6 @@ export const useStore = create<AppStore>((set, get) => ({
     }
   },
 
-  setRightClickAction(action) {
-    set({ rightClickAction: action });
-    try {
-      localStorage.setItem(RIGHT_CLICK_KEY, action);
-    } catch {
-      // The setting still applies for this run when storage is unavailable.
-    }
-  },
-
   resetSettings() {
     set({
       panels: { ...DEFAULT_PANELS },
@@ -590,7 +548,6 @@ export const useStore = create<AppStore>((set, get) => ({
       bufferFontSize: BUFFER_FONT_SIZE.default,
       terminalScrollback: TERMINAL_SCROLLBACK.default,
       suggestionsEnabled: false,
-      rightClickAction: DEFAULT_RIGHT_CLICK,
     });
     try {
       localStorage.removeItem(PANELS_KEY);
@@ -600,7 +557,6 @@ export const useStore = create<AppStore>((set, get) => ({
       localStorage.removeItem(BUFFER_FONT_SIZE_KEY);
       localStorage.removeItem(TERMINAL_SCROLLBACK_KEY);
       localStorage.removeItem(SUGGESTIONS_KEY);
-      localStorage.removeItem(RIGHT_CLICK_KEY);
     } catch {
       // The defaults still apply for this run when storage is unavailable.
     }
@@ -616,7 +572,6 @@ export const useStore = create<AppStore>((set, get) => ({
       bufferFontSize: state.bufferFontSize,
       terminalScrollback: state.terminalScrollback,
       suggestionsEnabled: state.suggestionsEnabled,
-      rightClickAction: state.rightClickAction,
     };
   },
 
@@ -647,8 +602,6 @@ export const useStore = create<AppStore>((set, get) => ({
     if (typeof values.suggestionsEnabled === "boolean") {
       state.setSuggestionsEnabled(values.suggestionsEnabled);
     }
-    const rightClickAction = parseRightClickAction(values.rightClickAction);
-    if (rightClickAction) state.setRightClickAction(rightClickAction);
   },
 
   bumpSenderLibrary() {

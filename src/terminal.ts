@@ -61,15 +61,6 @@ export function parseOsc9(data: string): ReportedCwd | null {
   return path ? { host: "", path } : null;
 }
 
-/**
- * What a right click in the terminal does, when no program has taken over
- * the mouse. `copyPaste` is the Windows console convention (copy the
- * selection if there is one, otherwise paste), `menu` the macOS one (a
- * context menu; the word under the pointer is selected first, as in
- * VS Code).
- */
-export type RightClickAction = "copyPaste" | "menu";
-
 function openTerminalWebLink(event: MouseEvent, uri: string) {
   // Opening terminal output on an unmodified click makes accidental launches
   // too easy. Match native terminal behavior on macOS and other platforms.
@@ -295,9 +286,10 @@ export class TerminalController {
       minimumContrastRatio: 4.5,
       drawBoldTextInBrightColors: true,
       macOptionIsMeta: true,
-      // Set by setRightClickAction: only the "menu" mode wants the
-      // word under the pointer selected first.
-      rightClickSelectsWord: false,
+      // A right click opens the terminal's context menu (TerminalHost), so
+      // the word under the pointer is selected first and the menu's Copy
+      // has something to copy, as in VS Code.
+      rightClickSelectsWord: true,
     });
 
     this.zmodemNotice = document.createElement("div");
@@ -626,17 +618,6 @@ export class TerminalController {
     this.term.focus();
   }
 
-  /**
-   * `rightClickSelectsWord` follows the right-click mode: in "menu" mode a
-   * right click selects the word under the pointer so the menu's Copy has
-   * something to copy (VS Code on macOS); in "copyPaste" mode it must stay
-   * off, or a right click meant to paste would select a word and copy it
-   * instead.
-   */
-  setRightClickAction(rightClick: RightClickAction) {
-    this.term.options.rightClickSelectsWord = rightClick === "menu";
-  }
-
   hasSelection(): boolean {
     return this.term.hasSelection();
   }
@@ -646,10 +627,6 @@ export class TerminalController {
     if (!this.term.hasSelection()) return false;
     void navigator.clipboard.writeText(this.term.getSelection());
     return true;
-  }
-
-  clearSelection() {
-    this.term.clearSelection();
   }
 
   selectAll() {

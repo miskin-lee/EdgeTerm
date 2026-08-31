@@ -69,11 +69,11 @@ interface TerminalMenu {
 
 /**
  * Mouse copy / paste, the way terminals conventionally do it: right click
- * follows the `rightClickAction` setting (Windows console copy-or-paste,
- * a context menu, or plain paste) and middle click always pastes. Clicks
- * are left alone while a program has enabled mouse reporting, except with
- * Shift held on Windows / Linux, which xterm itself treats as "bypass the
- * program" (macOS has no such key: Option is Meta there).
+ * opens a context menu (the same on every platform) and middle click
+ * pastes. Clicks are left alone while a program has enabled mouse
+ * reporting, except with Shift held on Windows / Linux, which xterm itself
+ * treats as "bypass the program" (macOS has no such key: Option is Meta
+ * there).
  */
 function TerminalHost({ tab, active }: { tab: Tab; active: boolean }) {
   const ref = useRef<HTMLDivElement>(null);
@@ -81,7 +81,6 @@ function TerminalHost({ tab, active }: { tab: Tab; active: boolean }) {
   const bufferFontSize = useStore((s) => s.bufferFontSize);
   const terminalScrollback = useStore((s) => s.terminalScrollback);
   const suggestionsEnabled = useStore((s) => s.suggestionsEnabled);
-  const rightClickAction = useStore((s) => s.rightClickAction);
   const [menu, setMenu] = useState<TerminalMenu | null>(null);
   const closeMenu = useCallback(() => setMenu(null), []);
   const id = tab.info.id;
@@ -99,20 +98,11 @@ function TerminalHost({ tab, active }: { tab: Tab; active: boolean }) {
     const controller = ownsClick(event);
     if (!controller) return;
     event.preventDefault();
-    switch (rightClickAction) {
-      case "copyPaste":
-        // conhost / Windows Terminal: the selection is consumed by the copy.
-        if (controller.copySelection()) controller.clearSelection();
-        else controller.pasteFromClipboard();
-        break;
-      case "menu":
-        setMenu({
-          x: event.clientX,
-          y: event.clientY,
-          canCopy: controller.hasSelection(),
-        });
-        break;
-    }
+    setMenu({
+      x: event.clientX,
+      y: event.clientY,
+      canCopy: controller.hasSelection(),
+    });
   };
 
   // Middle click: xterm positions its textarea under the pointer so a
@@ -193,10 +183,6 @@ function TerminalHost({ tab, active }: { tab: Tab; active: boolean }) {
   useEffect(() => {
     getController(id)?.setSuggestions(suggestionsEnabled);
   }, [id, suggestionsEnabled]);
-
-  useEffect(() => {
-    getController(id)?.setRightClickAction(rightClickAction);
-  }, [id, rightClickAction]);
 
   useEffect(() => {
     if (!active) return;
