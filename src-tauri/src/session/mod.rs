@@ -1,3 +1,4 @@
+pub mod cwd;
 pub mod ftp;
 pub mod local;
 pub mod serial;
@@ -94,6 +95,11 @@ pub enum SessionCommand {
         request: SftpRequest,
         reply: oneshot::Sender<Result<SftpResponse>>,
     },
+    /// The working directory of the shell's foreground job, for the Filer.
+    /// Local sessions ask the OS, SSH sessions ask the server; see `cwd`.
+    QueryCwd {
+        reply: oneshot::Sender<Result<String>>,
+    },
     Close,
 }
 
@@ -154,6 +160,14 @@ impl SessionManager {
     pub async fn sftp(&self, id: &str, request: SftpRequest) -> Result<SftpResponse> {
         let (reply, rx) = oneshot::channel();
         self.send(id, SessionCommand::Sftp { request, reply })?;
+        rx.await
+            .map_err(|_| AppError::new("session closed before the request completed"))?
+    }
+
+    /// Round-trips a working-directory query through the owning session.
+    pub async fn query_cwd(&self, id: &str) -> Result<String> {
+        let (reply, rx) = oneshot::channel();
+        self.send(id, SessionCommand::QueryCwd { reply })?;
         rx.await
             .map_err(|_| AppError::new("session closed before the request completed"))?
     }
@@ -249,11 +263,19 @@ impl OutputPump {
 
 // --- helpers shared by the backends ----------------------------------------
 
-pub fn reject_sftp(cmd: SessionCommand, kind: SessionKind) {
+/// Answers the request-reply commands a backend cannot serve, so the caller
+/// gets an error instead of a dropped reply channel.
+pub fn reject_unsupported(cmd: SessionCommand, kind: SessionKind) {
     match cmd {
         SessionCommand::Sftp { reply, .. } => {
             let _ = reply.send(Err(AppError::new(format!(
                 "{:?} sessions have no remote filesystem",
+                kind
+            ))));
+        }
+        SessionCommand::QueryCwd { reply } => {
+            let _ = reply.send(Err(AppError::new(format!(
+                "{:?} sessions have no shell working directory",
                 kind
             ))));
         }

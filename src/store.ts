@@ -270,6 +270,13 @@ interface AppStore {
    */
   closePrompt: string | null;
   /**
+   * A directory the Filer was asked to show (⌘J / "Reveal Working Directory
+   * in Filer"). `token` tells a repeat request for the same path apart from
+   * the last one; `sessionId` lets the panel drop a request that resolved
+   * after the user had switched to another tab.
+   */
+  filerTarget: { sessionId: string; path: string; token: number } | null;
+  /**
    * Bumped whenever saved Sender tags change outside the Sender panel (a data
    * import, a deleted profile or group moving their scoped commands), so the
    * panel reloads its library.
@@ -332,6 +339,8 @@ interface AppStore {
   setStatus: (status: string) => void;
   setError: (error: string | null, sessionId?: string) => void;
   setHostKeyPrompt: (prompt: HostKeyPrompt | null) => void;
+  /** Points the Filer at `path` for `sessionId`, showing the panel if hidden. */
+  revealInFiler: (sessionId: string, path: string) => void;
 }
 
 const patchTab = (tabs: Tab[], id: string, patch: Partial<Tab>): Tab[] =>
@@ -355,6 +364,7 @@ export const useStore = create<AppStore>((set, get) => ({
   errorSessionId: null,
   hostKeyPrompt: null,
   closePrompt: null,
+  filerTarget: null,
   senderLibraryVersion: 0,
 
   async loadProfiles() {
@@ -655,6 +665,12 @@ export const useStore = create<AppStore>((set, get) => ({
 
   setHostKeyPrompt(prompt) {
     set({ hostKeyPrompt: prompt });
+  },
+
+  revealInFiler(sessionId, path) {
+    const token = (get().filerTarget?.token ?? 0) + 1;
+    set({ filerTarget: { sessionId, path, token } });
+    if (!get().panels.filer) get().togglePanel("filer");
   },
 }));
 

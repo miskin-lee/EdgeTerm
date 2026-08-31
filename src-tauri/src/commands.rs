@@ -551,6 +551,20 @@ pub fn local_home() -> String {
     fs_local::home()
 }
 
+/// Where the session's shell is right now, for the Filer's "Reveal Working
+/// Directory" action; see `session::cwd`.
+#[tauri::command]
+pub async fn session_cwd(state: State<'_, AppState>, id: String) -> Result<String> {
+    state.sessions.query_cwd(&id).await
+}
+
+/// This machine's host name, so the frontend can tell a local shell's OSC 7
+/// directory report from one a remote shell sent through a hand-typed ssh.
+#[tauri::command]
+pub fn local_hostname() -> String {
+    session::cwd::local_hostname()
+}
+
 #[tauri::command]
 pub async fn local_list(path: String) -> Result<DirListing> {
     tokio::task::spawn_blocking(move || fs_local::list(&path))

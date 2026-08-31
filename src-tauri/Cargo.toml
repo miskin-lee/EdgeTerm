@@ -51,6 +51,11 @@ notify = "8"
 [target."cfg(any(target_os = \"macos\", windows, target_os = \"linux\"))".dependencies]
 tauri-plugin-updater = "2"
 
+# Already in the tree; used directly for the pty's foreground process group
+# and a process's working directory (see `session/cwd.rs`).
+[target."cfg(unix)".dependencies]
+libc = "0.2"
+
 # Drive enumeration and volume labels for the Filer's "This PC" view, the
 # registry MachineGuid the credential key is bound to, and the WM_SYSCOMMAND
 # route behind the menubar's window controls (see `window_control`).

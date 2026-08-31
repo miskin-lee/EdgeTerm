@@ -6,7 +6,7 @@ use serialport::{DataBits, FlowControl, Parity, SerialPortType, StopBits};
 use tauri::AppHandle;
 use tokio::sync::mpsc::{error::TryRecvError, UnboundedReceiver};
 
-use super::{emit_state, reject_sftp, OutputPump, SessionCommand};
+use super::{emit_state, reject_unsupported, OutputPump, SessionCommand};
 use crate::error::{err, AppError, Result};
 use crate::model::{SerialPortDesc, SessionKind, SessionProfile};
 
@@ -146,7 +146,7 @@ where
             // A serial line has no window to resize.
             Ok(SessionCommand::Resize { .. }) => {}
             Ok(SessionCommand::Close) | Err(TryRecvError::Disconnected) => return true,
-            Ok(other) => reject_sftp(other, SessionKind::Serial),
+            Ok(other) => reject_unsupported(other, SessionKind::Serial),
             Err(TryRecvError::Empty) => {}
         }
 

@@ -1,6 +1,7 @@
 import * as api from "./api";
 import { commandHistory } from "./history";
-import { useStore, type HostKeyPrompt } from "./store";
+import { IS_WINDOWS } from "./platform";
+import { useStore, type HostKeyPrompt, type Tab } from "./store";
 import { TerminalController } from "./terminal";
 import {
   disposeController,
@@ -271,4 +272,84 @@ export async function acceptHostKey(prompt: HostKeyPrompt): Promise<void> {
     `\r\n[accepted new host key ${prompt.change.fingerprint}; reconnecting]\r\n`,
   );
   void connectSession(prompt.sessionId, prompt.profile);
+}
+
+// --- Filer: reveal the shell's working directory ----------------------------
+
+let localHostname: Promise<string> | null = null;
+
+function firstLabel(host: string): string {
+  return host.toLowerCase().split(".")[0];
+}
+
+/**
+ * Whether an OSC 7 host names this machine. A remote shell the user ssh'd
+ * into by hand from a local tab reports its own host, and that directory
+ * must not be looked for in the local Filer.
+ */
+async function isThisHost(host: string): Promise<boolean> {
+  if (host === "" || host === "localhost") return true;
+  localHostname ??= api.localHostname().catch(() => "");
+  const mine = await localHostname;
+  return mine !== "" && firstLabel(host) === firstLabel(mine);
+}
+
+/** `/C:/Users/me` from a Windows shell's OSC 7 URL → `C:\Users\me`. */
+function localPathFromUrlPath(path: string): string {
+  if (!IS_WINDOWS) return path;
+  const drive = /^\/([A-Za-z]:)(\/.*)?$/.exec(path);
+  if (!drive) return path;
+  return `${drive[1]}${(drive[2] ?? "/").replace(/\//g, "\\")}`;
+}
+
+/**
+ * Where the tab's shell is right now. An SSH shell's own OSC report wins
+ * (exact even inside sudo or a nested shell), then the server is asked
+ * (`session_cwd`; Linux hosts). A local shell is asked through the OS
+ * first — exact, and needing no shell setup — with its OSC report as the
+ * fallback where the OS cannot be asked (Windows).
+ */
+async function shellCwd(tab: Tab): Promise<string> {
+  const id = tab.info.id;
+  const reported = getController(id)?.reportedCwd ?? null;
+  if (tab.info.kind === "ssh") {
+    if (reported) return reported.path;
+    return api.sessionCwd(id);
+  }
+  try {
+    return await api.sessionCwd(id);
+  } catch (error) {
+    if (reported && (await isThisHost(reported.host))) {
+      return localPathFromUrlPath(reported.path);
+    }
+    throw error;
+  }
+}
+
+/**
+ * Points the Filer at the directory the session's shell is in — ⌘J /
+ * Ctrl+Shift+J, the terminal's context menu and the Filer's locate button
+ * all land here. One query per request; nothing follows the shell around.
+ */
+export async function revealCwdInFiler(id: string): Promise<void> {
+  const store = useStore.getState();
+  const tab = store.tabs.find((item) => item.info.id === id);
+  if (!tab) return;
+  if (tab.info.kind !== "local" && tab.info.kind !== "ssh") {
+    store.setStatus(
+      "Filer: only shell and SSH sessions have a working directory",
+    );
+    return;
+  }
+  if (tab.state !== "connected") {
+    store.setStatus("Filer: the session is not connected");
+    return;
+  }
+  try {
+    const path = await shellCwd(tab);
+    useStore.getState().revealInFiler(id, path);
+    useStore.getState().setStatus(`Filer: ${path}`);
+  } catch (error) {
+    useStore.getState().setError(`Filer: ${String(error)}`, id);
+  }
 }

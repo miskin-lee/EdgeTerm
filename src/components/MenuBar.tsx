@@ -7,7 +7,7 @@ import { ask } from "@tauri-apps/plugin-dialog";
 import { openUrl } from "@tauri-apps/plugin-opener";
 
 import appIcon from "../../src-tauri/icons/32x32.png";
-import { toggleSessionConnection } from "../actions";
+import { revealCwdInFiler, toggleSessionConnection } from "../actions";
 import { windowControl } from "../api";
 import { exportAppData, importAppData } from "../dataTransfer";
 import { commandHistory } from "../history";
@@ -428,6 +428,12 @@ export function MenuBar(props: Props) {
           shortcut: sc("⌘⌥↓", "Ctrl+Alt+↓"),
           checked: panels.sender,
           action: () => togglePanel("sender"),
+        },
+        "separator",
+        {
+          label: "Reveal Working Directory in Filer",
+          shortcut: sc("⌘J", "Ctrl+Shift+J"),
+          action: withActive((id) => void revealCwdInFiler(id)),
         },
         "separator",
         {

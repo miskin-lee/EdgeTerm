@@ -604,6 +604,15 @@ pub fn spawn(
                                 }
                             }
                         }
+                        Some(SessionCommand::QueryCwd { reply }) => {
+                            // Its own exec channel, off the session loop, so
+                            // the shell channel is neither written to nor
+                            // held up.
+                            let handle = handle.clone();
+                            tauri::async_runtime::spawn(async move {
+                                let _ = reply.send(remote_cwd(handle).await);
+                            });
+                        }
                         Some(SessionCommand::Close) | None => {
                             close_requested = true;
                             let _ = writer.eof().await;
@@ -675,7 +684,7 @@ pub fn spawn_sftp(
                         // A file-only session has no terminal, so keyboard
                         // input and resize map to nothing and binary terminal
                         // data is rejected, matching the other file backends.
-                        Some(other) => super::reject_sftp(other, crate::model::SessionKind::Sftp),
+                        Some(other) => super::reject_unsupported(other, crate::model::SessionKind::Sftp),
                     }
                 }
                 _ = tokio::time::sleep(SFTP_HEALTH_INTERVAL) => {
@@ -694,6 +703,55 @@ pub fn spawn_sftp(
             .await;
         hops.disconnect().await;
     });
+}
+
+/// How long the server gets to answer a working-directory query; `grep`
+/// over `/proc/*/environ` takes milliseconds, so this only bounds a stuck
+/// login shell.
+const REMOTE_CWD_TIMEOUT: Duration = Duration::from_secs(5);
+
+/// Asks the server for the working directory of the shell's foreground job
+/// (see `session::cwd`) over a fresh exec channel of the same connection.
+async fn remote_cwd(handle: Arc<Handle<Client>>) -> Result<String> {
+    let query = async {
+        let mut channel = handle.channel_open_session().await?;
+        // `sh` takes the script on stdin, so the user's login shell — which
+        // sshd runs the command line through, and which may be csh or fish
+        // — never has to parse POSIX syntax.
+        channel.exec(true, "sh").await?;
+        channel
+            .data_bytes(super::cwd::REMOTE_CWD_SCRIPT.as_bytes().to_vec())
+            .await?;
+        channel.eof().await?;
+        let mut stdout = Vec::new();
+        let mut stderr = Vec::new();
+        let mut status = None;
+        // OpenSSH sends exit-status before eof and close, but not every
+        // server keeps that order; close (or a dropped channel) is the end.
+        while let Some(msg) = channel.wait().await {
+            match msg {
+                ChannelMsg::Data { data } => stdout.extend_from_slice(&data),
+                ChannelMsg::ExtendedData { data, .. } => stderr.extend_from_slice(&data),
+                ChannelMsg::ExitStatus { exit_status } => status = Some(exit_status),
+                ChannelMsg::Close => break,
+                _ => {}
+            }
+        }
+        Ok::<_, AppError>((stdout, stderr, status))
+    };
+    let (stdout, stderr, status) = tokio::time::timeout(REMOTE_CWD_TIMEOUT, query)
+        .await
+        .map_err(|_| {
+            AppError::new(format!(
+                "the server did not answer the working-directory query within {}s",
+                REMOTE_CWD_TIMEOUT.as_secs()
+            ))
+        })??;
+    super::cwd::parse_remote_cwd(
+        &String::from_utf8_lossy(&stdout),
+        &String::from_utf8_lossy(&stderr),
+        status,
+    )
 }
 
 async fn ensure_sftp(

@@ -36,7 +36,7 @@ A small, lightweight, high-performance terminal, SSH, SFTP, FTP, and serial clie
 **Interface**
 - **Timestamp and line-number gutter** — WindTerm's most recognizable feature. Every output line includes `[HH:MM:SS.SSS]` and a cumulative line number, with the cursor line highlighted. Four display modes are available from the `Session` menu.
 - **Session** (left): saved connection profiles in a collapsible tree; double-click to connect. Right-click a heading or a group to create (nested) groups, rename or delete them; right-click a session to connect, edit, move it to another group, or delete it. The New Session dialog lets you choose which group a session is saved to.
-- **Filer** (right): a file browser that automatically switches to SFTP for SSH sessions, with file and folder upload (including drag & drop), file and folder download, create-directory, and delete operations. Other terminal sessions browse the local filesystem.
+- **Filer** (right): a file browser that automatically switches to SFTP for SSH sessions, with file and folder upload (including drag & drop), file and folder download, create-directory, and delete operations. Other terminal sessions browse the local filesystem. `⌘J` / `Ctrl+Shift+J` (also in the terminal's context menu and the Filer's locate button) jumps the Filer to the directory the shell is in: a local shell is asked through the OS, an SSH shell through the server (Linux hosts), and a shell that reports its directory with OSC 7 — fish does by default; bash and zsh with a one-line prompt hook — is answered everywhere, `sudo` and nested shells included.
 - **Sender** (bottom): send text or hexadecimal input with a chosen line ending (none / LF / CRLF) to the current session or to all open sessions at once. Saved commands are scoped — to one session, a Session panel group, a session kind (serial / SSH / shell) or everywhere — and the Sender lists the ones that apply to the active tab, most specific first.
 
 **Command suggestions**
@@ -59,6 +59,7 @@ Local shell, SSH, and serial terminals automatically detect ZMODEM sessions. Run
 | `⌘W` | `Ctrl+Shift+W` | Close the current session (asks for confirmation while it is still connected) |
 | `⌘F` / `⌘G` | `Ctrl+Shift+F` / `Ctrl+Shift+G` | Search the terminal buffer / find next |
 | `⌘K` | `Alt+K` | Clear the screen |
+| `⌘J` | `Ctrl+Shift+J` | Reveal the shell's working directory in the Filer |
 | `⌘[` / `⌘]` | `Alt+[` / `Alt+]` | Switch to the previous / next open session |
 | `⌘1`–`⌘9` | `Alt+1`–`Alt+9` | Switch to tab N |
 | `⌘⌥←` / `⌘⌥→` / `⌘⌥↓` | `Ctrl+Alt+←` / `Ctrl+Alt+→` / `Ctrl+Alt+↓` | Show or hide Session / Filer / Sender |

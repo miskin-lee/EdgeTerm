@@ -25,6 +25,42 @@ import {
 
 export type GutterMode = "off" | "line" | "time" | "both";
 
+/** A working directory the shell announced with an OSC sequence. */
+export interface ReportedCwd {
+  /** Host part of an OSC 7 URL; "" when the sequence carried none. */
+  host: string;
+  path: string;
+}
+
+/** OSC 7 payload `file://host/path` (Terminal.app, WezTerm, fish, …). */
+export function parseOsc7(data: string): ReportedCwd | null {
+  const match = /^file:\/\/([^/]*)(\/.*)$/s.exec(data);
+  if (!match) return null;
+  let path = match[2];
+  try {
+    path = decodeURIComponent(path);
+  } catch {
+    // Not percent-encoded (many prompt snippets write $PWD raw): as is.
+  }
+  return { host: match[1], path };
+}
+
+/** OSC 1337 payload `CurrentDir=path` (iTerm2 shell integration). */
+export function parseOsc1337(data: string): ReportedCwd | null {
+  const match = /^CurrentDir=(.+)$/s.exec(data);
+  return match ? { host: "", path: match[1] } : null;
+}
+
+/** OSC 9 payload `9;path` (ConEmu / Windows Terminal), quotes optional. */
+export function parseOsc9(data: string): ReportedCwd | null {
+  if (!data.startsWith("9;")) return null;
+  let path = data.slice(2);
+  if (path.length >= 2 && path.startsWith('"') && path.endsWith('"')) {
+    path = path.slice(1, -1);
+  }
+  return path ? { host: "", path } : null;
+}
+
 /**
  * What a right click in the terminal does, when no program has taken over
  * the mouse. `copyPaste` is the Windows console convention (copy the
@@ -224,6 +260,8 @@ export class TerminalController {
   private semanticRows: SemanticRow[] = [];
   /** Reused cell for buffer walks, to avoid per-cell allocation. */
   private workCell: IBufferCell | undefined;
+  /** The shell's latest OSC directory report; see `reportedCwd`. */
+  private reported: ReportedCwd | null = null;
   private disposed = false;
   /**
    * Cached so the per-frame gutter sync never reads layout. Recomputed only on
@@ -291,6 +329,19 @@ export class TerminalController {
       this.trackInput(data);
       this.callbacks.onData(data);
     });
+    // Shells with OSC 7 / 1337 / 9;9 integration announce their working
+    // directory at every prompt. Only the latest report is kept: it answers
+    // "Reveal Working Directory in Filer" exactly, nested shells and sudo
+    // included, wherever the OS or the server cannot be asked.
+    const report =
+      (parse: (data: string) => ReportedCwd | null) => (data: string) => {
+        const cwd = parse(data);
+        if (cwd) this.reported = cwd;
+        return cwd !== null;
+      };
+    this.term.parser.registerOscHandler(7, report(parseOsc7));
+    this.term.parser.registerOscHandler(1337, report(parseOsc1337));
+    this.term.parser.registerOscHandler(9, report(parseOsc9));
     this.term.parser.registerCsiHandler({ final: "J" }, (params) => {
       const mode = params[0];
       if (
@@ -547,7 +598,20 @@ export class TerminalController {
     this.locked = locked;
     this.term.options.disableStdin = locked;
     this.term.write(locked ? "\x1b[?25l" : "\x1b[?25h");
-    if (locked) this.hidePopup();
+    if (locked) {
+      this.hidePopup();
+      // A reconnected shell starts over in its home directory; the old
+      // report must not outlive the session it described.
+      this.reported = null;
+    }
+  }
+
+  /**
+   * The working directory the shell last announced through OSC 7 / 1337 /
+   * 9;9, or null when it never has (or the session ended since).
+   */
+  get reportedCwd(): ReportedCwd | null {
+    return this.reported;
   }
 
   isZmodemActive(): boolean {

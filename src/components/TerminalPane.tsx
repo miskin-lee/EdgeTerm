@@ -6,7 +6,7 @@ import {
   type MouseEvent as ReactMouseEvent,
 } from "react";
 
-import { ensureController } from "../actions";
+import { ensureController, revealCwdInFiler } from "../actions";
 import { IS_MAC, shortcutLabel as sc } from "../platform";
 import { useStore, type Tab } from "../store";
 import type { TerminalController } from "../terminal";
@@ -157,6 +157,11 @@ function TerminalHost({ tab, active }: { tab: Tab; active: boolean }) {
     {
       label: "Clear Buffer",
       action: withTerminal((controller) => controller.clear()),
+    },
+    "separator",
+    {
+      label: "Reveal Working Directory in Filer",
+      action: withTerminal(() => void revealCwdInFiler(id)),
     },
   ];
 

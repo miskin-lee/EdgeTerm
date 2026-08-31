@@ -6,7 +6,7 @@ use portable_pty::{native_pty_system, CommandBuilder, PtySize};
 use tauri::AppHandle;
 use tokio::sync::mpsc::UnboundedReceiver;
 
-use super::{emit_state, reject_sftp, OutputPump, SessionCommand};
+use super::{cwd, emit_state, reject_unsupported, OutputPump, SessionCommand};
 use crate::error::{err, Result};
 use crate::model::{split_command_line, SessionKind, SessionProfile};
 
@@ -119,12 +119,15 @@ pub fn spawn(
                             pixel_height: 0,
                         });
                     }
+                    SessionCommand::QueryCwd { reply } => {
+                        let _ = reply.send(cwd::local_shell_cwd(master.as_ref(), child.as_ref()));
+                    }
                     SessionCommand::Close => {
                         close_requested.store(true, Ordering::SeqCst);
                         let _ = child.kill();
                         break;
                     }
-                    other => reject_sftp(other, SessionKind::Local),
+                    other => reject_unsupported(other, SessionKind::Local),
                 }
             }
             let _ = child.wait();

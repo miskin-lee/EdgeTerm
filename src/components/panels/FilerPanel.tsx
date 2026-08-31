@@ -8,8 +8,9 @@ import {
   type MouseEvent,
 } from "react";
 
+import { revealCwdInFiler } from "../../actions";
 import * as api from "../../api";
-import { IS_MAC, IS_WINDOWS } from "../../platform";
+import { IS_MAC, IS_WINDOWS, shortcutLabel as sc } from "../../platform";
 import { useActiveTab, useStore } from "../../store";
 import { ContextMenu, type MenuItem } from "../ContextMenu";
 import { DeleteEntryDialog } from "../DeleteEntryDialog";
@@ -48,6 +49,16 @@ export function FilerPanel() {
   // Null for every session without remote files, so switching between local tabs does not
   // count as a source change and reset where the user was browsing.
   const remoteId = remote ? (tab?.info.id ?? null) : null;
+  const filerTarget = useStore((s) => s.filerTarget);
+  /** The last `filerTarget.token` this panel navigated to. */
+  const consumedTarget = useRef(0);
+  // Shell and SSH sessions have a working directory to reveal (⌘J); file
+  // sessions bring their own pane and serial lines have no shell.
+  const canReveal = Boolean(
+    tab &&
+      (tab.info.kind === "local" || tab.info.kind === "ssh") &&
+      tab.state === "connected",
+  );
 
   const [path, setPath] = useState("");
   const [draft, setDraft] = useState("");
@@ -186,14 +197,29 @@ export function FilerPanel() {
     [remoteId],
   );
 
+  /**
+   * A reveal request not yet navigated to, if it is for the session this
+   * panel is showing. Claimed on return, so the mount-time load below and
+   * the effect watching `filerTarget` never both act on one request.
+   */
+  const claimTarget = (): string | null => {
+    const target = useStore.getState().filerTarget;
+    if (!target || target.token === consumedTarget.current) return null;
+    consumedTarget.current = target.token;
+    const tabId = useStore.getState().activeId;
+    return target.sessionId === tabId ? target.path : null;
+  };
+
   useEffect(() => {
     let cancelled = false;
     (async () => {
       try {
-        const home = remoteId
-          ? await api.sftpHome(remoteId)
-          : await api.localHome();
-        if (!cancelled) await load(home);
+        // Revealing with the panel hidden shows it: start at the requested
+        // directory rather than loading home first and racing it.
+        const start =
+          claimTarget() ??
+          (remoteId ? await api.sftpHome(remoteId) : await api.localHome());
+        if (!cancelled) await load(start);
       } catch (e) {
         if (!cancelled) setError(String(e));
       }
@@ -202,6 +228,11 @@ export function FilerPanel() {
       cancelled = true;
     };
   }, [remoteId, load]);
+
+  useEffect(() => {
+    const target = claimTarget();
+    if (target !== null) void load(target);
+  }, [filerTarget, load]);
 
   useEffect(
     () => () => {
@@ -730,6 +761,15 @@ export function FilerPanel() {
         >
           <FilerActionIcon name="parent-folder" />
         </button>
+        <button
+          className="panel-action filer-action"
+          onClick={() => tab && void revealCwdInFiler(tab.info.id)}
+          title={`Terminal folder (${sc("⌘J", "Ctrl+Shift+J")})`}
+          aria-label="Terminal folder"
+          disabled={busy || !canReveal}
+        >
+          <FilerActionIcon name="terminal-folder" />
+        </button>
         <input
           value={draft}
           onChange={(event) => setDraft(event.target.value)}
@@ -917,7 +957,8 @@ type FilerActionIconName =
   | "download"
   | "delete"
   | "refresh"
-  | "parent-folder";
+  | "parent-folder"
+  | "terminal-folder";
 
 function FilerActionIcon({ name }: { name: FilerActionIconName }) {
   const paths: Record<FilerActionIconName, React.ReactNode> = {
@@ -959,6 +1000,13 @@ function FilerActionIcon({ name }: { name: FilerActionIconName }) {
       </>
     ),
     "parent-folder": <path d="m7 14 5-5 5 5" />,
+    "terminal-folder": (
+      <>
+        <circle cx="12" cy="12" r="5.5" />
+        <path d="M12 3v3.5M12 17.5V21M3 12h3.5M17.5 12H21" />
+        <circle cx="12" cy="12" r="1" fill="currentColor" />
+      </>
+    ),
   };
 
   return (

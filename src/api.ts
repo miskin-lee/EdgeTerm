@@ -257,6 +257,15 @@ export const sftpUploadDirectory = (
 export const localHome = () => invoke<string>("local_home");
 
 /**
+ * Where a shell or SSH session's foreground job is right now: the OS is
+ * asked for a local shell, the server for an SSH one (see `session/cwd.rs`).
+ */
+export const sessionCwd = (id: string) =>
+  invoke<string>("session_cwd", { id });
+
+export const localHostname = () => invoke<string>("local_hostname");
+
+/**
  * Path of the Windows drive list the local browser reaches by going up from a
  * drive root. Mirrors `fs_local::THIS_PC`; nothing can be created or deleted
  * there.

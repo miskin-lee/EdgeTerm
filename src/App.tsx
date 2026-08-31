@@ -9,7 +9,11 @@ import {
   type CSSProperties,
 } from "react";
 
-import { acceptHostKey, SESSION_CLOSED_NOTICE } from "./actions";
+import {
+  acceptHostKey,
+  revealCwdInFiler,
+  SESSION_CLOSED_NOTICE,
+} from "./actions";
 import * as api from "./api";
 import { CloseSessionDialog } from "./components/CloseSessionDialog";
 import { QuitConfirmDialog } from "./components/QuitConfirmDialog";
@@ -244,6 +248,12 @@ export default function App() {
           if (activeId && !fileMode) {
             event.preventDefault();
             getController(activeId)?.clear();
+          }
+          return;
+        case "revealCwd":
+          if (activeId && !fileMode) {
+            event.preventDefault();
+            void revealCwdInFiler(activeId);
           }
           return;
         case "tab": {

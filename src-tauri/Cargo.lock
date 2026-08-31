@@ -1272,6 +1272,7 @@ dependencies = [
  "base64 0.22.1",
  "dirs",
  "encoding_rs",
+ "libc",
  "notify",
  "parking_lot",
  "portable-pty",

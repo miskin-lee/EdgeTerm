@@ -20,6 +20,7 @@ export type AppShortcut =
   | { kind: "find" }
   | { kind: "findNext" }
   | { kind: "clear" }
+  | { kind: "revealCwd" }
   | { kind: "tabStep"; step: -1 | 1 }
   | { kind: "tab"; number: number }
   | { kind: "togglePanel"; panel: PanelName };
@@ -30,6 +31,7 @@ const LETTER_SHORTCUTS: Record<string, AppShortcut> = {
   f: { kind: "find" },
   g: { kind: "findNext" },
   k: { kind: "clear" },
+  j: { kind: "revealCwd" },
 };
 
 /** Each arrow points at the edge its panel docks on. */
@@ -68,10 +70,17 @@ function panelShortcut(event: ShortcutKeyEvent): AppShortcut | null {
 
 // --- macOS ------------------------------------------------------------------
 
-const MAC_LETTERS: ReadonlySet<string> = new Set(["n", "w", "f", "g", "k"]);
+const MAC_LETTERS: ReadonlySet<string> = new Set([
+  "n",
+  "w",
+  "f",
+  "g",
+  "k",
+  "j",
+]);
 
 /**
- * macOS: ⌘+key for app shortcuts (⌘N / ⌘W / ⌘F / ⌘G / ⌘K, ⌘[ / ⌘],
+ * macOS: ⌘+key for app shortcuts (⌘N / ⌘W / ⌘F / ⌘G / ⌘K / ⌘J, ⌘[ / ⌘],
  * ⌘1–9) and ⌘⌥+arrow to toggle panels. Option and Ctrl on their own are
  * never taken: Option types characters and Ctrl belongs to the shell.
  */
@@ -89,7 +98,7 @@ function matchMacShortcut(event: ShortcutKeyEvent): AppShortcut | null {
  * encoded), so taking Ctrl+Shift+F costs it nothing, and this is what
  * WindTerm, MobaXterm, GNOME Terminal and VS Code all converge on.
  */
-const CTRL_SHIFT_LETTERS: ReadonlySet<string> = new Set(["w", "f", "g"]);
+const CTRL_SHIFT_LETTERS: ReadonlySet<string> = new Set(["w", "f", "g", "j"]);
 
 /**
  * Alt+letter is readline's Meta layer (Alt+F is forward-word, Alt+B
@@ -99,8 +108,9 @@ const CTRL_SHIFT_LETTERS: ReadonlySet<string> = new Set(["w", "f", "g"]);
 const ALT_LETTERS: ReadonlySet<string> = new Set(["n", "k"]);
 
 /**
- * Windows / Linux: Ctrl+Shift+W / F / G close, find and find next; Alt+N and
- * Alt+K open a session and clear; Alt+[ / Alt+] and Alt+1–9 switch tabs;
+ * Windows / Linux: Ctrl+Shift+W / F / G / J close, find, find next and
+ * reveal the working directory in the Filer; Alt+N and Alt+K open a session
+ * and clear; Alt+[ / Alt+] and Alt+1–9 switch tabs;
  * Ctrl+Alt+arrow toggles panels. Plain Ctrl+letter is never taken — those
  * are readline and shell keys (^W kills a word, ^G is BEL, ^K kills to end
  * of line).

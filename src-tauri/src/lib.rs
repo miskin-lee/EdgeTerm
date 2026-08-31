@@ -201,6 +201,8 @@ pub fn run() {
             commands::sftp_upload,
             commands::sftp_upload_directory,
             commands::local_home,
+            commands::session_cwd,
+            commands::local_hostname,
             commands::local_list,
             commands::local_parent,
             commands::local_is_directory,
