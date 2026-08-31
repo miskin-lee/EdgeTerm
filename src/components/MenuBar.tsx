@@ -12,7 +12,7 @@ import { windowControl } from "../api";
 import { exportAppData, importAppData } from "../dataTransfer";
 import { commandHistory } from "../history";
 import { IS_MAC, shortcutLabel as sc } from "../platform";
-import { useActiveTab, useStore } from "../store";
+import { tabTitle, useActiveTab, useStore } from "../store";
 import type { GutterMode } from "../terminal";
 import { getController } from "../terminalRegistry";
 import type { ThemeMode } from "../types";
@@ -228,7 +228,7 @@ export function MenuBar(props: Props) {
   const activeTab = useActiveTab();
   const activeState = activeTab?.state;
   const windowTitle = activeTab
-    ? `${activeTab.info.name}${IS_MAC ? " \u2014 " : " - "}EdgeTerm`
+    ? `${tabTitle(activeTab)}${IS_MAC ? " \u2014 " : " - "}EdgeTerm`
     : "EdgeTerm";
   useEffect(() => {
     getCurrentWindow().setTitle(windowTitle).catch(() => {});

@@ -7,7 +7,7 @@ import {
   type CSSProperties,
 } from "react";
 
-import { useStore } from "../store";
+import { tabTitle, useStore } from "../store";
 import { colorForSession } from "../types";
 import { ContextMenu, type MenuItem } from "./ContextMenu";
 
@@ -67,7 +67,7 @@ export function TabStrip() {
   // open so the button toggles instead of reopening.
   const listWasOpen = useRef(false);
   const listItems: MenuItem[] = tabs.map((tab) => ({
-    label: `${tab.number}. ${tab.info.name}`,
+    label: `${tab.number}. ${tabTitle(tab)}`,
     checked: tab.info.id === activeId,
     action: () => setActive(tab.info.id),
   }));
@@ -270,7 +270,7 @@ export function TabStrip() {
           >
             <span className="tab-index">{tab.number}.</span>
             <span className="tab-dot" aria-hidden="true" />
-            <span className="tab-label">{tab.info.name}</span>
+            <span className="tab-label">{tabTitle(tab)}</span>
             <button
               className="tab-close"
               onMouseDown={(event) => {

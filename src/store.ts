@@ -26,11 +26,28 @@ export interface Tab {
    * reordering or closing other tabs never renumbers it.
    */
   number: number;
+  /**
+   * Which open tab of the same session this is: 0 for the first, shown under
+   * the bare name, then 1, 2, … shown as "name (1)", "name (2)". Like
+   * `number` it is fixed when the tab opens (the lowest one no open tab of
+   * the session holds) and never changes afterwards.
+   */
+  ordinal: number;
   state: SessionState;
   message?: string;
   cols: number;
   rows: number;
 }
+
+/**
+ * What makes two tabs "the same session" for `Tab.ordinal`: the profile when
+ * there is one, else the name (ad-hoc connections have no profile).
+ */
+const sessionKey = (info: SessionInfo): string => info.profileId ?? info.name;
+
+/** The name a tab is shown under: its session's name plus its ordinal. */
+export const tabTitle = (tab: Pick<Tab, "info" | "ordinal">): string =>
+  tab.ordinal ? `${tab.info.name} (${tab.ordinal})` : tab.info.name;
 
 /** A refused SSH host key, kept until the user accepts it or gives up. */
 export interface HostKeyPrompt {
@@ -389,13 +406,23 @@ export const useStore = create<AppStore>((set, get) => ({
   },
 
   addTab(info, profile, state = "connected") {
-    const taken = new Set(get().tabs.map((tab) => tab.number));
+    const tabs = get().tabs;
+    const taken = new Set(tabs.map((tab) => tab.number));
     let number = 1;
     while (taken.has(number)) number += 1;
+    const key = sessionKey(info);
+    const ordinals = new Set(
+      tabs
+        .filter((tab) => sessionKey(tab.info) === key)
+        .map((tab) => tab.ordinal),
+    );
+    let ordinal = 0;
+    while (ordinals.has(ordinal)) ordinal += 1;
     const tab: Tab = {
       info,
       profile,
       number,
+      ordinal,
       state,
       cols: 80,
       rows: 24,

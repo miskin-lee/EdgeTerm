@@ -1,7 +1,7 @@
 import * as api from "./api";
 import { commandHistory } from "./history";
 import { IS_WINDOWS } from "./platform";
-import { useStore, type HostKeyPrompt, type Tab } from "./store";
+import { tabTitle, useStore, type HostKeyPrompt, type Tab } from "./store";
 import { TerminalController } from "./terminal";
 import {
   disposeController,
@@ -151,7 +151,7 @@ export async function disconnectSession(id: string): Promise<void> {
   // notice into the terminal that a peer-initiated close gets (see App.tsx).
   getController(id)?.writeText(SESSION_CLOSED_NOTICE);
   if (failure) store.setError(failure, id);
-  else store.setStatus(`Disconnected from ${current.info.name}`);
+  else store.setStatus(`Disconnected from ${tabTitle(current)}`);
 }
 
 /**
@@ -190,7 +190,10 @@ async function connectSession(
   profile: SessionProfile,
 ): Promise<string | null> {
   const store = useStore.getState();
-  const label = profile.name || profile.host || profile.portName || "session";
+  const pending = store.tabs.find((item) => item.info.id === id);
+  const label = pending
+    ? tabTitle(pending)
+    : profile.name || profile.host || profile.portName || "session";
 
   store.setStatus(`Connecting to ${label}…`);
   store.setError(null);
@@ -223,7 +226,9 @@ async function connectSession(
     const { info } = outcome;
     connectedStore.updateTabInfo(id, info);
     connectedStore.applyState(id, "connected");
-    connectedStore.setStatus(`Connected to ${info.name}`);
+    connectedStore.setStatus(
+      `Connected to ${tabTitle({ info, ordinal: tab.ordinal })}`,
+    );
 
     // The pane was fitted while the backend was still connecting, so its
     // first resize command could not be delivered. Re-send the current size.

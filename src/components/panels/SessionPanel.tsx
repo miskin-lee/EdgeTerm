@@ -12,7 +12,7 @@ import {
   sectionLabel,
   SESSION_SECTIONS,
 } from "../../sessionGroups";
-import { useStore } from "../../store";
+import { tabTitle, useStore } from "../../store";
 import {
   colorForSession,
   type SavedCommand,
@@ -464,7 +464,7 @@ export function SessionPanel({ onEditProfile, onNewSession }: Props) {
           }}
           title={
             activeTab
-              ? `${POWER_TITLES[activeTab.state]} · ${activeTab.info.name}`
+              ? `${POWER_TITLES[activeTab.state]} · ${tabTitle(activeTab)}`
               : "No active session"
           }
           aria-label={activeTab ? POWER_TITLES[activeTab.state] : "Disconnect"}

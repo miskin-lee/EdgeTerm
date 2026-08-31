@@ -11,7 +11,7 @@ import {
 import { revealCwdInFiler } from "../../actions";
 import * as api from "../../api";
 import { IS_MAC, IS_WINDOWS, shortcutLabel as sc } from "../../platform";
-import { useActiveTab, useStore } from "../../store";
+import { tabTitle, useActiveTab, useStore } from "../../store";
 import { ContextMenu, type MenuItem } from "../ContextMenu";
 import { DeleteEntryDialog } from "../DeleteEntryDialog";
 import { FileIcon } from "../FileIcon";
@@ -859,7 +859,7 @@ export function FilerPanel() {
       {pendingDelete && (
         <DeleteEntryDialog
           entry={pendingDelete}
-          location={remote ? (tab?.info.name ?? "remote") : "local"}
+          location={remote ? (tab ? tabTitle(tab) : "remote") : "local"}
           onConfirm={() => void removeEntry(pendingDelete)}
           onCancel={() => setPendingDelete(null)}
         />

@@ -1,6 +1,6 @@
 import { useEffect, useRef } from "react";
 
-import { useStore } from "../store";
+import { tabTitle, useStore } from "../store";
 
 interface Props {
   onConfirm: () => void;
@@ -68,7 +68,7 @@ export function QuitConfirmDialog({ onConfirm, onCancel }: Props) {
           </span>
           {shown.map((tab) => (
             <span key={tab.info.id} className="confirm-dialog-target">
-              {tab.info.name} · {tab.info.protocol}
+              {tabTitle(tab)} · {tab.info.protocol}
             </span>
           ))}
           {extra > 0 && (
