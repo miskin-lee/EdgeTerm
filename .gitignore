@@ -6,6 +6,7 @@
 /dist-ssr/
 /coverage/
 /src-tauri/target/
+/src-gpui/target/
 /src-tauri/gen/schemas/
 *.tsbuildinfo
 

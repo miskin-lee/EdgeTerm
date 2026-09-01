@@ -1,0 +1,32 @@
+[package]
+name = "edgeterm-gpui"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[dependencies]
+# Runtime shaders keep local GPUI development working with Apple's Command Line
+# Tools alone. Release CI can drop this feature once it has full Xcode and can
+# precompile the Metal shader library.
+gpui = { version = "=0.2.2", features = ["runtime_shaders"] }
+alacritty_terminal = "0.26"
+async-channel = "2.5"
+portable-pty = "0.9"
+base64 = "0.22"
+chrono = { version = "0.4", default-features = false, features = ["clock"] }
+dirs = "6"
+parking_lot = "0.12"
+ring = "0.17"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+uuid = { version = "1", features = ["v4", "serde"] }
+
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.59", features = ["Win32_System_Registry"] }
+
+[profile.release]
+codegen-units = 1
+lto = true
+opt-level = "s"
+panic = "abort"
+strip = true

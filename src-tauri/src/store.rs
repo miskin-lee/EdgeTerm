@@ -2,7 +2,7 @@ use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::sync::OnceLock;
 
-use base64::{engine::general_purpose::STANDARD as B64, Engine as _};
+use base64::{Engine as _, engine::general_purpose::STANDARD as B64};
 use parking_lot::Mutex;
 use ring::rand::SecureRandom;
 use ring::{aead, hkdf};
@@ -10,8 +10,9 @@ use serde::{Deserialize, Serialize};
 
 use crate::error::{AppError, Result};
 use crate::model::{
-    AppData, AuthKind, CommandHistoryEntry, CommandScope, DataSummary, SavedCommand, SessionGroup,
-    SessionKind, SessionProfile, APP_DATA_APP, APP_DATA_EXTENSION, APP_DATA_FORMAT, MAX_JUMP_HOPS,
+    APP_DATA_APP, APP_DATA_EXTENSION, APP_DATA_FORMAT, AppData, AuthKind, CommandHistoryEntry,
+    CommandScope, DataSummary, MAX_JUMP_HOPS, SavedCommand, SessionGroup, SessionKind,
+    SessionProfile,
 };
 
 const MAX_SAVED_COMMANDS: usize = 1000;
@@ -131,7 +132,7 @@ fn machine_id() -> Option<String> {
 /// Windows installation.
 #[cfg(windows)]
 fn machine_id() -> Option<String> {
-    use windows_sys::Win32::System::Registry::{RegGetValueW, HKEY_LOCAL_MACHINE, RRF_RT_REG_SZ};
+    use windows_sys::Win32::System::Registry::{HKEY_LOCAL_MACHINE, RRF_RT_REG_SZ, RegGetValueW};
 
     let subkey: Vec<u16> = "SOFTWARE\\Microsoft\\Cryptography\0"
         .encode_utf16()
@@ -440,7 +441,7 @@ impl Store {
                     Some(parent) if !same_group_category(parent.kind, group.kind) => {
                         return Err(AppError::new(
                             "a group can only be nested under a group of the same session kind",
-                        ))
+                        ));
                     }
                     Some(_) => {}
                 }
@@ -555,11 +556,7 @@ impl Store {
             CommandScope::Group { id } => self.groups.lock().iter().any(|g| &g.id == id),
             CommandScope::Profile { id } => self.profiles.lock().iter().any(|p| &p.id == id),
         };
-        if exists {
-            scope
-        } else {
-            CommandScope::Global
-        }
+        if exists { scope } else { CommandScope::Global }
     }
 
     pub fn list_command_history(&self) -> Vec<CommandHistoryEntry> {
