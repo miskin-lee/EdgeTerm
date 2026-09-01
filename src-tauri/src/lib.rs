@@ -141,6 +141,17 @@ fn install_menu(app: &tauri::App) -> tauri::Result<()> {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    // In portable mode the WebView2 profile must travel with the data
+    // directory as well — localStorage holds the frontend preferences.  The
+    // WebView2 loader reads this variable and it takes precedence over the
+    // user data folder wry passes, so it must be set before the webview is
+    // created; an already-set variable is the user's and is left alone.
+    #[cfg(target_os = "windows")]
+    if std::env::var_os("WEBVIEW2_USER_DATA_FOLDER").is_none() {
+        if let Some(dir) = store::portable_data_dir() {
+            std::env::set_var("WEBVIEW2_USER_DATA_FOLDER", dir.join("webview"));
+        }
+    }
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
@@ -216,6 +227,7 @@ pub fn run() {
             commands::watch_remote_edit,
             commands::stop_remote_edits,
             commands::list_serial_ports,
+            commands::portable_mode,
             window_control,
         ])
         .build(tauri::generate_context!())

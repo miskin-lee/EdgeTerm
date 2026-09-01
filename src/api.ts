@@ -373,6 +373,16 @@ export type WindowControlAction = "minimize" | "toggle-maximize";
 export const windowControl = (action: WindowControlAction): Promise<void> =>
   invoke("window_control", { action });
 
+// --- portable mode ----------------------------------------------------------
+
+/**
+ * Whether this copy runs in portable mode: a `data` directory next to the
+ * executable holds all configuration (the Windows portable zip ships one).
+ * Portable copies must not install updates in place; the updater opens the
+ * release download page instead.
+ */
+export const portableMode = (): Promise<boolean> => invoke("portable_mode");
+
 // --- encoding helpers -------------------------------------------------------
 
 export function base64ToBytes(base64: string): Uint8Array {

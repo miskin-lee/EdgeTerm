@@ -1,7 +1,11 @@
 import { getVersion } from "@tauri-apps/api/app";
+import { openUrl } from "@tauri-apps/plugin-opener";
 import { relaunch } from "@tauri-apps/plugin-process";
 import { check, type Update } from "@tauri-apps/plugin-updater";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { portableMode } from "./api";
+
+const RELEASES_URL = "https://github.com/miskin-lee/EdgeTerm/releases/latest";
 
 export type UpdaterState =
   | { phase: "idle" }
@@ -30,6 +34,7 @@ function errorMessage(error: unknown): string {
 
 export function useUpdater() {
   const [appVersion, setAppVersion] = useState("");
+  const [portable, setPortable] = useState(false);
   const [state, setState] = useState<UpdaterState>({ phase: "idle" });
   const updateRef = useRef<Update | null>(null);
   const checkPromiseRef = useRef<Promise<void> | null>(null);
@@ -37,6 +42,7 @@ export function useUpdater() {
 
   useEffect(() => {
     void getVersion().then(setAppVersion).catch(console.error);
+    void portableMode().then(setPortable).catch(console.error);
   }, []);
 
   const checkForUpdates = useCallback((showResult = true): Promise<void> => {
@@ -106,6 +112,21 @@ export function useUpdater() {
     const update = updateRef.current;
     if (!update) return;
 
+    if (portable) {
+      // A portable copy must not run the NSIS installer the updater target
+      // points at — that would silently turn it into an installed copy.
+      try {
+        await openUrl(RELEASES_URL);
+      } catch (error) {
+        setState({ phase: "error", message: errorMessage(error) });
+        return;
+      }
+      updateRef.current = null;
+      setState({ phase: "idle" });
+      void update.close().catch(() => undefined);
+      return;
+    }
+
     let downloaded = 0;
     let total: number | undefined;
     let lastRenderedAt = 0;
@@ -142,10 +163,11 @@ export function useUpdater() {
       await update.close().catch(() => undefined);
       setState({ phase: "error", message: errorMessage(error) });
     }
-  }, []);
+  }, [portable]);
 
   return {
     appVersion,
+    portable,
     state,
     checkForUpdates,
     dismiss,

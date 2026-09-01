@@ -70,11 +70,13 @@ Local shell, SSH, and serial terminals automatically detect ZMODEM sessions. Run
 
 | Platform | Package |
 | --- | --- |
-| Windows x64 | NSIS installer (`.exe`) |
+| Windows x64 | NSIS installer (`.exe`) and portable `.zip` |
 | macOS Apple Silicon | `.dmg`, plus the `.app.tar.gz` bundle used by the in-app updater |
 | Linux x64 / ARM64 | `.AppImage` and `.deb` |
 
-Installed copies check the latest Release on startup and can update in place; **Help → Check for Updates…** does the same on demand.
+The Windows portable zip needs no installation: it ships a `data` folder next to `EdgeTerm.exe`, and while that folder exists every setting is stored inside it, so the whole folder can move between machines or live on a removable drive (saved passwords are encrypted with a machine-bound key and do not decrypt elsewhere; sessions and settings travel fine). The AppImage likewise runs in place on Linux without installation.
+
+Installed copies check the latest Release on startup and can update in place; **Help → Check for Updates…** does the same on demand. A portable copy is not updated in place — it announces new versions and opens the download page instead.
 
 Releases are not notarized on macOS or code-signed with Windows Authenticode; the macOS application uses ad hoc signing only, so the operating system may show a security warning on first install.
 

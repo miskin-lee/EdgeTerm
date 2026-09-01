@@ -2,6 +2,7 @@ import type { UpdaterState } from "../updater";
 
 interface Props {
   appVersion: string;
+  portable: boolean;
   state: UpdaterState;
   onDismiss: () => void;
   onInstall: () => void;
@@ -16,6 +17,7 @@ function formatBytes(bytes: number): string {
 
 export function UpdateDialog({
   appVersion,
+  portable,
   state,
   onDismiss,
   onInstall,
@@ -73,8 +75,12 @@ export function UpdateDialog({
                 </div>
               )}
               <span className="update-hint">
-                EdgeTerm will download the signed update, install it, and restart.
-                Active terminal connections will be closed.
+                {portable
+                  ? "This is a portable copy, so the update is not installed " +
+                    "in place. The download page opens in your browser; " +
+                    "replace this copy with the new portable archive."
+                  : "EdgeTerm will download the signed update, install it, " +
+                    "and restart. Active terminal connections will be closed."}
               </span>
             </>
           )}
@@ -127,7 +133,7 @@ export function UpdateDialog({
             )}
             {state.phase === "available" && (
               <button className="btn is-primary" onClick={onInstall}>
-                Download and Install
+                {portable ? "Open Download Page" : "Download and Install"}
               </button>
             )}
           </div>

@@ -1012,11 +1012,29 @@ fn command_history_path_for(path: &Path) -> PathBuf {
     path.with_file_name("command_history.json")
 }
 
+/// A `data` directory next to the executable switches the application into
+/// portable mode (the VS Code convention): every configuration file lives in
+/// that directory, so the whole application travels as one folder.  The
+/// Windows portable zip ships the directory; installers never create one, so
+/// installed copies keep using the OS configuration directory.
+pub fn portable_data_dir() -> Option<PathBuf> {
+    let exe = std::env::current_exe().ok()?;
+    portable_data_dir_in(exe.parent()?)
+}
+
+pub(crate) fn portable_data_dir_in(exe_dir: &Path) -> Option<PathBuf> {
+    let dir = exe_dir.join("data");
+    dir.is_dir().then_some(dir)
+}
+
 fn config_path() -> PathBuf {
-    dirs::config_dir()
-        .unwrap_or_else(|| PathBuf::from("."))
-        .join("EdgeTerm")
-        .join("sessions.json")
+    match portable_data_dir() {
+        Some(dir) => dir.join("sessions.json"),
+        None => dirs::config_dir()
+            .unwrap_or_else(|| PathBuf::from("."))
+            .join("EdgeTerm")
+            .join("sessions.json"),
+    }
 }
 
 fn write_owner_only(path: &Path, contents: &str) -> Result<()> {

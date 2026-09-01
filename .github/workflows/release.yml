@@ -121,6 +121,8 @@ jobs:
               echo
             fi
             echo "The application checks this release for signed updates automatically. Download the installer matching your operating system and CPU architecture for a manual installation."
+            echo
+            echo "No installation needed: the Windows portable zip runs from any folder and keeps all configuration in the \`data\` directory beside the executable; the Linux AppImages run in place as well."
           } > release-notes.md
 
           if gh release view "$TAG_NAME" >/dev/null 2>&1; then
@@ -256,6 +258,62 @@ jobs:
           uploadWorkflowArtifacts: true
           workflowArtifactNamePattern: "EdgeTerm-[version]-[platform]-[arch]-[bundle]"
 
+      - name: Package and upload Windows portable zip
+        if: matrix.platform == 'windows-2022'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          APP_VERSION: ${{ needs.prepare.outputs.app_version }}
+          TAG_NAME: ${{ needs.prepare.outputs.tag_name }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          # The NSIS bundle and the portable zip carry the same executable
+          # (the frontend is embedded in it). The shipped data directory is
+          # what switches the application into portable mode: configuration
+          # is written there instead of %APPDATA% (see portable_data_dir in
+          # src-tauri/src/store.rs), and the updater opens the release page
+          # instead of running the installer.
+          staging=portable-staging
+          rm -rf "$staging"
+          mkdir -p "$staging/data"
+          cp src-tauri/target/release/edgeterm.exe "$staging/EdgeTerm.exe"
+
+          {
+            echo "EdgeTerm ${APP_VERSION} portable (Windows x64)"
+            echo
+            echo "Run EdgeTerm.exe directly; nothing is installed. All configuration"
+            echo "lives in the data folder next to the executable, so the whole"
+            echo "folder can move between machines or live on a removable drive."
+            echo "If the data folder is missing after extraction, create it: an"
+            echo "empty data folder beside EdgeTerm.exe is what enables portable"
+            echo "mode. Without it the app stores configuration under %APPDATA%"
+            echo "like an installed copy."
+            echo
+            echo "Notes:"
+            echo "- Requires the Microsoft Edge WebView2 runtime, preinstalled on"
+            echo "  current Windows 10 and 11. If it is missing, install it from"
+            echo "  https://developer.microsoft.com/microsoft-edge/webview2/"
+            echo "- Saved passwords are encrypted with a machine-bound key, so"
+            echo "  they do not decrypt on another machine; sessions and settings"
+            echo "  travel fine."
+            echo "- Updates are not installed in place: when a new version is"
+            echo "  available, EdgeTerm opens the release download page and you"
+            echo "  replace this folder with the new portable zip."
+          } > "$staging/README.txt"
+
+          zip_name="EdgeTerm_${APP_VERSION}_x64-portable.zip"
+          (cd "$staging" && 7z a -tzip "../$zip_name" EdgeTerm.exe README.txt data)
+          gh release upload "$TAG_NAME" "$zip_name" --clobber
+
+      - name: Keep Windows portable zip as workflow artifact
+        if: matrix.platform == 'windows-2022'
+        uses: actions/upload-artifact@v4
+        with:
+          name: EdgeTerm-${{ needs.prepare.outputs.app_version }}-windows-x86_64-portable
+          path: EdgeTerm_${{ needs.prepare.outputs.app_version }}_x64-portable.zip
+          if-no-files-found: error
+
   release:
     name: Verify and publish release
     needs:
@@ -354,6 +412,7 @@ jobs:
             "EdgeTerm_${APP_VERSION}_aarch64.dmg"
             "EdgeTerm_${APP_VERSION}_aarch64.app.tar.gz"
             "EdgeTerm_${APP_VERSION}_x64-setup.exe"
+            "EdgeTerm_${APP_VERSION}_x64-portable.zip"
             "EdgeTerm_${APP_VERSION}_amd64.AppImage"
             "EdgeTerm_${APP_VERSION}_aarch64.AppImage"
             "EdgeTerm_${APP_VERSION}_amd64.deb"
@@ -411,6 +470,7 @@ jobs:
             "EdgeTerm_${APP_VERSION}_aarch64.dmg"
             "EdgeTerm_${APP_VERSION}_aarch64.app.tar.gz"
             "EdgeTerm_${APP_VERSION}_x64-setup.exe"
+            "EdgeTerm_${APP_VERSION}_x64-portable.zip"
             "EdgeTerm_${APP_VERSION}_amd64.AppImage"
             "EdgeTerm_${APP_VERSION}_aarch64.AppImage"
             "EdgeTerm_${APP_VERSION}_amd64.deb"

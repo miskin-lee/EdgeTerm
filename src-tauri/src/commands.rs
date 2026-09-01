@@ -601,6 +601,14 @@ pub fn open_local_path(path: String, with: Option<String>) -> Result<()> {
     tauri_plugin_opener::open_path(&path, with.as_deref()).map_err(err)
 }
 
+/// Whether this copy runs in portable mode (a `data` directory next to the
+/// executable holds all configuration). The updater must not run the NSIS
+/// installer then; the front end opens the release page instead.
+#[tauri::command]
+pub fn portable_mode() -> bool {
+    crate::store::portable_data_dir().is_some()
+}
+
 /// Shows the Windows "Open with" chooser for a local file. Other platforms
 /// have no system-wide chooser; the front end picks an application itself.
 #[tauri::command]

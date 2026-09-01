@@ -376,6 +376,7 @@ export default function App() {
 
       <UpdateDialog
         appVersion={updater.appVersion}
+        portable={updater.portable}
         state={updater.state}
         onDismiss={updater.dismiss}
         onInstall={() => void updater.installUpdate()}

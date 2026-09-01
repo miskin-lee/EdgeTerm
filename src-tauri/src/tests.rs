@@ -13,7 +13,7 @@ use crate::model::{
     APP_DATA_FORMAT,
 };
 use crate::session::{join_remote, sort_entries};
-use crate::store::{is_data_file_path, Store};
+use crate::store::{is_data_file_path, portable_data_dir_in, Store};
 
 fn temp_dir(tag: &str) -> PathBuf {
     let dir = std::env::temp_dir().join(format!("edgeterm-test-{tag}-{}", uuid::Uuid::new_v4()));
@@ -1396,6 +1396,23 @@ fn credentials_are_sealed_on_disk_and_readable_after_restart() {
         stored_password(&Store::load_from(path), &saved.id).as_deref(),
         Some("again")
     );
+
+    std::fs::remove_dir_all(&dir).ok();
+}
+
+#[test]
+fn portable_mode_requires_a_data_directory_next_to_the_executable() {
+    let dir = temp_dir("portable");
+
+    assert_eq!(portable_data_dir_in(&dir), None);
+
+    std::fs::write(dir.join("data"), b"").expect("write plain file");
+    // A plain file named `data` is not the marker.
+    assert_eq!(portable_data_dir_in(&dir), None);
+
+    std::fs::remove_file(dir.join("data")).expect("remove file");
+    std::fs::create_dir(dir.join("data")).expect("create data dir");
+    assert_eq!(portable_data_dir_in(&dir), Some(dir.join("data")));
 
     std::fs::remove_dir_all(&dir).ok();
 }
