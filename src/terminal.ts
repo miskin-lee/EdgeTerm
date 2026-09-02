@@ -14,6 +14,7 @@ import {
 } from "@xterm/xterm";
 
 import type { CommandSuggestion } from "./history";
+import { patchImeInput } from "./imePatch";
 import { IS_MAC } from "./platform";
 import { matchAppShortcut } from "./shortcuts";
 import { semanticLine, type SemanticRange } from "./semanticColors";
@@ -611,6 +612,9 @@ export class TerminalController {
     root.appendChild(this.zmodemNotice);
 
     this.term.open(this.host);
+    // IME text takes the exactly-once path in imePatch.ts. It hooks the
+    // composition helper xterm creates in open(), so it goes right after.
+    patchImeInput(this.term);
     // Inside the host (not the root) so the completion popup positions
     // against the terminal content, past the gutter, and survives
     // re-parenting above.
