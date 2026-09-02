@@ -308,7 +308,7 @@ jobs:
 
       - name: Keep Windows portable zip as workflow artifact
         if: matrix.platform == 'windows-2022'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: EdgeTerm-${{ needs.prepare.outputs.app_version }}-windows-x86_64-portable
           path: EdgeTerm_${{ needs.prepare.outputs.app_version }}_x64-portable.zip
