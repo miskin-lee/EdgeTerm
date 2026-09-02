@@ -261,6 +261,29 @@ const WINDOWS_PROMPT =
   /^(?:(PS)\s?([A-Za-z]:\\[^<>|]*?|[/~][^<>|]*?)?|([A-Za-z]:\\[^<>|]*?))>/;
 
 /**
+ * End column of a shell prompt at the start of `text`, or -1 when the line
+ * does not look like a prompt. Terminal activity tracking shares the exact
+ * prompt vocabulary used by semantic coloring so command completion and the
+ * visible prompt never disagree.
+ */
+export function shellPromptEnd(text: string): number {
+  const windowsPrompt = WINDOWS_PROMPT.exec(text);
+  if (windowsPrompt) return windowsPrompt[0].length;
+  const userPrompt = USER_PROMPT.exec(text);
+  if (userPrompt) return userPrompt[0].length;
+  const barePrompt = BARE_PROMPT.exec(text);
+  return barePrompt && (barePrompt[1] || barePrompt[2] !== "#")
+    ? barePrompt[0].length
+    : -1;
+}
+
+/** True when the line contains a prompt alone, with no submitted command. */
+export function isShellPrompt(text: string): boolean {
+  const end = shellPromptEnd(text);
+  return end >= 0 && text.slice(end).trim().length === 0;
+}
+
+/**
  * Column-header rows from ls/ps/df/kubectl/docker/netstat: three or more
  * tokens, most of them capitalized, with no punctuation that would suggest
  * prose or key/value output.

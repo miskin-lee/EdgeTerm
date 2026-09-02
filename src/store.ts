@@ -34,6 +34,11 @@ export interface Tab {
    */
   ordinal: number;
   state: SessionState;
+  /**
+   * Lifecycle of the command most recently submitted to this terminal.
+   * `complete` is an unread notification: selecting the tab acknowledges it.
+   */
+  commandActivity: "idle" | "running" | "complete";
   message?: string;
   cols: number;
   rows: number;
@@ -305,6 +310,12 @@ interface AppStore {
   moveTab: (id: string, index: number) => void;
 
   applyState: (id: string, state: SessionState, message?: string) => void;
+  /** Records a command submitted to an interactive terminal. */
+  markCommandStarted: (id: string) => void;
+  /** Leaves an unread completion on a background tab until it is selected. */
+  markCommandCompleted: (id: string) => void;
+  /** Clears activity when a submitted write failed before reaching the shell. */
+  clearCommandActivity: (id: string) => void;
   setSize: (id: string, cols: number, rows: number) => void;
 
   togglePanel: (panel: PanelName) => void;
@@ -332,6 +343,16 @@ interface AppStore {
 
 const patchTab = (tabs: Tab[], id: string, patch: Partial<Tab>): Tab[] =>
   tabs.map((tab) => (tab.info.id === id ? { ...tab, ...patch } : tab));
+
+/** Selecting a tab acknowledges only its unread completion notification. */
+const acknowledgeTab = (tabs: Tab[], id: string | null): Tab[] =>
+  id === null
+    ? tabs
+    : tabs.map((tab) =>
+        tab.info.id === id && tab.commandActivity === "complete"
+          ? { ...tab, commandActivity: "idle" }
+          : tab,
+      );
 
 export const useStore = create<AppStore>((set, get) => ({
   profiles: [],
@@ -426,6 +447,7 @@ export const useStore = create<AppStore>((set, get) => ({
       number,
       ordinal,
       state,
+      commandActivity: "idle",
       cols: 80,
       rows: 24,
     };
@@ -448,12 +470,13 @@ export const useStore = create<AppStore>((set, get) => ({
     const current = get();
     const remaining = current.tabs.filter((tab) => tab.info.id !== id);
     const wasActive = current.activeId === id;
+    const activeId = wasActive
+      ? (remaining[remaining.length - 1]?.info.id ?? null)
+      : current.activeId;
     const clearsSessionError = current.errorSessionId === id;
     set({
-      tabs: remaining,
-      activeId: wasActive
-        ? (remaining[remaining.length - 1]?.info.id ?? null)
-        : current.activeId,
+      tabs: acknowledgeTab(remaining, activeId),
+      activeId,
       status: clearsSessionError ? "Ready" : current.status,
       error: clearsSessionError ? null : current.error,
       errorSessionId: clearsSessionError ? null : current.errorSessionId,
@@ -478,7 +501,13 @@ export const useStore = create<AppStore>((set, get) => ({
   },
 
   setActive(id) {
-    set({ activeId: id });
+    set({
+      activeId: id,
+      // A completion is deliberately persistent on a background tab, but
+      // selecting it is the acknowledgement. A still-running command keeps
+      // its state so the particles return if the user switches away again.
+      tabs: acknowledgeTab(get().tabs, id),
+    });
   },
 
   activateAdjacentTab(direction) {
@@ -488,7 +517,8 @@ export const useStore = create<AppStore>((set, get) => ({
     const activeIndex = tabs.findIndex((tab) => tab.info.id === activeId);
     const startIndex = activeIndex === -1 ? (direction > 0 ? -1 : 0) : activeIndex;
     const nextIndex = (startIndex + direction + tabs.length) % tabs.length;
-    set({ activeId: tabs[nextIndex].info.id });
+    const nextId = tabs[nextIndex].info.id;
+    set({ activeId: nextId, tabs: acknowledgeTab(tabs, nextId) });
   },
 
   moveTab(id, index) {
@@ -503,10 +533,39 @@ export const useStore = create<AppStore>((set, get) => ({
   },
 
   applyState(id, state, message) {
-    set({ tabs: patchTab(get().tabs, id, { state, message }) });
+    set({
+      tabs: patchTab(get().tabs, id, {
+        state,
+        message,
+        // A command cannot remain in progress after its session ends; a
+        // reconnect starts with a clean terminal activity state as well.
+        ...(state === "connected" ? {} : { commandActivity: "idle" as const }),
+      }),
+    });
     // An ended session has nothing to type into; lock its terminal until a
     // reconnect brings it back.
     getController(id)?.setLocked(state === "closed" || state === "error");
+  },
+
+  markCommandStarted(id) {
+    set({
+      tabs: patchTab(get().tabs, id, { commandActivity: "running" }),
+    });
+  },
+
+  markCommandCompleted(id) {
+    const state = get();
+    set({
+      tabs: patchTab(state.tabs, id, {
+        // The active terminal already shows its returned prompt. Background
+        // tabs retain a highlight until the user visits them.
+        commandActivity: state.activeId === id ? "idle" : "complete",
+      }),
+    });
+  },
+
+  clearCommandActivity(id) {
+    set({ tabs: patchTab(get().tabs, id, { commandActivity: "idle" }) });
   },
 
   setSize(id, cols, rows) {

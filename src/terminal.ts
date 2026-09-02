@@ -17,7 +17,11 @@ import type { CommandSuggestion } from "./history";
 import { patchImeInput } from "./imePatch";
 import { IS_MAC } from "./platform";
 import { matchAppShortcut } from "./shortcuts";
-import { semanticLine, type SemanticRange } from "./semanticColors";
+import {
+  isShellPrompt,
+  semanticLine,
+  type SemanticRange,
+} from "./semanticColors";
 import type { TransferNoticeKind } from "./terminalTransfer";
 import type { ThemeMode } from "./types";
 import { XmodemController, type XmodemBlockSize } from "./xmodem";
@@ -214,6 +218,8 @@ interface Callbacks {
   onStatus: (message: string, error?: boolean) => void;
   /** An executed command line, captured from the buffer after Enter. */
   onCommand: (command: string) => void;
+  /** Drives the background tab's running and unread-completion treatments. */
+  onCommandState: (state: "idle" | "running" | "complete") => void;
   /** Ranked history completions for the current input; [] when none. */
   suggest: (input: string) => CommandSuggestion[];
 }
@@ -276,6 +282,12 @@ export class TerminalController {
   /** Command history capture + completion popup. Opt-in via the Edit menu. */
   private suggestionsOn = false;
   private inputAnchor: InputAnchor | null = null;
+  /** Marker and prompt signature for detecting when the submitted command returns. */
+  private commandMarker: IMarker | null = null;
+  private commandPrompt = "";
+  private commandPromptRecognized = false;
+  private commandOutputAdvanced = false;
+  private commandRunning = false;
   private readonly popup: HTMLElement;
   /** Rows currently displayed; [] while the popup is hidden. */
   private candidates: CommandSuggestion[] = [];
@@ -396,12 +408,27 @@ export class TerminalController {
     const report =
       (parse: (data: string) => ReportedCwd | null) => (data: string) => {
         const cwd = parse(data);
-        if (cwd) this.reported = cwd;
+        if (cwd) {
+          this.reported = cwd;
+          // These reports are conventionally emitted by a prompt hook. They
+          // also cover visually empty/custom prompts that cannot be matched
+          // from buffer text alone.
+          this.finishCommand();
+        }
         return cwd !== null;
       };
     this.term.parser.registerOscHandler(7, report(parseOsc7));
     this.term.parser.registerOscHandler(1337, report(parseOsc1337));
     this.term.parser.registerOscHandler(9, report(parseOsc9));
+    // FinalTerm/iTerm shell integration brackets commands with OSC 133. It
+    // is the authoritative completion signal when available; prompt matching
+    // below covers ordinary bash/zsh/fish/cmd/PowerShell installations.
+    this.term.parser.registerOscHandler(133, (data) => {
+      const marker = data.split(";", 1)[0];
+      if (marker === "C" && !this.commandRunning) this.beginCommand();
+      else if (marker === "D" || marker === "A") this.finishCommand();
+      return marker === "A" || marker === "B" || marker === "C" || marker === "D";
+    });
     this.term.parser.registerCsiHandler({ final: "J" }, (params) => {
       const mode = params[0];
       if (
@@ -415,6 +442,7 @@ export class TerminalController {
     this.term.onWriteParsed(() => {
       if (this.pendingShellClear) {
         this.pendingShellClear = false;
+        if (this.commandRunning) this.commandOutputAdvanced = true;
         this.clearBufferAndMetadata();
       }
       // New output: xterm has updated the buffer and queued its repaint but
@@ -431,6 +459,7 @@ export class TerminalController {
       // work (~0.5 ms); a throttle would bring back a half-viewport flash
       // when a listing arrives split across slices, so there is none.
       this.refreshSemanticColors();
+      this.detectReturnedPrompt();
       // The shell's echo of a keystroke lands here; recompute the suggestions
       // from the buffer only while the user is composing a command.
       if (this.inputAnchor) this.schedulePopupSync();
@@ -790,6 +819,22 @@ export class TerminalController {
   }
 
   /**
+   * Records a command sent outside xterm's keyboard path (the Sender panel).
+   * Call immediately before writing it so the current prompt can be used as
+   * the completion signature.
+   */
+  noteCommandSent() {
+    return this.beginCommand();
+  }
+
+  /** Rolls back `noteCommandSent` when the IPC write itself was rejected. */
+  cancelCommandSent() {
+    if (!this.commandRunning) return;
+    this.resetCommandTracking();
+    if (!this.disposed) this.callbacks.onCommandState("idle");
+  }
+
+  /**
    * Locks the terminal once its session has ended: keystrokes, paste and
    * completions no longer reach `onData`, and the cursor is hidden so the
    * pane does not look like it is waiting for input. Unlocking restores both
@@ -802,6 +847,7 @@ export class TerminalController {
     this.term.write(locked ? "\x1b[?25l" : "\x1b[?25h");
     if (locked) {
       this.hidePopup();
+      this.resetCommandTracking();
       // A reconnected shell starts over in its home directory; the old
       // report must not outlive the session it described.
       this.reported = null;
@@ -922,7 +968,10 @@ export class TerminalController {
   setSuggestions(enabled: boolean) {
     if (this.suggestionsOn === enabled) return;
     this.suggestionsOn = enabled;
-    if (!enabled) this.dropAnchor();
+    if (!enabled) {
+      this.dismissedInput = "";
+      this.hidePopup();
+    }
   }
 
   setFontSize(fontSize: number) {
@@ -999,6 +1048,7 @@ export class TerminalController {
   dispose() {
     this.disposed = true;
     this.dropAnchor();
+    this.resetCommandTracking();
     if (this.transferNoticeTimer !== null) {
       window.clearTimeout(this.transferNoticeTimer);
       this.transferNoticeTimer = null;
@@ -1042,6 +1092,90 @@ export class TerminalController {
 
   // --- command history & inline suggestions --------------------------------
 
+  /** Begins (or replaces) the command currently represented by this tab. */
+  private beginCommand(anchor?: InputAnchor) {
+    if (
+      this.disposed ||
+      this.locked ||
+      this.commandRunning ||
+      this.isTransferActive() ||
+      this.term.buffer.active.type !== "normal"
+    ) {
+      return false;
+    }
+
+    const buf = this.term.buffer.active;
+    const row = anchor?.marker.line ?? buf.baseY + buf.cursorY;
+    const col = anchor?.col ?? buf.cursorX;
+    const line = row >= 0 ? buf.getLine(row) : undefined;
+    const prompt = line?.translateToString(false, 0, col) ?? "";
+
+    this.commandMarker?.dispose();
+    this.commandMarker = this.term.registerMarker(0);
+    this.commandPrompt = prompt;
+    // Appending a space lets a compact bare prompt such as `$` satisfy the
+    // same look-ahead rule as `$ command` in semantic coloring.
+    this.commandPromptRecognized = isShellPrompt(`${prompt} `);
+    this.commandOutputAdvanced = false;
+    this.commandRunning = true;
+    this.callbacks.onCommandState("running");
+    return true;
+  }
+
+  /** Current logical line up to the cursor, including soft-wrapped rows. */
+  private cursorLine(): { first: number; text: string } | null {
+    const buf = this.term.buffer.active;
+    if (buf.type !== "normal") return null;
+    const cursor = buf.baseY + buf.cursorY;
+    let first = cursor;
+    while (first > 0 && buf.getLine(first)?.isWrapped) first -= 1;
+
+    let text = "";
+    for (let row = first; row <= cursor; row += 1) {
+      const line = buf.getLine(row);
+      if (!line) return null;
+      text += line.translateToString(false, 0, row === cursor ? buf.cursorX : undefined);
+    }
+    return { first, text };
+  }
+
+  /** Completes once a fresh prompt appears below the submitted command. */
+  private detectReturnedPrompt() {
+    if (!this.commandRunning) return;
+    const current = this.cursorLine();
+    if (!current) return;
+
+    const markerLine = this.commandMarker?.line ?? -1;
+    if (markerLine >= 0) {
+      if (current.first <= markerLine) return;
+      this.commandOutputAdvanced = true;
+    } else if (!this.commandOutputAdvanced) {
+      return;
+    }
+
+    const samePrompt =
+      this.commandPrompt.trim().length > 0 &&
+      current.text.startsWith(this.commandPrompt);
+    const knownPrompt =
+      this.commandPromptRecognized && isShellPrompt(`${current.text} `);
+    if (samePrompt || knownPrompt) this.finishCommand();
+  }
+
+  private finishCommand() {
+    if (!this.commandRunning) return;
+    this.resetCommandTracking();
+    if (!this.disposed) this.callbacks.onCommandState("complete");
+  }
+
+  private resetCommandTracking() {
+    this.commandMarker?.dispose();
+    this.commandMarker = null;
+    this.commandPrompt = "";
+    this.commandPromptRecognized = false;
+    this.commandOutputAdvanced = false;
+    this.commandRunning = false;
+  }
+
   /**
    * Follows the user's keystrokes to delimit the command being composed.
    * Keystroke echo comes back from the shell, so the buffer — not the raw
@@ -1049,20 +1183,36 @@ export class TerminalController {
    * *where* that text starts and *when* it was submitted.
    */
   private trackInput(data: string) {
-    if (!this.suggestionsOn) return;
     const buf = this.term.buffer.active;
     if (buf.type !== "normal") {
       this.dropAnchor();
       return;
     }
     if (data === "\r") {
-      this.captureCommand();
+      // The anchor exists as soon as the user starts editing the prompt. It
+      // is a better signal than the buffer text here because the last remote
+      // echo may still be in flight when Enter arrives.
+      if (this.commandRunning) {
+        // Input requested by the foreground command (sudo password, a REPL,
+        // an installer question) is not another shell command and must not
+        // replace the prompt signature we are waiting to see again.
+        this.dropAnchor();
+      } else {
+        if (this.inputAnchor) this.beginCommand(this.inputAnchor);
+        this.captureCommand();
+      }
     } else if (data === "\x03") {
       // Ctrl+C abandons the line.
       this.dropAnchor();
-    } else if (data.includes("\r")) {
+    } else if (data.includes("\r") || data.includes("\n")) {
       // A multi-line paste executed commands we did not watch being typed;
       // the anchor no longer describes anything real.
+      if (
+        !this.commandRunning &&
+        (/[^\s\r\n]/.test(data) || this.inputAnchor)
+      ) {
+        this.beginCommand();
+      }
       this.dropAnchor();
     } else if (!this.inputAnchor) {
       const marker = this.term.registerMarker(0);
@@ -1098,7 +1248,7 @@ export class TerminalController {
       // A leading space opts out of history, mirroring the shells'
       // `ignorespace` convention. Length guards against captured output.
       if (!command || command.startsWith(" ") || command.length > 500) return;
-      if (!this.disposed) this.callbacks.onCommand(command);
+      if (!this.disposed && this.suggestionsOn) this.callbacks.onCommand(command);
     }, 150);
   }
 

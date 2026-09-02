@@ -387,11 +387,18 @@ export function SenderPanel() {
     try {
       const unit = units[0];
       await Promise.all(
-        ids.map((id) =>
-          typeof unit === "string"
-            ? api.writeSession(id, unit)
-            : api.writeSessionBinary(id, api.bytesToBase64(unit)),
-        ),
+        ids.map(async (id) => {
+          const controller = getController(id);
+          const tracked =
+            commandEnding !== "none" && controller?.noteCommandSent() === true;
+          try {
+            if (typeof unit === "string") await api.writeSession(id, unit);
+            else await api.writeSessionBinary(id, api.bytesToBase64(unit));
+          } catch (error) {
+            if (tracked) controller.cancelCommandSent();
+            throw error;
+          }
+        }),
       );
       setStatus(
         ids.length === targetIds.length

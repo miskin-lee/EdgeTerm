@@ -17,6 +17,8 @@ const DRAG_THRESHOLD = 4;
 /** Distance from either strip edge inside which a drag scrolls the strip. */
 const EDGE_SCROLL_ZONE = 32;
 const EDGE_SCROLL_STEP = 6;
+/** Kept deliberately small: every open tab owns these DOM-only particles. */
+const COMMAND_PARTICLES = 6;
 
 interface TabDrag {
   id: string;
@@ -68,7 +70,13 @@ export function TabStrip() {
   // open so the button toggles instead of reopening.
   const listWasOpen = useRef(false);
   const listItems: MenuItem[] = tabs.map((tab) => ({
-    label: `${tab.number}. ${tabTitle(tab)}`,
+    label: `${tab.number}. ${tabTitle(tab)}${
+      tab.commandActivity === "running"
+        ? " · command running"
+        : tab.commandActivity === "complete"
+          ? " · command finished"
+          : ""
+    }`,
     checked: tab.info.id === activeId,
     action: () => setActive(tab.info.id),
   }));
@@ -260,6 +268,7 @@ export function TabStrip() {
               "tab",
               active ? "is-active" : "",
               `is-${tab.state}`,
+              `is-command-${tab.commandActivity}`,
               tab.info.id === draggingId ? "is-dragging" : "",
             ]
               .filter(Boolean)
@@ -267,8 +276,19 @@ export function TabStrip() {
             style={{ "--session-color": sessionColor } as CSSProperties}
             data-tab-id={tab.info.id}
             onMouseDown={() => setActive(tab.info.id)}
-            title={`${tab.info.protocol} · ${tab.info.address} · ${tab.message ?? tab.state}`}
+            title={`${tab.info.protocol} · ${tab.info.address} · ${
+              tab.commandActivity === "running"
+                ? "command running"
+                : tab.commandActivity === "complete"
+                  ? "command finished — select to view"
+                  : (tab.message ?? tab.state)
+            }`}
           >
+            <span className="tab-command-activity" aria-hidden="true">
+              {Array.from({ length: COMMAND_PARTICLES }, (_, index) => (
+                <span className="tab-command-particle" key={index} />
+              ))}
+            </span>
             <span className="tab-index">{tab.number}.</span>
             <span className="tab-dot" aria-hidden="true" />
             <span className="tab-label">{tabTitle(tab)}</span>
