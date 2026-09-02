@@ -1488,21 +1488,20 @@ textarea:focus {
   height: 100%;
 }
 
-/* Buffer scrollbar: wider than the app default so it's an easy drag target,
-   and the thumb both grows and brightens under the pointer. */
-.term-host .xterm-viewport::-webkit-scrollbar {
-  width: 12px;
-}
-
-.term-host .xterm-viewport::-webkit-scrollbar-thumb {
+/* Buffer scrollbar. xterm 6 draws its own (VS Code's scrollable element)
+   in a 14px track and themes the slider from an injected stylesheet; these
+   rules win on specificity. The thumb is inset with rounded ends like the
+   app's other scrollbars, and grows and brightens under the pointer. */
+.term-host .xterm .xterm-scrollable-element > .scrollbar > .slider {
+  box-sizing: border-box;
   background: var(--scrollbar-thumb);
   border: 3px solid transparent;
   border-radius: 7px;
   background-clip: content-box;
 }
 
-.term-host .xterm-viewport::-webkit-scrollbar-thumb:hover,
-.term-host .xterm-viewport::-webkit-scrollbar-thumb:active {
+.term-host .xterm .xterm-scrollable-element > .scrollbar > .slider:hover,
+.term-host .xterm .xterm-scrollable-element > .scrollbar > .slider.active {
   background: var(--term-scrollbar-thumb-hover);
   border-width: 2px;
   background-clip: content-box;

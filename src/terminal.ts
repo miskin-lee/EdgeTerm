@@ -107,6 +107,19 @@ function openTerminalWebLink(event: MouseEvent, uri: string) {
 }
 
 /**
+ * What Alt+arrow sends, by `event.key` in lower case: what xterm 5 sent for
+ * the same keys (see the handler in the constructor).
+ */
+const ALT_ARROW_SEQUENCES: Record<string, string | undefined> = IS_MAC
+  ? { arrowleft: "\x1bb", arrowright: "\x1bf" }
+  : {
+      arrowleft: "\x1b[1;5D",
+      arrowright: "\x1b[1;5C",
+      arrowup: "\x1b[1;5A",
+      arrowdown: "\x1b[1;5B",
+    };
+
+/**
  * VS Code's terminal palettes, one per theme, on the matching editor
  * backgrounds (kept in sync with --bg-terminal in styles.css). xterm.js
  * supplies the remaining 240 entries of the xterm-256color cube and grayscale
@@ -276,8 +289,8 @@ export class TerminalController {
    * Semantic coloring is viewport-driven: only rows in and around the
    * viewport are colored, on the frame they become visible or change. Three
    * hooks feed it, each timed to run before the paint it affects: new output
-   * via `onWriteParsed`, user scrolling via the viewport's DOM `scroll`
-   * event, and `onRender` as the after-paint catch-all. Keeping the live
+   * via `onWriteParsed`, scrolling via `onScroll`, and `onRender` as the
+   * after-paint catch-all. Keeping the live
    * marker count near the viewport size (instead of one per scrollback line)
    * is what keeps write throughput flat — xterm walks every live marker each
    * time the buffer trims a line.
@@ -440,6 +453,12 @@ export class TerminalController {
       this.syncGutter();
     });
     this.term.onScroll(() => {
+      // Fires synchronously while xterm handles the scroll (wheel, scrollbar
+      // drag, or its own scrollTop during an output flood), before the
+      // repaint it queues: the decorations land in the same paint. Rows
+      // colored here keep their state and are skipped by the `onRender`
+      // pass. New output is handled by the `onWriteParsed` hook.
+      this.refreshSemanticColors();
       this.syncGutter();
       if (this.inputAnchor || this.candidates.length) this.schedulePopupSync();
     });
@@ -486,6 +505,26 @@ export class TerminalController {
             this.acceptSuggestion(this.popupIndex);
             return false;
           }
+        }
+      }
+
+      // Alt+arrow word jumps. xterm 5 rewrote Alt+←/→ into the readline
+      // word-motion keys (ESC b / ESC f on macOS, Ctrl+arrow elsewhere) and
+      // Alt+↑/↓ into Ctrl+↑/↓ off macOS; xterm 6 dropped that (#5346) and
+      // sends the plain Alt-modified sequences, which zsh and bash leave
+      // unbound. Kept here so the keys behave as they did in 0.6.x.
+      if (
+        event.altKey &&
+        !event.ctrlKey &&
+        !event.metaKey &&
+        !event.shiftKey &&
+        !event.isComposing
+      ) {
+        const sequence = ALT_ARROW_SEQUENCES[key];
+        if (sequence) {
+          event.preventDefault();
+          this.term.input(sequence, true);
+          return false;
         }
       }
 
@@ -576,27 +615,6 @@ export class TerminalController {
     // against the terminal content, past the gutter, and survives
     // re-parenting above.
     this.host.appendChild(this.popup);
-
-    // User scrolling (wheel, trackpad, scrollbar drag) reaches xterm through
-    // the viewport element's DOM `scroll` event and never fires
-    // `term.onScroll`. Coloring only on `onRender` would paint the rows
-    // that just scrolled in plain first and recolor them a frame later,
-    // which shows as a visible color pass during a fast scroll. This
-    // listener is registered after xterm's own, so it runs once xterm has
-    // updated `viewportY` and queued its repaint but before that frame's
-    // animation-frame callbacks: the decorations land in the same paint.
-    // The browser coalesces `scroll` events to one per frame per element,
-    // so during an output flood (xterm sets `scrollTop` itself) this is at
-    // most one viewport of string compares per frame; rows colored here
-    // keep their state and are skipped by the `onRender` pass. New output
-    // is handled by the `onWriteParsed` hook in the constructor.
-    this.term.element
-      ?.querySelector(".xterm-viewport")
-      ?.addEventListener("scroll", () => {
-        if (this.disposed) return;
-        this.refreshSemanticColors();
-        this.syncGutter();
-      });
 
     // WebGL comes with being shown (setVisible); it needs the host, so a
     // terminal that was shown before it was attached loads it here.
