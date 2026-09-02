@@ -110,24 +110,6 @@ export default function App() {
     for (const controller of allControllers()) controller.setTheme(theme);
   }, [theme]);
 
-  // The bundled JetBrains Mono faces load asynchronously, and canvas text
-  // (unlike DOM text) never triggers a CSS font load on its own. Fetch them
-  // eagerly, then rebuild glyphs and cell metrics for any terminal that
-  // opened while the fallback font was still active.
-  useEffect(() => {
-    void Promise.all([
-      document.fonts.load('12px "JetBrains Mono"'),
-      document.fonts.load('bold 12px "JetBrains Mono"'),
-      document.fonts.load('italic 12px "JetBrains Mono"'),
-      document.fonts.load('italic bold 12px "JetBrains Mono"'),
-    ]).then(() => {
-      for (const controller of allControllers()) {
-        controller.term.clearTextureAtlas();
-        controller.fit();
-      }
-    });
-  }, []);
-
   useEffect(() => {
     const unlisten = api.onSessionOutput(({ id, data }) => {
       getController(id)?.write(api.base64ToBytes(data));
@@ -471,10 +453,6 @@ export default function App() {
                 >
                   github.com/miskin-lee/EdgeTerm
                 </a>
-              </span>
-              <span style={{ color: "var(--fg-faint)" }}>
-                Icons: Codicons by Microsoft (CC BY 4.0) · Font: JetBrains
-                Mono (OFL 1.1)
               </span>
             </div>
             <div className="dialog-footer">

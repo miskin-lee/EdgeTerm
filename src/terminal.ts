@@ -13,6 +13,7 @@ import {
   type ITheme,
 } from "@xterm/xterm";
 
+import { MONO_FONT_FAMILY } from "./fonts";
 import type { CommandSuggestion } from "./history";
 import { patchImeInput } from "./imePatch";
 import { IS_MAC } from "./platform";
@@ -350,8 +351,7 @@ export class TerminalController {
       allowProposedApi: true,
       cursorBlink: true,
       cursorStyle: "block",
-      fontFamily:
-        '"JetBrains Mono", "SF Mono", Menlo, Consolas, "DejaVu Sans Mono", monospace',
+      fontFamily: MONO_FONT_FAMILY,
       fontSize,
       lineHeight: 1.25,
       letterSpacing: 0,
