@@ -66,10 +66,12 @@ export const TERMINAL_SCROLLBACK = {
   max: 1_000_000,
   default: 20_000,
 } as const;
+// A fresh install shows only the session list; the Filer and Sender stay
+// hidden until the user opens them from the View menu.
 const DEFAULT_PANELS: Record<PanelName, boolean> = {
-  filer: true,
+  filer: false,
   sessions: true,
-  sender: true,
+  sender: false,
 };
 
 const PANEL_FONT_SIZE_KEY = "edgeterm.panelFontSize";
