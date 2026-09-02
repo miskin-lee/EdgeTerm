@@ -15,6 +15,7 @@ import { tabTitle, useActiveTab, useStore } from "../../store";
 import { ContextMenu, type MenuItem } from "../ContextMenu";
 import { DeleteEntryDialog } from "../DeleteEntryDialog";
 import { FileIcon } from "../FileIcon";
+import { Icon } from "../icons";
 import type { FileEntry, ThemeMode } from "../../types";
 
 interface TransferState {
@@ -664,10 +665,10 @@ export function FilerPanel() {
   return (
     <div className="panel" style={{ flex: 1 }}>
       <div className="panel-header">
-        <div className="panel-title">
-          <span className="panel-dot" style={{ background: "#39c5cf" }} />
+        <div className="panel-title is-filer">
+          <Icon name="folder" />
           Filer
-          <span className="row-meta">
+          <span className="panel-badge">
             {remote ? tab?.info.protocol : "local"}
           </span>
         </div>
@@ -682,7 +683,7 @@ export function FilerPanel() {
           aria-label="New file"
           disabled={busy || !path || atDrivesRoot}
         >
-          <FilerActionIcon name="new-file" />
+          <Icon name="new-file" />
         </button>
         <button
           className="panel-action filer-action"
@@ -691,7 +692,7 @@ export function FilerPanel() {
           aria-label="New folder"
           disabled={busy || !path || atDrivesRoot}
         >
-          <FilerActionIcon name="new-folder" />
+          <Icon name="new-folder" />
         </button>
         <button
           className={`panel-action filer-action${uploadMenu ? " is-open" : ""}`}
@@ -709,7 +710,7 @@ export function FilerPanel() {
           aria-expanded={uploadMenu !== null}
           disabled={!remote || busy || !path}
         >
-          <FilerActionIcon name="upload" />
+          <Icon name="cloud-upload" />
         </button>
         <button
           className="panel-action filer-action"
@@ -718,7 +719,7 @@ export function FilerPanel() {
           aria-label="Download file or folder"
           disabled={!remote || !selected || busy}
         >
-          <FilerActionIcon name="download" />
+          <Icon name="cloud-download" />
         </button>
         <button
           className="panel-action filer-action"
@@ -727,7 +728,7 @@ export function FilerPanel() {
           aria-label="Refresh"
           disabled={busy}
         >
-          <FilerActionIcon name="refresh" />
+          <Icon name="refresh" />
         </button>
         <button
           className="panel-action filer-action filer-action-danger"
@@ -736,7 +737,7 @@ export function FilerPanel() {
           aria-label="Delete"
           disabled={!selected || busy || atDrivesRoot}
         >
-          <FilerActionIcon name="delete" />
+          <Icon name="trash" />
         </button>
       </div>
       {uploadMenu && (
@@ -759,7 +760,7 @@ export function FilerPanel() {
           aria-label="Parent folder"
           disabled={busy || atDrivesRoot}
         >
-          <FilerActionIcon name="parent-folder" />
+          <Icon name="arrow-up" />
         </button>
         <button
           className="panel-action filer-action"
@@ -768,7 +769,7 @@ export function FilerPanel() {
           aria-label="Terminal folder"
           disabled={busy || !canReveal}
         >
-          <FilerActionIcon name="terminal-folder" />
+          <Icon name="target" />
         </button>
         <input
           value={draft}
@@ -950,80 +951,6 @@ function FilerEntryIcon({
   );
 }
 
-type FilerActionIconName =
-  | "new-file"
-  | "new-folder"
-  | "upload"
-  | "download"
-  | "delete"
-  | "refresh"
-  | "parent-folder"
-  | "terminal-folder";
-
-function FilerActionIcon({ name }: { name: FilerActionIconName }) {
-  const paths: Record<FilerActionIconName, React.ReactNode> = {
-    "new-file": (
-      <>
-        <path d="M13.5 3.5H7.25A1.75 1.75 0 0 0 5.5 5.25v13.5A1.75 1.75 0 0 0 7.25 20.5h9.5a1.75 1.75 0 0 0 1.75-1.75V8.5l-5-5Z" />
-        <path d="M13.5 3.5v5h5" />
-        <path d="M12 11.5v5M9.5 14h5" />
-      </>
-    ),
-    "new-folder": (
-      <>
-        <path d="M3.5 6.5h6l2 2h9v9.75a1.75 1.75 0 0 1-1.75 1.75H5.25a1.75 1.75 0 0 1-1.75-1.75V6.5Z" />
-        <path d="M15 11.5v5M12.5 14h5" />
-      </>
-    ),
-    upload: (
-      <>
-        <path d="M12 15V4.5M8 8.5l4-4 4 4" />
-        <path d="M5 14.5v3.75A1.75 1.75 0 0 0 6.75 20h10.5A1.75 1.75 0 0 0 19 18.25V14.5" />
-      </>
-    ),
-    download: (
-      <>
-        <path d="M12 4v10.5M8 10.5l4 4 4-4" />
-        <path d="M5 14.5v3.75A1.75 1.75 0 0 0 6.75 20h10.5A1.75 1.75 0 0 0 19 18.25V14.5" />
-      </>
-    ),
-    delete: (
-      <>
-        <path d="M4.5 7h15M9 7V4.5h6V7M6.5 7l.75 12.5h9.5L17.5 7" />
-        <path d="M10 10.5v5.5M14 10.5v5.5" />
-      </>
-    ),
-    refresh: (
-      <>
-        <path d="M19.25 8A8 8 0 1 0 20 13" />
-        <path d="M19.25 3.5V8h-4.5" />
-      </>
-    ),
-    "parent-folder": <path d="m7 14 5-5 5 5" />,
-    "terminal-folder": (
-      <>
-        <circle cx="12" cy="12" r="5.5" />
-        <path d="M12 3v3.5M12 17.5V21M3 12h3.5M17.5 12H21" />
-        <circle cx="12" cy="12" r="1" fill="currentColor" />
-      </>
-    ),
-  };
-
-  return (
-    <svg
-      className="filer-action-icon"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.8"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden="true"
-    >
-      {paths[name]}
-    </svg>
-  );
-}
 
 /** Applications the user has opened files with, most recent first. */
 const OPEN_WITH_KEY = "edgeterm.filerOpenWith";

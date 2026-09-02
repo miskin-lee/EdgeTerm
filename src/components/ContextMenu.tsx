@@ -6,6 +6,8 @@ import {
   type CSSProperties,
 } from "react";
 
+import { Icon } from "./icons";
+
 export interface MenuAction {
   label: string;
   action?: () => void;
@@ -40,6 +42,31 @@ interface Props {
 /** Approximate submenu width, used to decide which side it opens on. */
 const SUBMENU_WIDTH = 200;
 const EDGE_MARGIN = 6;
+
+/** Whether one menu level needs a selection column. */
+function hasCheckable(items: MenuItem[]): boolean {
+  return items.some(
+    (item) => item !== "separator" && item.checked !== undefined,
+  );
+}
+
+/** A visible checkbox for choices, or a blank alignment spacer for commands. */
+function MenuCheck({
+  checkable,
+  checked,
+}: {
+  checkable: boolean;
+  checked?: boolean;
+}) {
+  return (
+    <span
+      className={`menu-check${checkable ? " is-checkable" : ""}${checked ? " is-checked" : ""}`}
+      aria-hidden="true"
+    >
+      {checked && <Icon name="check" />}
+    </span>
+  );
+}
 
 /**
  * A right-click menu anchored at a viewport point. It reuses the menubar's
@@ -104,11 +131,12 @@ export function ContextMenu({
     };
   }, [onClose]);
 
-  const renderEntry = (entry: MenuAction, key: string) => (
+  const renderEntry = (entry: MenuAction, key: string, showCheck: boolean) => (
     <button
       key={key}
       type="button"
-      role="menuitem"
+      role={entry.checked !== undefined ? "menuitemcheckbox" : "menuitem"}
+      aria-checked={entry.checked !== undefined ? entry.checked : undefined}
       className={[
         "menu-entry",
         entry.checked ? "is-checked" : "",
@@ -127,10 +155,11 @@ export function ContextMenu({
         entry.action?.();
       }}
     >
-      {entry.checked !== undefined && (
-        <span className="menu-check" aria-hidden="true">
-          {entry.checked ? "✓" : ""}
-        </span>
+      {showCheck && (
+        <MenuCheck
+          checkable={entry.checked !== undefined}
+          checked={entry.checked}
+        />
       )}
       <span className="menu-entry-label">{entry.label}</span>
     </button>
@@ -157,26 +186,28 @@ export function ContextMenu({
         ) : item.children ? (
           <div key={item.label} className="menu-submenu-entry">
             <div className="menu-entry" role="menuitem" aria-haspopup="menu">
+              {hasCheckable(items) && <MenuCheck checkable={false} />}
               <span className="menu-entry-label">{item.label}</span>
               <span className="menu-submenu-arrow" aria-hidden="true">
-                ›
+                <Icon name="chevron-right" />
               </span>
             </div>
             <div className="menu-dropdown menu-submenu" role="menu">
               {item.children.map((child, childIndex) =>
                 child === "separator" ? (
-                  <div
-                    key={`sep-${childIndex}`}
-                    className="menu-separator"
-                  />
+                  <div key={`sep-${childIndex}`} className="menu-separator" />
                 ) : (
-                  renderEntry(child, `${child.label}-${childIndex}`)
+                  renderEntry(
+                    child,
+                    `${child.label}-${childIndex}`,
+                    hasCheckable(item.children ?? []),
+                  )
                 ),
               )}
             </div>
           </div>
         ) : (
-          renderEntry(item, `${item.label}-${index}`)
+          renderEntry(item, `${item.label}-${index}`, hasCheckable(items))
         ),
       )}
     </div>

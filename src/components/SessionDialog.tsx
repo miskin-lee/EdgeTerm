@@ -20,6 +20,7 @@ import {
   type SessionKind,
   type SessionProfile,
 } from "../types";
+import { Icon } from "./icons";
 
 interface Props {
   initial: SessionProfile | null;
@@ -366,7 +367,7 @@ export function SessionDialog({ initial, onClose }: Props) {
             </div>
           </div>
           <button className="panel-action" onClick={onClose} aria-label="Close">
-            ✕
+            <Icon name="close" />
           </button>
         </div>
 

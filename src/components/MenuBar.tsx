@@ -1,4 +1,10 @@
-import { type MouseEvent as ReactMouseEvent, type ReactElement, useEffect, useRef, useState } from "react";
+import {
+  type MouseEvent as ReactMouseEvent,
+  type ReactElement,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
 import {
   getCurrentWindow,
   type Window as TauriWindow,
@@ -16,6 +22,7 @@ import { tabTitle, useActiveTab, useStore } from "../store";
 import type { GutterMode, TerminalController } from "../terminal";
 import { getController } from "../terminalRegistry";
 import type { ThemeMode } from "../types";
+import { Icon } from "./icons";
 
 const TUTORIAL_URL = "https://miskin-lee.github.io/EdgeTerm/tutorial.html";
 
@@ -102,7 +109,9 @@ function startDragOnMove(startX: number, startY: number): () => void {
       return;
     }
     stop();
-    void getCurrentWindow().startDragging().catch(() => {});
+    void getCurrentWindow()
+      .startDragging()
+      .catch(() => {});
   }
   document.addEventListener("mousemove", onMove);
   document.addEventListener("mouseup", stop);
@@ -139,11 +148,20 @@ function WindowControls({ maximized }: { maximized: boolean }) {
   // close-requested hook still guards live sessions.
   const toggleMaximize = () => windowControl("toggle-maximize");
   const controls: WindowControl[] = [
-    { label: "Minimize", icon: MINIMIZE_ICON, action: () => windowControl("minimize") },
+    {
+      label: "Minimize",
+      icon: MINIMIZE_ICON,
+      action: () => windowControl("minimize"),
+    },
     maximized
       ? { label: "Restore Down", icon: RESTORE_ICON, action: toggleMaximize }
       : { label: "Maximize", icon: MAXIMIZE_ICON, action: toggleMaximize },
-    { label: "Close", icon: CLOSE_ICON, action: (win) => win.close(), className: " is-close" },
+    {
+      label: "Close",
+      icon: CLOSE_ICON,
+      action: (win) => win.close(),
+      className: " is-close",
+    },
   ];
   return (
     <div className="window-controls" data-tauri-drag-region>
@@ -156,7 +174,9 @@ function WindowControls({ maximized }: { maximized: boolean }) {
           tabIndex={-1}
           // Keep keyboard focus in the terminal.
           onMouseDown={(event) => event.preventDefault()}
-          onClick={() => void control.action(getCurrentWindow()).catch(() => {})}
+          onClick={() =>
+            void control.action(getCurrentWindow()).catch(() => {})
+          }
         >
           <svg viewBox="0 0 10 10" aria-hidden="true">
             {control.icon}
@@ -168,20 +188,22 @@ function WindowControls({ maximized }: { maximized: boolean }) {
 }
 
 /**
- * The check column of a dropdown entry. Checkable entries get a box (ticked
- * when on); the rest keep the same width blank so labels share one left edge.
+ * The selection column of a dropdown entry. Checkable choices keep their
+ * outline when off; ordinary commands use the same-width blank spacer.
  */
-function MenuCheck({ checked }: { checked?: boolean }) {
+function MenuCheck({
+  checkable,
+  checked,
+}: {
+  checkable: boolean;
+  checked?: boolean;
+}) {
   return (
     <span
-      className={`menu-check${checked !== undefined ? " is-box" : ""}`}
+      className={`menu-check${checkable ? " is-checkable" : ""}${checked ? " is-checked" : ""}`}
       aria-hidden="true"
     >
-      {checked && (
-        <svg viewBox="0 0 10 10">
-          <path d="M2 5.3l2.2 2.2L8 3" />
-        </svg>
-      )}
+      {checked && <Icon name="check" />}
     </span>
   );
 }
@@ -231,7 +253,9 @@ export function MenuBar(props: Props) {
     ? `${tabTitle(activeTab)}${IS_MAC ? " \u2014 " : " - "}EdgeTerm`
     : "EdgeTerm";
   useEffect(() => {
-    getCurrentWindow().setTitle(windowTitle).catch(() => {});
+    getCurrentWindow()
+      .setTitle(windowTitle)
+      .catch(() => {});
   }, [windowTitle]);
   const panels = useStore((s) => s.panels);
   const togglePanel = useStore((s) => s.togglePanel);
@@ -288,7 +312,11 @@ export function MenuBar(props: Props) {
     {
       title: "Session",
       entries: [
-        { label: "New Session…", shortcut: sc("⌘N", "Alt+N"), action: props.onNewSession },
+        {
+          label: "New Session…",
+          shortcut: sc("⌘N", "Alt+N"),
+          action: props.onNewSession,
+        },
         "separator",
         {
           label: "Previous Session",
@@ -415,8 +443,16 @@ export function MenuBar(props: Props) {
     {
       title: "Search",
       entries: [
-        { label: "Find…", shortcut: sc("⌘F", "Ctrl+Shift+F"), action: props.onFind },
-        { label: "Find Next", shortcut: sc("⌘G", "Ctrl+Shift+G"), action: props.onFindNext },
+        {
+          label: "Find…",
+          shortcut: sc("⌘F", "Ctrl+Shift+F"),
+          action: props.onFind,
+        },
+        {
+          label: "Find Next",
+          shortcut: sc("⌘G", "Ctrl+Shift+G"),
+          action: props.onFindNext,
+        },
       ],
     },
     {
@@ -449,10 +485,7 @@ export function MenuBar(props: Props) {
         "separator",
         {
           label: "Theme",
-          children: [
-            themeEntry("Dark", "dark"),
-            themeEntry("Light", "light"),
-          ],
+          children: [themeEntry("Dark", "dark"), themeEntry("Light", "light")],
         },
         "separator",
         { label: "Display Settings…", action: props.onFontSettings },
@@ -519,7 +552,9 @@ export function MenuBar(props: Props) {
       event.preventDefault();
       event.stopPropagation();
       if (event.target.classList.contains("menubar-icon")) {
-        void getCurrentWindow().close().catch(() => {});
+        void getCurrentWindow()
+          .close()
+          .catch(() => {});
         return;
       }
       void windowControl("toggle-maximize").catch(() => {});
@@ -577,10 +612,15 @@ export function MenuBar(props: Props) {
                         onMouseDown={(event) => event.stopPropagation()}
                       >
                         <div className="menu-entry" role="menuitem">
-                          {showCheck && <MenuCheck />}
-                          <span className="menu-entry-label">{entry.label}</span>
-                          <span className="menu-submenu-arrow" aria-hidden="true">
-                            ›
+                          {showCheck && <MenuCheck checkable={false} />}
+                          <span className="menu-entry-label">
+                            {entry.label}
+                          </span>
+                          <span
+                            className="menu-submenu-arrow"
+                            aria-hidden="true"
+                          >
+                            <Icon name="chevron-right" />
                           </span>
                         </div>
                         <div className="menu-dropdown menu-submenu">
@@ -588,6 +628,16 @@ export function MenuBar(props: Props) {
                             <button
                               key={child.label}
                               className={`menu-entry${child.checked ? " is-checked" : ""}`}
+                              role={
+                                child.checked !== undefined
+                                  ? "menuitemcheckbox"
+                                  : "menuitem"
+                              }
+                              aria-checked={
+                                child.checked !== undefined
+                                  ? child.checked
+                                  : undefined
+                              }
                               onMouseDown={(event) => {
                                 event.stopPropagation();
                                 setOpen(null);
@@ -595,7 +645,10 @@ export function MenuBar(props: Props) {
                               }}
                             >
                               {showChildCheck && (
-                                <MenuCheck checked={child.checked} />
+                                <MenuCheck
+                                  checkable={child.checked !== undefined}
+                                  checked={child.checked}
+                                />
                               )}
                               <span className="menu-entry-label">
                                 {child.label}
@@ -610,13 +663,26 @@ export function MenuBar(props: Props) {
                     <button
                       key={entry.label}
                       className={`menu-entry${entry.checked ? " is-checked" : ""}`}
+                      role={
+                        entry.checked !== undefined
+                          ? "menuitemcheckbox"
+                          : "menuitem"
+                      }
+                      aria-checked={
+                        entry.checked !== undefined ? entry.checked : undefined
+                      }
                       onMouseDown={(event) => {
                         event.stopPropagation();
                         setOpen(null);
                         entry.action?.();
                       }}
                     >
-                      {showCheck && <MenuCheck checked={entry.checked} />}
+                      {showCheck && (
+                        <MenuCheck
+                          checkable={entry.checked !== undefined}
+                          checked={entry.checked}
+                        />
+                      )}
                       <span className="menu-entry-label">{entry.label}</span>
                       {entry.shortcut && (
                         <span className="menu-shortcut">{entry.shortcut}</span>

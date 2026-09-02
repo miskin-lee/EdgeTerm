@@ -85,3 +85,5 @@ Releases are not notarized on macOS or code-signed with Windows Authenticode; th
 ## License
 
 EdgeTerm is licensed under the [GNU General Public License v3.0](LICENSE). Derivative works that are distributed must be released under the same license with their full source code.
+
+The interface icons are [Codicons](https://github.com/microsoft/vscode-codicons) by Microsoft, used under the Creative Commons Attribution 4.0 license. The bundled JetBrains Mono font is used under the SIL Open Font License 1.1.

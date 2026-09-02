@@ -13,6 +13,7 @@ import { useActiveTab, useStore } from "../store";
 import { SEARCH_HIGHLIGHT_LIMIT, type SearchResults } from "../terminal";
 import { getController } from "../terminalRegistry";
 import { isFileSession } from "../types";
+import { Icon } from "./icons";
 
 interface Props {
   onClose: () => void;
@@ -199,22 +200,25 @@ export const SearchOverlay = forwardRef<SearchOverlayHandle, Props>(
           className="panel-action"
           onClick={() => runSearch(false)}
           title="Previous match"
+          aria-label="Previous match"
         >
-          ↑
+          <Icon name="arrow-up" />
         </button>
         <button
           className="panel-action"
           onClick={() => runSearch(true)}
           title="Next match"
+          aria-label="Next match"
         >
-          ↓
+          <Icon name="arrow-down" />
         </button>
         <button
           className="panel-action"
           onClick={onClose}
           title="Close search"
+          aria-label="Close search"
         >
-          ✕
+          <Icon name="close" />
         </button>
       </div>
     );

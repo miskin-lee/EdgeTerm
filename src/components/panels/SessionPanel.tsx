@@ -24,6 +24,7 @@ import {
 import { ContextMenu, type MenuItem } from "../ContextMenu";
 import { DeleteProfileDialog } from "../DeleteProfileDialog";
 import { GroupNameDialog } from "../GroupNameDialog";
+import { Icon } from "../icons";
 
 export const LOCAL_SHELL_PROFILE: SessionProfile = {
   id: "",
@@ -42,30 +43,6 @@ const POWER_TITLES: Record<SessionState, string> = {
 
 /** Horizontal step per tree level; the kind headings sit at level 0. */
 const INDENT = 18;
-
-/** Folder glyph for group rows, drawn like the Filer's directory entries. */
-function FolderIcon({ open }: { open: boolean }) {
-  return (
-    <svg
-      className="row-folder"
-      viewBox="0 0 16 16"
-      aria-hidden="true"
-      focusable="false"
-    >
-      {open ? (
-        <>
-          <path
-            d="M1.5 3.5A1 1 0 0 1 2.5 2.5h3.4a1 1 0 0 1 .7.3l1 1h5.4a1 1 0 0 1 1 1V7H3.2a1 1 0 0 0-.95.68L1.5 10V3.5Z"
-            opacity="0.55"
-          />
-          <path d="M2.35 8.35A1 1 0 0 1 3.3 7.7h11.2a.75.75 0 0 1 .7 1l-1.6 4.1a1 1 0 0 1-.94.65H2.55a1 1 0 0 1-.95-1.3l.75-3.8Z" />
-        </>
-      ) : (
-        <path d="M1.5 3.5A1 1 0 0 1 2.5 2.5h3.4a1 1 0 0 1 .7.3l1 1h5.4a1 1 0 0 1 1 1v7.7a1 1 0 0 1-1 1H2.5a1 1 0 0 1-1-1V3.5Z" />
-      )}
-    </svg>
-  );
-}
 
 /** One-line connection target, used for the row tooltip and delete prompt. */
 function describeProfile(
@@ -381,7 +358,7 @@ export function SessionPanel({ onEditProfile, onNewSession }: Props) {
     <div
       key={profile.id || profile.name}
       className="row"
-      style={{ paddingLeft: 8 + INDENT * depth }}
+      style={{ paddingLeft: 6 + INDENT * depth }}
       onDoubleClick={() => void openSession(profile)}
       onContextMenu={(event) => openMenu(event, profileMenu(profile))}
       title={describeProfile(
@@ -406,8 +383,9 @@ export function SessionPanel({ onEditProfile, onNewSession }: Props) {
               onEditProfile(profile);
             }}
             title="Edit"
+            aria-label="Edit"
           >
-            ✎
+            <Icon name="edit" />
           </button>
           <button
             className="panel-action"
@@ -416,8 +394,9 @@ export function SessionPanel({ onEditProfile, onNewSession }: Props) {
               void askDeleteProfile(profile);
             }}
             title="Delete"
+            aria-label="Delete"
           >
-            ✕
+            <Icon name="close" />
           </button>
         </>
       )}
@@ -429,7 +408,7 @@ export function SessionPanel({ onEditProfile, onNewSession }: Props) {
     <div
       key={`group:${row.group.id}`}
       className="row is-group"
-      style={{ paddingLeft: 8 + INDENT * row.depth }}
+      style={{ paddingLeft: 6 + INDENT * row.depth }}
       onMouseDown={(event) => {
         if (event.button === 0) toggle(`group:${row.group.id}`);
       }}
@@ -440,8 +419,13 @@ export function SessionPanel({ onEditProfile, onNewSession }: Props) {
         row.group.id,
       )} · right-click for options`}
     >
-      <span className="row-caret">{row.collapsed ? "▶" : "▼"}</span>
-      <FolderIcon open={!row.collapsed} />
+      <span className={`row-caret${row.collapsed ? "" : " is-open"}`}>
+        <Icon name="chevron-right" />
+      </span>
+      <Icon
+        name={row.collapsed ? "folder" : "folder-opened"}
+        className="row-folder"
+      />
       <span className="row-label">{row.group.name}</span>
       <span className="row-meta">{row.count}</span>
     </div>
@@ -450,8 +434,8 @@ export function SessionPanel({ onEditProfile, onNewSession }: Props) {
   return (
     <div className="panel" style={{ flex: 1 }}>
       <div className="panel-header">
-        <div className="panel-title">
-          <span className="panel-dot" style={{ background: "#e3b341" }} />
+        <div className="panel-title is-session">
+          <Icon name="server" />
           Session
         </div>
         <button
@@ -470,24 +454,26 @@ export function SessionPanel({ onEditProfile, onNewSession }: Props) {
           aria-label={activeTab ? POWER_TITLES[activeTab.state] : "Disconnect"}
         >
           {/* Power symbol: an open ring with a bar through the gap. */}
-          <svg viewBox="0 0 10 10" aria-hidden="true">
-            <path d="M3.1 2.9A3.3 3.3 0 1 0 6.9 2.9" />
-            <path d="M5 0.9v4.3" />
-          </svg>
+          <Icon name="plug" />
         </button>
         <button
           className="panel-action"
           onClick={onNewSession}
           title="New session"
+          aria-label="New session"
         >
-          ＋
+          <Icon name="add" />
         </button>
       </div>
 
       <div className="panel-filter">
+        <span className="panel-filter-icon" aria-hidden="true">
+          <Icon name="search" />
+        </span>
         <input
           value={filter}
-          placeholder="Filter"
+          placeholder="Filter sessions"
+          aria-label="Filter sessions"
           onChange={(event) => setFilter(event.target.value)}
         />
       </div>
@@ -496,7 +482,7 @@ export function SessionPanel({ onEditProfile, onNewSession }: Props) {
         {sections.map((section) => (
           <div key={section.kind}>
             <div
-              className="row"
+              className="row is-section"
               onMouseDown={(event) => {
                 if (event.button === 0) toggle(`kind:${section.kind}`);
               }}
@@ -505,8 +491,10 @@ export function SessionPanel({ onEditProfile, onNewSession }: Props) {
               }
               title="Right-click to add a group"
             >
-              <span className="row-caret">
-                {section.collapsed ? "▶" : "▼"}
+              <span
+                className={`row-caret${section.collapsed ? "" : " is-open"}`}
+              >
+                <Icon name="chevron-right" />
               </span>
               <span className="row-label">{section.label}</span>
               <span className="row-meta">{section.count}</span>

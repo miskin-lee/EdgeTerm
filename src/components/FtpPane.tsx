@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState, type ReactNode } from "react"
 
 import * as api from "../api";
 import { FileIcon } from "./FileIcon";
+import { Icon } from "./icons";
 import { useStore, type Tab } from "../store";
 import type { FileEntry } from "../types";
 
@@ -414,14 +415,14 @@ export function FtpPane({ tab, active }: Props) {
                     onClick={() => void createRemoteFolder()}
                     disabled={remoteLoading || transferring}
                   >
-                    ＋
+                    <Icon name="new-folder" />
                   </ToolButton>
                   <ToolButton
                     label="Rename remote item"
                     onClick={() => void renameRemote()}
                     disabled={!selectedRemote || remoteLoading || transferring}
                   >
-                    ✎
+                    <Icon name="edit" />
                   </ToolButton>
                   <ToolButton
                     label="Delete remote item"
@@ -429,7 +430,7 @@ export function FtpPane({ tab, active }: Props) {
                     disabled={!selectedRemote || remoteLoading || transferring}
                     danger
                   >
-                    ✕
+                    <Icon name="trash" />
                   </ToolButton>
                 </>
               }
@@ -483,14 +484,14 @@ export function FtpPane({ tab, active }: Props) {
                     onClick={() => void createLocalFolder()}
                     disabled={localLoading || transferring}
                   >
-                    ＋
+                    <Icon name="new-folder" />
                   </ToolButton>
                   <ToolButton
                     label="Rename local item"
                     onClick={() => void renameLocal()}
                     disabled={!selectedLocal || localLoading || transferring}
                   >
-                    ✎
+                    <Icon name="edit" />
                   </ToolButton>
                   <ToolButton
                     label="Delete local item"
@@ -498,7 +499,7 @@ export function FtpPane({ tab, active }: Props) {
                     disabled={!selectedLocal || localLoading || transferring}
                     danger
                   >
-                    ✕
+                    <Icon name="trash" />
                   </ToolButton>
                 </>
               }
@@ -576,13 +577,13 @@ function FileBrowser({
         </div>
         <div className="ftp-browser-actions">
           <ToolButton label="Home" onClick={onHome} disabled={loading}>
-            ⌂
+            <Icon name="home" />
           </ToolButton>
           <ToolButton label="Parent folder" onClick={onParent} disabled={loading || !path}>
-            ↑
+            <Icon name="arrow-up" />
           </ToolButton>
           <ToolButton label="Refresh" onClick={onRefresh} disabled={loading}>
-            ↻
+            <Icon name="refresh" />
           </ToolButton>
           {actions}
         </div>

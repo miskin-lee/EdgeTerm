@@ -22,6 +22,7 @@ import {
   type SenderFormat,
 } from "../../types";
 import { ContextMenu, type MenuItem } from "../ContextMenu";
+import { Icon } from "../icons";
 
 type Target = "current" | "all";
 type CommandContextMenu = {
@@ -412,100 +413,119 @@ export function SenderPanel() {
 
   return (
     <>
-      <div className="sender-tabs">
-        <div className="sender-tab is-active">
-          <span className="panel-dot" style={{ background: "#f85149" }} />
+      <div className="panel-header sender-header">
+        <div className="panel-title is-sender">
+          <Icon name="send" />
           Sender
         </div>
+        <div className="sender-options">
+          <div className="segmented" role="radiogroup" aria-label="Format">
+            <button
+              type="button"
+              role="radio"
+              aria-checked={format === "text"}
+              className={format === "text" ? "is-active" : ""}
+              onClick={() => setFormat("text")}
+            >
+              Text
+            </button>
+            <button
+              type="button"
+              role="radio"
+              aria-checked={format === "hex"}
+              className={format === "hex" ? "is-active" : ""}
+              onClick={() => setFormat("hex")}
+            >
+              Hex
+            </button>
+          </div>
+
+          <label className="sender-field">
+            <span>Ending</span>
+            <span className="select-wrap">
+              <select
+                className="select"
+                value={ending}
+                onChange={(event) =>
+                  setEnding(event.target.value as LineEnding)
+                }
+              >
+                <option value="none">None</option>
+                <option value="lf">LF (\n)</option>
+                <option value="crlf">CRLF (\r\n)</option>
+              </select>
+              <Icon name="chevron-down" className="select-chevron" />
+            </span>
+          </label>
+
+          <label className="sender-field">
+            <span>Targets</span>
+            <span className="select-wrap">
+              <select
+                className="select"
+                value={target}
+                onChange={(event) => setTarget(event.target.value as Target)}
+              >
+                <option value="current">Current Session</option>
+                <option value="all">All Sessions ({tabs.length})</option>
+              </select>
+              <Icon name="chevron-down" className="select-chevron" />
+            </span>
+          </label>
+        </div>
       </div>
 
-      <div className="sender-toolbar">
+      <div className="sender-compose">
+        <div className="sender-command">
+          <input
+            className="sender-command-input"
+            type="text"
+            autoCapitalize="none"
+            autoCorrect="off"
+            spellCheck={false}
+            value={text}
+            placeholder={
+              format === "hex"
+                ? "48 65 6C 6C 6F   (hex bytes)"
+                : `Type a command (${endingLabel(ending)})`
+            }
+            onChange={(event) => {
+              if (!editing) setSelectedCommandId(null);
+              setText(event.target.value.replace(/[\r\n]+/g, ""));
+            }}
+            onKeyDown={(event) => {
+              if (event.key === "Enter") {
+                event.preventDefault();
+                void sendCommand(text, format, ending);
+              } else if (event.key === "Escape" && editing) {
+                event.preventDefault();
+                cancelEdit();
+              }
+            }}
+          />
+          {text.length > 0 && (
+            <button
+              type="button"
+              className="sender-clear"
+              onClick={() => setText("")}
+              title="Clear"
+              aria-label="Clear command"
+            >
+              <Icon name="close" />
+            </button>
+          )}
+        </div>
         <button
-          className="sender-btn is-play"
+          type="button"
+          className="sender-send"
           onClick={() => void sendCommand(text, format, ending)}
           disabled={running}
-          title="Send"
+          title="Run command (Enter)"
+          aria-label="Run command"
         >
-          ▶
+          <Icon name="run-compact" />
         </button>
-        <button
-          className="sender-btn"
-          onClick={() => setText("")}
-          title="Clear"
-        >
-          ✕
-        </button>
-
-        <div className="sender-group">
-          <label>
-            <input
-              type="radio"
-              checked={format === "text"}
-              onChange={() => setFormat("text")}
-            />
-            Text
-          </label>
-          <label>
-            <input
-              type="radio"
-              checked={format === "hex"}
-              onChange={() => setFormat("hex")}
-            />
-            Hex
-          </label>
-        </div>
-
-        <div className="sender-group">
-          <span>Ending:</span>
-          <select
-            value={ending}
-            onChange={(event) => setEnding(event.target.value as LineEnding)}
-          >
-            <option value="none">None</option>
-            <option value="lf">LF (\n)</option>
-            <option value="crlf">CRLF (\r\n)</option>
-          </select>
-        </div>
-
-        <div className="sender-group">
-          <span>Targets:</span>
-          <select
-            value={target}
-            onChange={(event) => setTarget(event.target.value as Target)}
-          >
-            <option value="current">Current Session</option>
-            <option value="all">All Sessions ({tabs.length})</option>
-          </select>
-        </div>
-      </div>
-
-      <div className="sender-input">
-        <input
-          className="sender-command-input"
-          type="text"
-          autoCapitalize="none"
-          autoCorrect="off"
-          spellCheck={false}
-          value={text}
-          placeholder={
-            format === "hex"
-              ? "48 65 6C 6C 6F   (hex bytes)"
-              : `Type a command (${endingLabel(ending)})`
-          }
-          onChange={(event) => {
-            if (!editing) setSelectedCommandId(null);
-            setText(event.target.value.replace(/[\r\n]+/g, ""));
-          }}
-          onKeyDown={(event) => {
-            if (event.key === "Enter") {
-              event.preventDefault();
-              void sendCommand(text, format, ending);
-            } else if (event.key === "Escape" && editing) {
-              event.preventDefault();
-              cancelEdit();
-            }
-          }}
-        />
+        <div className="sender-compose-divider" aria-hidden="true" />
         <input
           className="sender-label-input"
           type="text"
@@ -602,21 +622,28 @@ export function SenderPanel() {
       <div className="sender-library">
         {pageCount > 1 && (
           <div className="sender-library-head">
+            <span>{visibleCommands.length} saved commands</span>
             <div className="sender-pagination">
               <button
                 type="button"
                 disabled={currentPage === 1}
                 onClick={() => setPage(currentPage - 1)}
+                title="Previous page"
+                aria-label="Previous page"
               >
-                ‹
+                <Icon name="chevron-left" />
               </button>
-              <span>{currentPage} / {pageCount}</span>
+              <span>
+                {currentPage} / {pageCount}
+              </span>
               <button
                 type="button"
                 disabled={currentPage === pageCount}
                 onClick={() => setPage(currentPage + 1)}
+                title="Next page"
+                aria-label="Next page"
               >
-                ›
+                <Icon name="chevron-right" />
               </button>
             </div>
           </div>

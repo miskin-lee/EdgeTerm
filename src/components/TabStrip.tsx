@@ -10,6 +10,7 @@ import {
 import { tabTitle, useStore } from "../store";
 import { colorForSession } from "../types";
 import { ContextMenu, type MenuItem } from "./ContextMenu";
+import { Icon } from "./icons";
 
 /** Pointer travel before a press on a tab turns into a drag. */
 const DRAG_THRESHOLD = 4;
@@ -278,8 +279,9 @@ export function TabStrip() {
                 requestCloseTab(tab.info.id);
               }}
               title="Close session"
+              aria-label="Close session"
             >
-              ✕
+              <Icon name="close" />
             </button>
           </div>
         );
@@ -301,7 +303,7 @@ export function TabStrip() {
             aria-haspopup="menu"
             aria-expanded={listMenu !== null}
           >
-            ⌄
+            <Icon name="chevron-down" />
           </button>
         </div>
       )}

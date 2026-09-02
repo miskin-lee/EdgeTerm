@@ -58,6 +58,9 @@
   --accent: #0078d4;
   --accent-soft: #04395e;
   --accent-contrast: #ffffff;
+  --panel-session: #6ea8fe;
+  --panel-sender: #ff9f66;
+  --panel-filer: #59d6b2;
   --green: #89d185;
   --yellow: #cca700;
   --red: #f85149;
@@ -67,6 +70,15 @@
   --term-scrollbar-thumb-hover: #7a7a7a;
   --row-separator: rgba(255, 255, 255, 0.07);
   --swatch-ring: rgba(255, 255, 255, 0.1);
+
+  /* Menus float above the chrome: a step lighter than the panels, with a
+     border that still reads against the editor surface. Segmented controls
+     sit a knob on a sunken track. */
+  --bg-menu: #202020;
+  --border-menu: #3f3f3f;
+  --bg-track: #2d2d2d;
+  --bg-knob: #4b4b4b;
+  --shadow-knob: 0 1px 2px rgba(0, 0, 0, 0.4);
 
   --dir-label: #9cdcfe;
   --symlink-label: #c586c0;
@@ -87,13 +99,14 @@
   --shadow-notice: 0 5px 18px rgba(0, 0, 0, 0.36);
   --shadow-dialog: 0 20px 60px rgba(0, 0, 0, 0.5);
 
-  --row-h: 22px;
+  --row-h: 26px;
   --panel-font-size: 12px;
   --buffer-font-size: 13px;
-  --font-ui: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC",
+  --font-ui:
+    -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC",
     "Microsoft YaHei", Roboto, sans-serif;
-  --font-mono: "JetBrains Mono", "SF Mono", Menlo, Consolas, "DejaVu Sans Mono",
-    monospace;
+  --font-mono:
+    "JetBrains Mono", "SF Mono", Menlo, Consolas, "DejaVu Sans Mono", monospace;
 }
 
 /* The light palette follows VS Code Light Modern's strategy: a white editor
@@ -119,6 +132,9 @@
   --accent: #005fb8;
   --accent-soft: #bed6ed;
   --accent-contrast: #ffffff;
+  --panel-session: #2563eb;
+  --panel-sender: #c2410c;
+  --panel-filer: #087f6b;
   --green: #107c10;
   --yellow: #bf8803;
   --red: #cd3131;
@@ -128,6 +144,12 @@
   --term-scrollbar-thumb-hover: #6f6f6f;
   --row-separator: rgba(0, 0, 0, 0.08);
   --swatch-ring: rgba(0, 0, 0, 0.15);
+
+  --bg-menu: #ffffff;
+  --border-menu: #d6d6d6;
+  --bg-track: #e6e6e6;
+  --bg-knob: #ffffff;
+  --shadow-knob: 0 1px 2px rgba(0, 0, 0, 0.14);
 
   --dir-label: #26569e;
   --symlink-label: #652d90;
@@ -185,7 +207,7 @@ textarea {
   color: var(--fg);
   background: var(--bg-field);
   border: 1px solid var(--border);
-  border-radius: 3px;
+  border-radius: 7px;
   padding: 3px 6px;
   outline: none;
 }
@@ -211,6 +233,23 @@ textarea:focus {
 ::-webkit-scrollbar-thumb:hover {
   background: var(--scrollbar-thumb-hover);
   background-clip: content-box;
+}
+
+/* --- icons ---------------------------------------------------------------- */
+
+/* Codicons (see components/icons.tsx): 16px boxes, coloured by the parent. */
+.icon {
+  display: inline-flex;
+  flex: none;
+  width: 16px;
+  height: 16px;
+  pointer-events: none;
+}
+
+.icon svg {
+  display: block;
+  width: 100%;
+  height: 100%;
 }
 
 /* --- shell ---------------------------------------------------------------- */
@@ -321,10 +360,11 @@ textarea:focus {
 
 .menu-item {
   position: relative;
-  padding: 3px 8px;
-  border-radius: 3px;
+  padding: 3px 9px;
+  border-radius: 4px;
   color: var(--fg);
   white-space: nowrap;
+  transition: background-color 80ms ease;
 }
 
 .menu-item:hover,
@@ -332,30 +372,69 @@ textarea:focus {
   background: var(--bg-hover);
 }
 
+/* Dropdowns follow the macOS / VS Code menu idiom: a raised panel with
+   rounded rows, the pointed row filled with the accent and white text, a
+   short settle-in animation. Context menus (ContextMenu.tsx) share every
+   rule here. */
 .menu-dropdown {
   position: absolute;
-  top: 100%;
+  top: calc(100% + 2px);
   left: 0;
   z-index: 100;
-  min-width: 200px;
-  padding: 4px;
-  background: var(--bg-panel-alt);
-  border: 1px solid var(--border-strong);
-  border-radius: 5px;
+  min-width: 220px;
+  padding: 5px;
+  background: var(--bg-menu);
+  border: 1px solid var(--border-menu);
+  border-radius: 7px;
   box-shadow: var(--shadow-menu);
+  transform-origin: top left;
+  animation: menu-in 110ms cubic-bezier(0.2, 0, 0, 1);
+}
+
+/* The menubar's dropdowns share one fixed, narrow width so the panels do
+   not step in and out as the pointer moves along the bar; a label that does
+   not fit is cut with an ellipsis (the shortcut stays whole). Submenus and
+   context menus stay content-sized. */
+.menu-item > .menu-dropdown {
+  width: 208px;
+  min-width: 0;
+}
+
+@keyframes menu-in {
+  from {
+    opacity: 0;
+    transform: translateY(-4px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .menu-dropdown {
+    animation: none;
+  }
 }
 
 .menu-entry {
   display: flex;
   align-items: center;
+  gap: 8px;
   width: 100%;
-  padding: 5px 8px;
-  border-radius: 3px;
+  height: 26px;
+  padding: 0 10px 0 8px;
+  border-radius: 4px;
+  color: var(--fg);
   text-align: left;
+  white-space: nowrap;
 }
 
-.menu-entry:hover {
-  background: var(--accent-soft);
+/* A submenu's parent row stays lit while the pointer is inside the submenu. */
+.menu-entry:hover,
+.menu-submenu-entry:hover > .menu-entry {
+  background: var(--accent);
+  color: var(--accent-contrast);
 }
 
 .menu-submenu-entry {
@@ -367,15 +446,20 @@ textarea:focus {
 }
 
 .menu-submenu-arrow {
-  margin-left: 24px;
+  display: inline-flex;
+  margin-left: 20px;
+  margin-right: -4px;
   color: var(--fg-faint);
-  font-size: 16px;
-  line-height: 0.7;
+}
+
+.menu-entry:hover .menu-submenu-arrow,
+.menu-submenu-entry:hover > .menu-entry .menu-submenu-arrow {
+  color: inherit;
 }
 
 .menu-submenu {
-  top: -5px;
-  left: 100%;
+  top: -6px;
+  left: calc(100% + 3px);
   display: none;
 }
 
@@ -390,55 +474,66 @@ textarea:focus {
 .menu-check {
   display: inline-flex;
   flex: none;
-  width: 12px;
+  width: 16px;
+  height: 16px;
+  margin-left: -2px;
   align-items: center;
   justify-content: center;
-  margin-right: 6px;
-  line-height: 1;
+  box-sizing: border-box;
+  border: 1px solid transparent;
+  border-radius: 3px;
   color: transparent;
+  transition:
+    background-color 80ms ease,
+    border-color 80ms ease,
+    color 80ms ease;
 }
 
-.menu-entry.is-checked .menu-check {
-  color: var(--accent);
+.menu-check.is-checkable {
+  border-color: var(--fg-faint);
 }
 
-/* Menubar dropdowns: checkable entries show a box, filled with a tick when
-   on (see MenuCheck in MenuBar.tsx). Context menus keep the bare tick. */
-.menu-check.is-box {
-  height: 12px;
-  border: 1px solid var(--fg-faint);
-  border-radius: 2px;
-}
-
-.menu-entry.is-checked .menu-check.is-box {
+.menu-check.is-checkable.is-checked {
   border-color: var(--accent);
   background: var(--accent);
   color: var(--accent-contrast);
 }
 
-.menu-check svg {
-  width: 8px;
-  height: 8px;
-  fill: none;
-  stroke: currentColor;
-  stroke-width: 1.6;
-  stroke-linecap: round;
-  stroke-linejoin: round;
+.menu-entry:hover .menu-check.is-checkable {
+  border-color: var(--accent-contrast);
+}
+
+.menu-entry:hover .menu-check.is-checkable.is-checked,
+.menu-submenu-entry:hover > .menu-entry .menu-check.is-checkable.is-checked {
+  border-color: var(--accent-contrast);
+  background: var(--accent-contrast);
+  color: var(--accent);
 }
 
 .menu-entry-label {
   flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .menu-shortcut {
-  margin-left: 24px;
+  margin-left: 28px;
   color: var(--fg-faint);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+
+.menu-entry:hover .menu-shortcut {
+  color: inherit;
+  opacity: 0.8;
 }
 
 .menu-separator {
   height: 1px;
-  margin: 4px 6px;
-  background: var(--border);
+  margin: 5px 6px;
+  background: var(--border-menu);
 }
 
 .main {
@@ -464,21 +559,14 @@ textarea:focus {
   font-size: var(--panel-font-size);
 }
 
-.sidebar-left {
-  border-right: 1px solid var(--border);
-}
-
-.sidebar-right {
-  border-left: 1px solid var(--border);
-}
-
+/* The sidebars and the dock draw no edge of their own: the splitter between
+   them and the centre is the 1px divider (see the splitters section). */
 .bottom-dock {
   flex: 0 0 auto;
   display: flex;
   flex-direction: column;
   min-height: 0;
   overflow: hidden;
-  border-top: 1px solid var(--border);
   background: var(--bg-panel);
   font-size: var(--panel-font-size);
 }
@@ -496,60 +584,97 @@ textarea:focus {
   border-top: 1px solid var(--border);
 }
 
+/* Panel headers: a small-caps title with a line icon on the left (the VS
+   Code / Termius section-label idiom) and quiet icon buttons on the right. */
 .panel-header {
-  flex: 0 0 26px;
-  height: 26px;
+  flex: 0 0 36px;
+  height: 36px;
   display: flex;
   align-items: center;
-  gap: 6px;
-  padding: 0 8px;
+  gap: 2px;
+  padding: 0 6px 0 12px;
   color: var(--fg-dim);
   background: var(--bg-panel);
 }
 
 .panel-title {
   flex: 1;
+  min-width: 0;
   display: flex;
   align-items: center;
   gap: 6px;
-  font-size: calc(var(--panel-font-size) - 1px);
+  color: var(--fg-dim);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  white-space: nowrap;
 }
 
-.panel-dot {
-  width: 7px;
-  height: 7px;
-  border-radius: 2px;
-  background: var(--accent);
+.panel-title > .icon {
+  color: var(--fg-faint);
+}
+
+/* Collect UI's compact navigation pills translate well to a terminal's
+   dense chrome: colour identifies the workspace without tinting its data. */
+.panel-title:is(.is-session, .is-sender, .is-filer) {
+  flex: 0 1 auto;
+  height: 24px;
+  margin-right: auto;
+  padding: 0 8px;
+  border-radius: 8px;
+  letter-spacing: 0.035em;
+}
+
+.panel-title.is-session {
+  color: var(--panel-session);
+  background: color-mix(in srgb, var(--panel-session) 12%, transparent);
+}
+
+.panel-title.is-sender {
+  color: var(--panel-sender);
+  background: color-mix(in srgb, var(--panel-sender) 12%, transparent);
+}
+
+.panel-title.is-filer {
+  color: var(--panel-filer);
+  background: color-mix(in srgb, var(--panel-filer) 12%, transparent);
+}
+
+.panel-title:is(.is-session, .is-sender, .is-filer) > .icon {
+  color: currentColor;
+}
+
+/* Secondary word beside a title ("local", "ssh"): a lowercase pill. */
+.panel-badge {
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--fg) 9%, transparent);
+  color: var(--fg-faint);
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  text-transform: none;
 }
 
 .panel-action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border-radius: 7px;
   color: var(--fg-faint);
-  padding: 2px 4px;
-  border-radius: 3px;
   line-height: 1;
+  transition:
+    background-color 80ms ease,
+    color 80ms ease;
 }
 
 .panel-action:hover {
   color: var(--fg);
   background: var(--bg-hover);
-}
-
-/* Power toggle for the active session, next to ＋ in the Session panel header.
-   Drawn from the same 10px caption-glyph grid as the window controls so it
-   reads as a control, not text. */
-.panel-power {
-  display: flex;
-  align-items: center;
-  height: 16px;
-}
-
-.panel-power svg {
-  width: 10px;
-  height: 10px;
-  fill: none;
-  stroke: currentColor;
-  stroke-width: 1.2;
-  stroke-linecap: round;
 }
 
 /* Green while the active session is live ("powered on"); an ended session
@@ -576,12 +701,37 @@ textarea:focus {
 }
 
 .panel-filter {
-  padding: 4px 8px 6px;
+  position: relative;
+  padding: 2px 10px 8px;
 }
 
 .panel-filter input {
   width: 100%;
-  background: var(--bg-panel-alt);
+  height: 28px;
+  padding: 0 8px 0 30px;
+  border-color: transparent;
+  border-radius: 8px;
+  background: var(--bg-field);
+  user-select: text;
+}
+
+.panel-filter input:hover {
+  border-color: var(--border-strong);
+}
+
+.panel-filter input:focus {
+  border-color: var(--accent);
+}
+
+.panel-filter-icon {
+  position: absolute;
+  top: 2px;
+  left: 17px;
+  display: flex;
+  align-items: center;
+  height: 28px;
+  color: var(--fg-faint);
+  pointer-events: none;
 }
 
 .panel-empty {
@@ -593,12 +743,16 @@ textarea:focus {
 
 /* --- tree / list rows ----------------------------------------------------- */
 
+/* Rows are inset from the panel edge with rounded hover / selection (the
+   Zed / Linear list idiom) rather than full-bleed bars. */
 .row {
   display: flex;
   align-items: center;
   gap: 6px;
   height: var(--row-h);
-  padding: 0 8px;
+  margin: 1px 6px;
+  padding: 0 6px;
+  border-radius: 6px;
   white-space: nowrap;
   cursor: default;
 }
@@ -611,11 +765,28 @@ textarea:focus {
   background: var(--bg-active);
 }
 
+/* Per-row buttons (edit / delete) only show for the pointed or selected row. */
+.row > .panel-action {
+  opacity: 0;
+}
+
+.row:hover > .panel-action,
+.row.is-active > .panel-action,
+.row > .panel-action:focus-visible {
+  opacity: 1;
+}
+
+/* Kind headings of the session tree. */
+.row.is-section .row-label {
+  color: var(--fg-dim);
+  font-weight: 600;
+}
+
 .row-dot {
   flex: 0 0 8px;
   width: 8px;
   height: 8px;
-  border-radius: 2px;
+  border-radius: 3px;
 }
 
 .row-label {
@@ -630,10 +801,25 @@ textarea:focus {
 }
 
 .row-caret {
-  flex: 0 0 12px;
+  flex: 0 0 16px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   color: var(--fg-faint);
-  text-align: center;
-  font-size: calc(var(--panel-font-size) - 3px);
+}
+
+.row-caret .icon {
+  transition: transform 120ms ease;
+}
+
+.row-caret.is-open .icon {
+  transform: rotate(90deg);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .row-caret .icon {
+    transition: none;
+  }
 }
 
 .row-indent {
@@ -646,10 +832,7 @@ textarea:focus {
 }
 
 .row-folder {
-  flex: 0 0 14px;
-  width: 14px;
-  height: 14px;
-  fill: var(--fg-dim);
+  color: var(--fg-dim);
 }
 
 /* --- context menu --------------------------------------------------------- */
@@ -670,11 +853,16 @@ textarea:focus {
 /* Near the right edge (where the Filer lives) submenus open leftwards. */
 .context-menu.is-flipped .menu-submenu {
   left: auto;
-  right: 100%;
+  right: calc(100% + 3px);
 }
 
 .menu-entry.is-danger {
   color: var(--red);
+}
+
+.menu-entry.is-danger:hover {
+  background: var(--red);
+  color: #ffffff;
 }
 
 .menu-entry:disabled {
@@ -684,6 +872,7 @@ textarea:focus {
 
 .menu-entry:disabled:hover {
   background: transparent;
+  color: var(--fg-faint);
 }
 
 /* --- tabs ----------------------------------------------------------------- */
@@ -856,10 +1045,14 @@ textarea:focus {
 }
 
 .tab-close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  border-radius: 3px;
   color: var(--fg-faint);
-  padding: 0 2px;
-  border-radius: 2px;
-  line-height: 1;
   visibility: hidden;
 }
 
@@ -1492,6 +1685,13 @@ textarea:focus {
   height: 100%;
 }
 
+/* xterm's stylesheet gives the viewport a hard-coded black background.
+   When the available height is not an exact multiple of a cell, that colour
+   shows below the last canvas row as a dark gap above the Sender splitter. */
+.term-host .xterm-viewport {
+  background-color: var(--bg-terminal);
+}
+
 /* Buffer scrollbar. xterm 6 draws its own (VS Code's scrollable element)
    in a 14px track and themes the slider from an injected stylesheet; these
    rules win on specificity. The thumb is inset with rounded ends like the
@@ -1596,108 +1796,215 @@ textarea:focus {
 
 /* --- sender --------------------------------------------------------------- */
 
-.sender-tabs {
-  flex: 0 0 26px;
-  display: flex;
-  align-items: stretch;
-  height: 26px;
+/* Three rows: the panel header carries the send options on its right (format
+   segmented control, line ending, targets); the compose row is the command
+   field with its Send button and, set apart, the tag name and Save; the
+   library below lists the saved commands as chips. */
+.sender-header {
   border-bottom: 1px solid var(--border);
 }
 
-.sender-tab {
+.sender-header .panel-title.is-sender {
+  margin-right: 10px;
+}
+
+.sender-options {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-right: auto;
+  padding-right: 4px;
+}
+
+.sender-field {
   display: flex;
   align-items: center;
   gap: 6px;
-  padding: 0 12px;
+  color: var(--fg-faint);
+  font-size: 11px;
+}
+
+/* Segmented control: a knob sliding on a sunken track (macOS / iOS). */
+.segmented {
+  display: inline-flex;
+  padding: 2px;
+  border-radius: 8px;
+  background: var(--bg-track);
+}
+
+.segmented button {
+  height: 20px;
+  padding: 0 10px;
+  border-radius: 6px;
   color: var(--fg-dim);
-  font-size: calc(var(--panel-font-size) - 1px);
+  font-size: 11px;
+  font-weight: 500;
+  transition:
+    background-color 120ms ease,
+    color 120ms ease,
+    box-shadow 120ms ease;
 }
 
-.sender-tab.is-active {
-  color: var(--fg);
-  background: var(--bg-panel-alt);
-  box-shadow: inset 0 -2px 0 var(--accent);
-}
-
-.sender-toolbar {
-  flex: 0 0 auto;
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 6px 10px;
-  flex-wrap: wrap;
-  color: var(--fg-dim);
-}
-
-.sender-group {
-  display: flex;
-  align-items: center;
-  gap: 5px;
-}
-
-.sender-group label {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-}
-
-.sender-btn {
-  width: 22px;
-  height: 22px;
-  display: grid;
-  place-items: center;
-  border-radius: 3px;
-  color: var(--fg-dim);
-}
-
-.sender-btn:hover:not(:disabled) {
-  background: var(--bg-hover);
+.segmented button:hover {
   color: var(--fg);
 }
 
-.sender-btn:disabled {
-  opacity: 0.35;
-  cursor: default;
+.segmented button.is-active {
+  background: var(--bg-knob);
+  color: var(--fg);
+  box-shadow: var(--shadow-knob);
 }
 
-.sender-btn.is-play {
-  color: var(--green);
+/* Compact select: the native control with its chrome stripped and our own
+   chevron laid over it, so the popup stays native and accessible. */
+.select-wrap {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
 }
 
-.sender-input {
-  flex: 0 0 auto;
-  display: flex;
-  gap: 8px;
-  padding: 0 10px 8px;
-}
-
-.sender-input input {
-  flex: 1;
-  height: 30px;
-  font-family: var(--font-mono);
+.select {
+  appearance: none;
+  -webkit-appearance: none;
+  height: 24px;
+  padding: 0 24px 0 8px;
+  border: 1px solid transparent;
+  border-radius: 7px;
   background: var(--bg-field);
+  color: var(--fg);
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.select:hover {
+  border-color: var(--border-strong);
+}
+
+.select:focus {
+  border-color: var(--accent);
+}
+
+.icon.select-chevron {
+  position: absolute;
+  right: 5px;
+  width: 14px;
+  height: 14px;
+  color: var(--fg-faint);
+}
+
+.sender-compose {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 10px;
+  background: color-mix(in srgb, var(--bg-panel-alt) 42%, transparent);
+}
+
+.sender-command {
+  position: relative;
+  flex: 1 1 auto;
+  min-width: 160px;
+  display: flex;
+  align-items: center;
+}
+
+.sender-command input {
+  width: 100%;
+  height: 28px;
+  padding: 0 32px 0 10px;
+  border-color: transparent;
+  border-radius: 8px;
+  background: var(--bg-field);
+  font-family: var(--font-mono);
   user-select: text;
 }
 
-.sender-input .sender-label-input {
-  flex: 0 1 180px;
-  min-width: 100px;
-  font-family: var(--font-ui);
+.sender-command input:hover,
+.sender-label-input:hover {
+  border-color: var(--border-strong);
+}
+
+.sender-command input:focus,
+.sender-label-input:focus {
+  border-color: var(--accent);
+}
+
+.sender-clear {
+  position: absolute;
+  right: 4px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 6px;
+  color: var(--fg-faint);
+}
+
+.sender-clear:hover {
+  color: var(--fg);
+  background: var(--bg-hover);
+}
+
+.sender-send {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 1px solid color-mix(in srgb, var(--green) 42%, transparent);
+  border-radius: 6px;
+  color: var(--green);
+  background: color-mix(in srgb, var(--green) 9%, transparent);
+}
+
+.sender-send:hover:not(:disabled) {
+  border-color: var(--green);
+  background: color-mix(in srgb, var(--green) 17%, transparent);
+}
+
+.sender-send:disabled {
+  opacity: 0.35;
+  cursor: default;
+  filter: none;
+}
+
+.sender-compose-divider {
+  flex: none;
+  width: 1px;
+  height: 18px;
+  margin: 0 2px;
+  background: var(--border-strong);
+}
+
+.sender-label-input {
+  flex: 0 1 170px;
+  min-width: 90px;
+  height: 28px;
+  border-color: transparent;
+  border-radius: 8px;
+  background: var(--bg-field);
+  user-select: text;
 }
 
 .sender-save-btn {
   flex: 0 0 auto;
   min-width: 56px;
-  height: 30px;
+  height: 28px;
   padding: 0 12px;
   border: 1px solid var(--border-strong);
-  border-radius: 3px;
-  color: var(--accent);
+  border-radius: 8px;
+  color: var(--fg);
   background: var(--bg-panel-alt);
+  font-weight: 500;
 }
 
 .sender-save-btn:hover:not(:disabled) {
   background: var(--bg-hover);
+  border-color: var(--fg-faint);
 }
 
 .sender-save-btn:disabled {
@@ -1706,6 +2013,8 @@ textarea:focus {
 }
 
 .sender-save-btn.is-secondary {
+  border-color: transparent;
+  background: transparent;
   color: var(--fg-dim);
 }
 
@@ -1714,29 +2023,38 @@ textarea:focus {
   display: flex;
   flex: 1 1 auto;
   flex-direction: column;
-  padding: 0 10px 8px;
+  padding: 0 10px 10px;
   border-top: 1px solid var(--border);
 }
 
 .sender-library-head {
-  flex: 0 0 28px;
+  flex: 0 0 26px;
   display: flex;
   align-items: center;
-  justify-content: flex-end;
-  color: var(--fg-dim);
-  font-size: calc(var(--panel-font-size) - 1px);
+  justify-content: space-between;
+  color: var(--fg-faint);
+  font-size: 11px;
 }
 
 .sender-pagination {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 2px;
+  font-variant-numeric: tabular-nums;
+}
+
+.sender-pagination span {
+  padding: 0 6px;
+  color: var(--fg-dim);
 }
 
 .sender-pagination button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   width: 22px;
   height: 20px;
-  border-radius: 3px;
+  border-radius: 4px;
   color: var(--fg-dim);
 }
 
@@ -1751,8 +2069,9 @@ textarea:focus {
 }
 
 .sender-library-empty {
+  padding: 10px 0;
   color: var(--fg-faint);
-  font-size: calc(var(--panel-font-size) - 1px);
+  font-size: 11px;
 }
 
 .sender-command-tags {
@@ -1760,8 +2079,13 @@ textarea:focus {
   display: flex;
   align-content: flex-start;
   flex-wrap: wrap;
-  gap: 6px;
+  gap: 7px;
+  padding-top: 8px;
   overflow-y: auto;
+}
+
+.sender-library-head + .sender-command-tags {
+  padding-top: 0;
 }
 
 .sender-command-tag {
@@ -1770,14 +2094,19 @@ textarea:focus {
   max-width: 360px;
   height: 26px;
   border: 1px solid var(--border-strong);
-  border-radius: 4px;
+  border-radius: 8px;
   background: var(--bg-panel-alt);
   overflow: hidden;
+  transition:
+    border-color 100ms ease,
+    background-color 100ms ease,
+    transform 100ms ease;
 }
 
-.sender-command-tag.is-selected {
-  border-color: var(--accent);
-  box-shadow: inset 0 0 0 1px var(--accent-soft);
+.sender-command-tag:hover {
+  border-color: var(--fg-faint);
+  background: var(--bg-hover);
+  transform: translateY(-1px);
 }
 
 /* The tag whose contents are loaded in the inputs (right-click → Edit). */
@@ -1785,20 +2114,27 @@ textarea:focus {
   border-style: dashed;
 }
 
+@media (prefers-reduced-motion: reduce) {
+  .sender-command-tag {
+    transition: none;
+  }
+}
+
 .sender-command-load {
-  min-width: 48px;
-  max-width: 180px;
+  min-width: 40px;
+  max-width: 200px;
   height: 100%;
-  padding: 0 8px;
+  padding: 0 10px;
   overflow: hidden;
   color: var(--fg);
   font-family: var(--font-mono);
+  font-size: 11px;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.sender-command-load:hover {
-  background: var(--bg-hover);
+.sender-command-load:disabled {
+  cursor: default;
 }
 
 .sender-command-tooltip {
@@ -1807,8 +2143,8 @@ textarea:focus {
   max-width: 420px;
   padding: 7px 9px;
   transform: translateY(-100%);
-  border: 1px solid var(--border-strong);
-  border-radius: 4px;
+  border: 1px solid var(--border-menu);
+  border-radius: 6px;
   color: var(--fg);
   background: var(--bg-app);
   box-shadow: var(--shadow-pop);
@@ -1862,25 +2198,79 @@ textarea:focus {
 
 /* --- splitters ------------------------------------------------------------ */
 
+/* The splitter is the 1px divider itself; a 7px hit area (`::after`)
+   straddles it, and a 3px accent line (`::before`) lights up after a short
+   hover delay — as VS Code's sashes do — so brushing past never flashes. */
 .splitter {
-  flex: 0 0 4px;
-  background: transparent;
   position: relative;
   z-index: 5;
+  flex: 0 0 1px;
+  background: var(--border);
 }
 
-.splitter.is-vertical {
+.splitter::before,
+.splitter::after {
+  content: "";
+  position: absolute;
+}
+
+.splitter.is-vertical::after {
+  top: 0;
+  bottom: 0;
+  left: -3px;
+  width: 7px;
   cursor: col-resize;
 }
 
-.splitter.is-horizontal {
-  flex-basis: 4px;
+.splitter.is-horizontal::after {
+  left: 0;
+  right: 0;
+  top: -3px;
+  height: 7px;
   cursor: row-resize;
 }
 
-.splitter:hover,
-.splitter.is-dragging {
+.splitter::before {
   background: var(--accent);
+  opacity: 0;
+  transition: opacity 80ms ease;
+  pointer-events: none;
+}
+
+.splitter.is-vertical::before {
+  top: 0;
+  bottom: 0;
+  left: -1px;
+  width: 3px;
+}
+
+.splitter.is-horizontal::before {
+  left: 0;
+  right: 0;
+  top: -1px;
+  height: 3px;
+}
+
+.splitter:hover::before {
+  opacity: 1;
+  transition: opacity 120ms ease 300ms;
+}
+
+.splitter.is-dragging::before {
+  opacity: 1;
+  transition: none;
+}
+
+/* While a drag is on, the resize cursor holds over whatever the pointer
+   crosses (the terminal would otherwise show its text cursor). */
+.app:has(.splitter.is-vertical.is-dragging),
+.app:has(.splitter.is-vertical.is-dragging) * {
+  cursor: col-resize !important;
+}
+
+.app:has(.splitter.is-horizontal.is-dragging),
+.app:has(.splitter.is-horizontal.is-dragging) * {
+  cursor: row-resize !important;
 }
 
 /* --- dialog --------------------------------------------------------------- */
@@ -2437,15 +2827,13 @@ textarea:focus {
 /* --- filer ---------------------------------------------------------------- */
 
 .filer-toolbar {
-  flex: 0 0 32px;
+  flex: 0 0 30px;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  height: 32px;
-  padding: 4px 8px;
-  border-top: 1px solid var(--border);
+  height: 30px;
+  padding: 0 8px;
   border-bottom: 1px solid var(--border);
-  background: var(--bg-panel-alt);
 }
 
 .filer-action {
@@ -2457,13 +2845,6 @@ textarea:focus {
   height: 24px;
   padding: 0;
   color: var(--fg-dim);
-}
-
-.filer-action-icon {
-  display: block;
-  width: 16px;
-  height: 16px;
-  pointer-events: none;
 }
 
 .filer-action:hover:not(:disabled) {
@@ -2496,27 +2877,43 @@ textarea:focus {
 .filer-path {
   display: flex;
   align-items: center;
-  gap: 4px;
-  padding: 4px 8px;
+  gap: 2px;
+  padding: 5px 8px 5px 6px;
 }
 
 .filer-path input {
   flex: 1;
   min-width: 0;
-  background: var(--bg-panel-alt);
+  height: 26px;
+  margin-left: 2px;
+  border-color: transparent;
+  border-radius: 5px;
+  background: var(--bg-field);
   font-family: var(--font-mono);
   font-size: calc(var(--panel-font-size) - 1px);
+  user-select: text;
 }
 
+.filer-path input:hover {
+  border-color: var(--border-strong);
+}
+
+.filer-path input:focus {
+  border-color: var(--accent);
+}
+
+/* Column captions, aligned with the row content (6px inset + 6px padding). */
 .filer-columns {
   display: flex;
   align-items: center;
   height: 22px;
-  padding: 0 8px;
-  border-top: 1px solid var(--border);
+  padding: 0 12px;
   border-bottom: 1px solid var(--border);
   color: var(--fg-faint);
-  font-size: calc(var(--panel-font-size) - 1px);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
 }
 
 .filer-list {
@@ -2595,7 +2992,7 @@ textarea:focus {
   justify-content: space-between;
   gap: 10px;
   min-height: 24px;
-  padding: 0 8px;
+  padding: 0 12px;
   border-top: 1px solid var(--border);
   color: var(--fg-faint);
   font-size: calc(var(--panel-font-size) - 1px);
@@ -2604,7 +3001,7 @@ textarea:focus {
 .filer-footer.has-transfer {
   display: block;
   min-height: 59px;
-  padding: 6px 8px 7px;
+  padding: 6px 12px 7px;
   background: var(--bg-panel-alt);
 }
 

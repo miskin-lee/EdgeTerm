@@ -472,6 +472,10 @@ export default function App() {
                   github.com/miskin-lee/EdgeTerm
                 </a>
               </span>
+              <span style={{ color: "var(--fg-faint)" }}>
+                Icons: Codicons by Microsoft (CC BY 4.0) · Font: JetBrains
+                Mono (OFL 1.1)
+              </span>
             </div>
             <div className="dialog-footer">
               <button className="btn" onClick={() => setAboutOpen(false)}>
