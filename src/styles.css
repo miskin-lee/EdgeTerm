@@ -384,9 +384,13 @@ textarea:focus {
   display: block;
 }
 
+/* An explicit width rather than a flex-basis: a blank check span has no
+   content, so a basis alone contributes nothing to the dropdown's
+   shrink-to-fit width and the widest row's shortcut overflows by 12px. */
 .menu-check {
   display: inline-flex;
-  flex: 0 0 12px;
+  flex: none;
+  width: 12px;
   align-items: center;
   justify-content: center;
   margin-right: 6px;
