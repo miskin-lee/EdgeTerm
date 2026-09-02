@@ -294,6 +294,10 @@ export class TerminalController {
    * fit/resize, which is the only time it can change.
    */
   private cellHeight = 0;
+  /** Last visible gutter state; unchanged selection paints can skip DOM work. */
+  private gutterSignature = "";
+  /** Bumped when line metadata changes without moving the viewport/cursor. */
+  private gutterEpoch = 0;
 
   constructor(
     readonly sessionId: string,
@@ -410,6 +414,7 @@ export class TerminalController {
       this.disposeAllSemanticColors();
       this.trimLineMetadata();
       this.measureCell();
+      this.invalidateGutter();
       this.syncGutter();
     });
 
@@ -576,7 +581,9 @@ export class TerminalController {
     this.term.element
       ?.querySelector(".xterm-viewport")
       ?.addEventListener("scroll", () => {
-        if (!this.disposed) this.refreshSemanticColors();
+        if (this.disposed) return;
+        this.refreshSemanticColors();
+        this.syncGutter();
       });
 
     // WebGL comes with being shown (setVisible); it needs the host, so a
@@ -832,12 +839,14 @@ export class TerminalController {
   private resetLineMetadata() {
     this.lineTimes = [Date.now()];
     this.firstLineNumber = 1;
+    this.invalidateGutter();
     this.syncGutter();
   }
 
   setGutterMode(mode: GutterMode) {
     this.gutterMode = mode;
     this.applyGutterMode();
+    this.invalidateGutter();
     this.syncGutter();
   }
 
@@ -851,6 +860,7 @@ export class TerminalController {
     if (this.term.options.fontSize === fontSize) return;
     this.term.options.fontSize = fontSize;
     this.cellHeight = 0;
+    this.invalidateGutter();
     // Underline elements are sized in pixels at creation time.
     this.disposeAllSemanticColors();
     this.fit();
@@ -872,6 +882,7 @@ export class TerminalController {
     this.scrollback = scrollback;
     this.term.options.scrollback = scrollback;
     this.trimLineMetadata();
+    this.invalidateGutter();
     this.syncGutter();
   }
 
@@ -1261,6 +1272,7 @@ export class TerminalController {
     const now = Date.now();
     while (this.lineTimes.length <= index) this.lineTimes.push(now);
     this.lineTimes[index] = now;
+    this.invalidateGutter();
 
     // xterm drops the oldest lines once scrollback is full; keep the parallel
     // array aligned and carry the discarded count into the line numbering.
@@ -1273,6 +1285,7 @@ export class TerminalController {
       const dropped = this.lineTimes.length - max;
       this.lineTimes.splice(0, dropped);
       this.firstLineNumber += dropped;
+      this.invalidateGutter();
     }
   }
 
@@ -1513,7 +1526,15 @@ export class TerminalController {
     const screen = this.host?.querySelector<HTMLElement>(".xterm-screen");
     if (!screen || this.term.rows === 0) return;
     const height = screen.clientHeight / this.term.rows;
-    if (Number.isFinite(height) && height > 0) this.cellHeight = height;
+    if (Number.isFinite(height) && height > 0 && height !== this.cellHeight) {
+      this.cellHeight = height;
+      this.invalidateGutter();
+    }
+  }
+
+  private invalidateGutter() {
+    this.gutterEpoch += 1;
+    this.gutterSignature = "";
   }
 
   private syncGutter() {
@@ -1528,6 +1549,19 @@ export class TerminalController {
     // Full-screen programs (vim, top) paint into the alternate buffer, where
     // line numbers and produced-at times are meaningless.
     const alternate = buf.type === "alternate";
+    const signature = [
+      this.gutterMode,
+      this.gutterEpoch,
+      rows,
+      buf.viewportY,
+      cursorIndex,
+      alternate ? 1 : 0,
+      this.firstLineNumber,
+      this.lineTimes.length,
+      cellHeight,
+    ].join(":");
+    if (signature === this.gutterSignature) return;
+    this.gutterSignature = signature;
 
     while (this.rowPool.length < rows) {
       const row = document.createElement("div");
