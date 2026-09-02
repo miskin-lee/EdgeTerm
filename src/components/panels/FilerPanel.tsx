@@ -522,9 +522,10 @@ export function FilerPanel() {
       disabled: busy,
       action: () => void openEntryWith(entry),
     };
-    if (openWithApps.length === 0) return other;
+    if (openWithApps.length === 0) return { ...other, icon: "link-external" };
     return {
       label: "Open With",
+      icon: "link-external",
       children: [
         ...openWithApps.map((app) => ({
           label: appDisplayName(app),
@@ -539,24 +540,35 @@ export function FilerPanel() {
 
   const entryMenu = (entry: FileEntry): MenuItem[] => [
     entry.isDir
-      ? { label: "Open", action: () => void load(entry.path) }
-      : { label: "Open", disabled: busy, action: () => void openEntry(entry) },
+      ? {
+          label: "Open",
+          icon: "folder-opened",
+          action: () => void load(entry.path),
+        }
+      : {
+          label: "Open",
+          icon: "go-to-file",
+          disabled: busy,
+          action: () => void openEntry(entry),
+        },
     ...(entry.isDir ? [] : [openWithMenu(entry)]),
     ...(remote
       ? [
           {
             label: "Download…",
+            icon: "cloud-download" as const,
             disabled: busy,
             action: () => void download(entry),
           },
         ]
       : []),
     "separator",
-    { label: "Copy Path", action: () => copyText(entry.path) },
-    { label: "Copy Name", action: () => copyText(entry.name) },
+    { label: "Copy Path", icon: "copy", action: () => copyText(entry.path) },
+    { label: "Copy Name", icon: "tag", action: () => copyText(entry.name) },
     "separator",
     {
       label: "Delete…",
+      icon: "trash",
       danger: true,
       disabled: busy || atDrivesRoot,
       action: () => setPendingDelete(entry),
@@ -567,11 +579,13 @@ export function FilerPanel() {
   const folderMenu = (): MenuItem[] => [
     {
       label: "New File…",
+      icon: "new-file",
       disabled: busy || !path || atDrivesRoot,
       action: () => setCreating({ kind: "file", name: "" }),
     },
     {
       label: "New Folder…",
+      icon: "new-folder",
       disabled: busy || !path || atDrivesRoot,
       action: () => setCreating({ kind: "folder", name: "" }),
     },
@@ -580,11 +594,13 @@ export function FilerPanel() {
           "separator" as const,
           {
             label: "Upload Files…",
+            icon: "cloud-upload" as const,
             disabled: busy || !path,
             action: () => void upload(),
           },
           {
             label: "Upload Folder…",
+            icon: "cloud-upload" as const,
             disabled: busy || !path,
             action: () => void uploadFolder(),
           },
@@ -593,10 +609,16 @@ export function FilerPanel() {
     "separator",
     {
       label: "Copy Folder Path",
+      icon: "copy",
       disabled: !path || atDrivesRoot,
       action: () => copyText(path),
     },
-    { label: "Refresh", disabled: busy, action: () => void load(path) },
+    {
+      label: "Refresh",
+      icon: "refresh",
+      disabled: busy,
+      action: () => void load(path),
+    },
   ];
 
   const commitNewEntry = async () => {
@@ -745,8 +767,16 @@ export function FilerPanel() {
           x={uploadMenu.x}
           y={uploadMenu.y}
           items={[
-            { label: "Upload files…", action: () => void upload() },
-            { label: "Upload folder…", action: () => void uploadFolder() },
+            {
+              label: "Upload files…",
+              icon: "cloud-upload",
+              action: () => void upload(),
+            },
+            {
+              label: "Upload folder…",
+              icon: "cloud-upload",
+              action: () => void uploadFolder(),
+            },
           ]}
           onClose={() => setUploadMenu(null)}
         />

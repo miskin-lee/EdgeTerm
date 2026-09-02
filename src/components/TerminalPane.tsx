@@ -132,25 +132,35 @@ function TerminalHost({ tab, active }: { tab: Tab; active: boolean }) {
   const menuItems: MenuItem[] = [
     {
       label: "Copy",
+      icon: "copy",
+      shortcut: sc("⌘C", "Ctrl+Shift+C"),
       disabled: !menu?.canCopy,
       action: withTerminal((controller) => controller.copySelection()),
     },
     {
       label: "Paste",
+      icon: "clippy",
+      shortcut: sc("⌘V", "Ctrl+Shift+V"),
       action: withTerminal((controller) => controller.pasteFromClipboard()),
     },
     {
       label: "Select All",
+      icon: "list-selection",
+      shortcut: sc("⌘A", "Ctrl+Shift+A"),
       action: withTerminal((controller) => controller.selectAll()),
     },
     "separator",
     {
       label: "Clear Buffer",
+      icon: "clear-all",
+      shortcut: sc("⌘K", "Alt+K"),
       action: withTerminal((controller) => controller.clear()),
     },
     "separator",
     {
       label: "Reveal Working Directory in Filer",
+      icon: "folder-opened",
+      shortcut: sc("⌘J", "Ctrl+Shift+J"),
       action: withTerminal(() => void revealCwdInFiler(id)),
     },
   ];

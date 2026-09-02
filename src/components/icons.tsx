@@ -11,21 +11,31 @@ import check from "@vscode/codicons/src/icons/check.svg?raw";
 import chevronDown from "@vscode/codicons/src/icons/chevron-down.svg?raw";
 import chevronLeft from "@vscode/codicons/src/icons/chevron-left.svg?raw";
 import chevronRight from "@vscode/codicons/src/icons/chevron-right.svg?raw";
+import clearAll from "@vscode/codicons/src/icons/clear-all.svg?raw";
+import clippy from "@vscode/codicons/src/icons/clippy.svg?raw";
 import close from "@vscode/codicons/src/icons/close.svg?raw";
 import cloudDownload from "@vscode/codicons/src/icons/cloud-download.svg?raw";
 import cloudUpload from "@vscode/codicons/src/icons/cloud-upload.svg?raw";
+import copy from "@vscode/codicons/src/icons/copy.svg?raw";
 import edit from "@vscode/codicons/src/icons/edit.svg?raw";
 import folder from "@vscode/codicons/src/icons/folder.svg?raw";
 import folderOpened from "@vscode/codicons/src/icons/folder-opened.svg?raw";
+import goToFile from "@vscode/codicons/src/icons/go-to-file.svg?raw";
 import home from "@vscode/codicons/src/icons/home.svg?raw";
+import linkExternal from "@vscode/codicons/src/icons/link-external.svg?raw";
+import listSelection from "@vscode/codicons/src/icons/list-selection.svg?raw";
+import move from "@vscode/codicons/src/icons/move.svg?raw";
 import newFile from "@vscode/codicons/src/icons/new-file.svg?raw";
 import newFolder from "@vscode/codicons/src/icons/new-folder.svg?raw";
+import newline from "@vscode/codicons/src/icons/newline.svg?raw";
 import plug from "@vscode/codicons/src/icons/plug.svg?raw";
 import refresh from "@vscode/codicons/src/icons/refresh.svg?raw";
+import rename from "@vscode/codicons/src/icons/rename.svg?raw";
 import runCompact from "@vscode/codicons/src/icons/run-compact.svg?raw";
 import search from "@vscode/codicons/src/icons/search.svg?raw";
 import send from "@vscode/codicons/src/icons/send.svg?raw";
 import server from "@vscode/codicons/src/icons/server.svg?raw";
+import tag from "@vscode/codicons/src/icons/tag.svg?raw";
 import target from "@vscode/codicons/src/icons/target.svg?raw";
 import trash from "@vscode/codicons/src/icons/trash.svg?raw";
 
@@ -38,21 +48,31 @@ const SVGS = {
   "chevron-down": chevronDown,
   "chevron-left": chevronLeft,
   "chevron-right": chevronRight,
+  "clear-all": clearAll,
+  clippy,
   close,
   "cloud-download": cloudDownload,
   "cloud-upload": cloudUpload,
+  copy,
   edit,
   folder,
   "folder-opened": folderOpened,
+  "go-to-file": goToFile,
   home,
+  "link-external": linkExternal,
+  "list-selection": listSelection,
+  move,
   "new-file": newFile,
   "new-folder": newFolder,
+  newline,
   plug,
   refresh,
+  rename,
   "run-compact": runCompact,
   search,
   send,
   server,
+  tag,
   target,
   trash,
 } satisfies Record<string, string>;

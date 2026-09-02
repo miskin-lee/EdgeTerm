@@ -607,8 +607,7 @@ export function SenderPanel() {
           ? editing.command.scope
           : scopeForLevel(chain, saveLevel);
         const items: MenuItem[] = [
-          { label: editing ? "Update and list under" : "Save and list under", disabled: true },
-          "separator",
+          { heading: editing ? "Update and list under" : "Save and list under" },
           ...chain.map((scope) => ({
             label: labelOf(scope),
             checked: sameScope(scope, preselected),
@@ -716,11 +715,13 @@ export function SenderPanel() {
         const items: MenuItem[] = [
           {
             label: "Edit",
+            icon: "edit",
             disabled: libraryBusy,
             action: () => beginEdit(command),
           },
           {
             label: "Line ending",
+            icon: "newline",
             children: LINE_ENDINGS.map(([value, label]) => ({
               label,
               checked: command.ending === value,
@@ -730,6 +731,7 @@ export function SenderPanel() {
           },
           {
             label: "Scope",
+            icon: "target",
             children: chain.map((scope) => ({
               label: labelOf(scope),
               checked: sameScope(command.scope, scope),
@@ -740,6 +742,7 @@ export function SenderPanel() {
           "separator",
           {
             label: "Delete",
+            icon: "trash",
             danger: true,
             disabled: libraryBusy,
             action: () => void removeCommand(command.id),

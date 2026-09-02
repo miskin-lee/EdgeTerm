@@ -280,6 +280,7 @@ export function SessionPanel({ onEditProfile, onNewSession }: Props) {
   const kindMenu = (kind: SessionKind): MenuItem[] => [
     {
       label: "New Group…",
+      icon: "new-folder",
       action: () => setGroupDialog({ mode: "create", kind, parentId: null }),
     },
   ];
@@ -287,6 +288,7 @@ export function SessionPanel({ onEditProfile, onNewSession }: Props) {
   const groupMenu = (group: SessionGroup): MenuItem[] => [
     {
       label: "New Subgroup…",
+      icon: "new-folder",
       action: () =>
         setGroupDialog({
           mode: "create",
@@ -297,10 +299,12 @@ export function SessionPanel({ onEditProfile, onNewSession }: Props) {
     "separator",
     {
       label: "Rename Group…",
+      icon: "rename",
       action: () => setGroupDialog({ mode: "rename", group }),
     },
     {
       label: "Delete Group…",
+      icon: "trash",
       danger: true,
       action: () => void confirmDeleteGroup(group),
     },
@@ -309,6 +313,7 @@ export function SessionPanel({ onEditProfile, onNewSession }: Props) {
   const profileMenu = (profile: SessionProfile): MenuItem[] => {
     const connect: MenuItem = {
       label: "Connect",
+      icon: "plug",
       action: () => void openSession(profile),
     };
     // The built-in Local Shell is not a saved profile: nothing to edit or move.
@@ -343,11 +348,12 @@ export function SessionPanel({ onEditProfile, onNewSession }: Props) {
 
     return [
       connect,
-      { label: "Edit…", action: () => onEditProfile(profile) },
-      { label: "Move to Group", children: choices },
+      { label: "Edit…", icon: "edit", action: () => onEditProfile(profile) },
+      { label: "Move to Group", icon: "move", children: choices },
       "separator",
       {
         label: "Delete…",
+        icon: "trash",
         danger: true,
         action: () => void askDeleteProfile(profile),
       },

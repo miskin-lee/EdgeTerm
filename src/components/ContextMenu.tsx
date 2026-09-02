@@ -6,7 +6,7 @@ import {
   type CSSProperties,
 } from "react";
 
-import { Icon } from "./icons";
+import { Icon, type IconName } from "./icons";
 
 export interface MenuAction {
   label: string;
@@ -16,13 +16,22 @@ export interface MenuAction {
   danger?: boolean;
   /** Shows a check mark column; true marks the entry. */
   checked?: boolean;
+  /** A Codicon in the leading column, before the label. */
+  icon?: IconName;
+  /** The key combination that runs the same command, shown at the right. */
+  shortcut?: string;
   /** Extra left padding in tree levels, for nested choices in a submenu. */
   indent?: number;
   /** Nested entries opened on hover. */
   children?: MenuItem[];
 }
 
-export type MenuItem = MenuAction | "separator";
+/** A quiet caption over the entries that follow, e.g. what a choice decides. */
+export interface MenuHeading {
+  heading: string;
+}
+
+export type MenuItem = MenuAction | MenuHeading | "separator";
 
 interface Props {
   /** Viewport coordinates of the pointer when the menu was requested. */
@@ -43,29 +52,49 @@ interface Props {
 const SUBMENU_WIDTH = 200;
 const EDGE_MARGIN = 6;
 
-/** Whether one menu level needs a selection column. */
-function hasCheckable(items: MenuItem[]): boolean {
+function isAction(item: MenuItem): item is MenuAction {
+  return typeof item !== "string" && "label" in item;
+}
+
+/**
+ * Whether one menu level needs the leading column. Any entry with an icon
+ * or a check mark gives every row of that level the column, so the labels
+ * share one left edge; levels without either stay compact.
+ */
+function hasLeading(items: MenuItem[]): boolean {
   return items.some(
-    (item) => item !== "separator" && item.checked !== undefined,
+    (item) =>
+      isAction(item) &&
+      (item.icon !== undefined || item.checked !== undefined),
   );
 }
 
-/** A visible checkbox for choices, or a blank alignment spacer for commands. */
-function MenuCheck({
-  checkable,
-  checked,
-}: {
-  checkable: boolean;
-  checked?: boolean;
-}) {
+/**
+ * The selection column of a dropdown entry: a check mark on the chosen
+ * entry, a same-width blank on the rest so the labels line up. Shared with
+ * the menubar's dropdowns.
+ */
+export function MenuCheck({ checked }: { checked?: boolean }) {
   return (
     <span
-      className={`menu-check${checkable ? " is-checkable" : ""}${checked ? " is-checked" : ""}`}
+      className={`menu-check${checked ? " is-checked" : ""}`}
       aria-hidden="true"
     >
       {checked && <Icon name="check" />}
     </span>
   );
+}
+
+/** The leading column: the entry's icon, else its check mark or a blank. */
+function MenuLeading({ entry }: { entry: MenuAction }) {
+  if (entry.icon) {
+    return (
+      <span className="menu-icon" aria-hidden="true">
+        <Icon name={entry.icon} />
+      </span>
+    );
+  }
+  return <MenuCheck checked={entry.checked} />;
 }
 
 /**
@@ -131,39 +160,73 @@ export function ContextMenu({
     };
   }, [onClose]);
 
-  const renderEntry = (entry: MenuAction, key: string, showCheck: boolean) => (
-    <button
-      key={key}
-      type="button"
-      role={entry.checked !== undefined ? "menuitemcheckbox" : "menuitem"}
-      aria-checked={entry.checked !== undefined ? entry.checked : undefined}
-      className={[
-        "menu-entry",
-        entry.checked ? "is-checked" : "",
-        entry.danger ? "is-danger" : "",
-      ]
-        .filter(Boolean)
-        .join(" ")}
-      disabled={entry.disabled}
-      style={
-        entry.indent
-          ? ({ paddingLeft: 8 + entry.indent * 14 } as CSSProperties)
-          : undefined
+  const renderItems = (level: MenuItem[]) => {
+    const showLeading = hasLeading(level);
+    return level.map((item, index) => {
+      if (item === "separator") {
+        return <div key={`sep-${index}`} className="menu-separator" />;
       }
-      onClick={() => {
-        onClose();
-        entry.action?.();
-      }}
-    >
-      {showCheck && (
-        <MenuCheck
-          checkable={entry.checked !== undefined}
-          checked={entry.checked}
-        />
-      )}
-      <span className="menu-entry-label">{entry.label}</span>
-    </button>
-  );
+      if (!isAction(item)) {
+        return (
+          <div
+            key={`heading-${index}`}
+            className="menu-heading"
+            role="presentation"
+          >
+            {item.heading}
+          </div>
+        );
+      }
+      const key = `${item.label}-${index}`;
+      if (item.children) {
+        return (
+          <div key={key} className="menu-submenu-entry">
+            <div className="menu-entry" role="menuitem" aria-haspopup="menu">
+              {showLeading && <MenuLeading entry={item} />}
+              <span className="menu-entry-label">{item.label}</span>
+              <span className="menu-submenu-arrow" aria-hidden="true">
+                <Icon name="chevron-right" />
+              </span>
+            </div>
+            <div className="menu-dropdown menu-submenu" role="menu">
+              {renderItems(item.children)}
+            </div>
+          </div>
+        );
+      }
+      return (
+        <button
+          key={key}
+          type="button"
+          role={item.checked !== undefined ? "menuitemcheckbox" : "menuitem"}
+          aria-checked={item.checked !== undefined ? item.checked : undefined}
+          className={[
+            "menu-entry",
+            item.checked ? "is-checked" : "",
+            item.danger ? "is-danger" : "",
+          ]
+            .filter(Boolean)
+            .join(" ")}
+          disabled={item.disabled}
+          style={
+            item.indent
+              ? ({ paddingLeft: 8 + item.indent * 14 } as CSSProperties)
+              : undefined
+          }
+          onClick={() => {
+            onClose();
+            item.action?.();
+          }}
+        >
+          {showLeading && <MenuLeading entry={item} />}
+          <span className="menu-entry-label">{item.label}</span>
+          {item.shortcut && (
+            <span className="menu-shortcut">{item.shortcut}</span>
+          )}
+        </button>
+      );
+    });
+  };
 
   return (
     <div
@@ -171,6 +234,7 @@ export function ContextMenu({
       className={[
         "menu-dropdown",
         "context-menu",
+        align === "right" ? "is-right" : "",
         placement.flipped ? "is-flipped" : "",
         className ?? "",
       ]
@@ -180,36 +244,7 @@ export function ContextMenu({
       style={{ left: placement.left, top: placement.top }}
       onContextMenu={(event) => event.preventDefault()}
     >
-      {items.map((item, index) =>
-        item === "separator" ? (
-          <div key={`sep-${index}`} className="menu-separator" />
-        ) : item.children ? (
-          <div key={item.label} className="menu-submenu-entry">
-            <div className="menu-entry" role="menuitem" aria-haspopup="menu">
-              {hasCheckable(items) && <MenuCheck checkable={false} />}
-              <span className="menu-entry-label">{item.label}</span>
-              <span className="menu-submenu-arrow" aria-hidden="true">
-                <Icon name="chevron-right" />
-              </span>
-            </div>
-            <div className="menu-dropdown menu-submenu" role="menu">
-              {item.children.map((child, childIndex) =>
-                child === "separator" ? (
-                  <div key={`sep-${childIndex}`} className="menu-separator" />
-                ) : (
-                  renderEntry(
-                    child,
-                    `${child.label}-${childIndex}`,
-                    hasCheckable(item.children ?? []),
-                  )
-                ),
-              )}
-            </div>
-          </div>
-        ) : (
-          renderEntry(item, `${item.label}-${index}`, hasCheckable(items))
-        ),
-      )}
+      {renderItems(items)}
     </div>
   );
 }

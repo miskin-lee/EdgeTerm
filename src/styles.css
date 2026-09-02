@@ -39,7 +39,10 @@
      border that still reads against the editor surface. Segmented controls
      sit a knob on a sunken track. */
   --bg-menu: #202020;
+  --bg-menu-glass: rgba(32, 32, 32, 0.86);
   --border-menu: #3f3f3f;
+  --menu-highlight: rgba(255, 255, 255, 0.06);
+  --menu-separator: rgba(255, 255, 255, 0.09);
   --bg-track: #2d2d2d;
   --bg-knob: #4b4b4b;
   --shadow-knob: 0 1px 2px rgba(0, 0, 0, 0.4);
@@ -58,7 +61,9 @@
   --notice-error-bg: rgba(45, 25, 25, 0.96);
   --notice-error-fg: #f88070;
 
-  --shadow-menu: 0 8px 24px rgba(0, 0, 0, 0.36);
+  --shadow-menu:
+    0 14px 36px -8px rgba(0, 0, 0, 0.65),
+    0 3px 10px rgba(0, 0, 0, 0.35);
   --shadow-pop: 0 6px 18px rgba(0, 0, 0, 0.36);
   --shadow-notice: 0 5px 18px rgba(0, 0, 0, 0.36);
   --shadow-dialog: 0 20px 60px rgba(0, 0, 0, 0.5);
@@ -111,7 +116,10 @@
   --swatch-ring: rgba(0, 0, 0, 0.15);
 
   --bg-menu: #ffffff;
+  --bg-menu-glass: rgba(255, 255, 255, 0.86);
   --border-menu: #d6d6d6;
+  --menu-highlight: rgba(255, 255, 255, 0.9);
+  --menu-separator: rgba(0, 0, 0, 0.09);
   --bg-track: #e6e6e6;
   --bg-knob: #ffffff;
   --shadow-knob: 0 1px 2px rgba(0, 0, 0, 0.14);
@@ -130,7 +138,9 @@
   --notice-error-bg: rgba(255, 235, 233, 0.96);
   --notice-error-fg: #a1260d;
 
-  --shadow-menu: 0 8px 24px rgba(0, 0, 0, 0.16);
+  --shadow-menu:
+    0 14px 36px -8px rgba(0, 0, 0, 0.22),
+    0 3px 10px rgba(0, 0, 0, 0.08);
   --shadow-pop: 0 6px 18px rgba(0, 0, 0, 0.14);
   --shadow-notice: 0 5px 18px rgba(0, 0, 0, 0.14);
   --shadow-dialog: 0 20px 60px rgba(0, 0, 0, 0.22);
@@ -337,23 +347,35 @@ textarea:focus {
   background: var(--bg-hover);
 }
 
-/* Dropdowns follow the macOS / VS Code menu idiom: a raised panel with
-   rounded rows, the pointed row filled with the accent and white text, a
-   short settle-in animation. Context menus (ContextMenu.tsx) share every
-   rule here. */
+/* Dropdowns follow the macOS / VS Code menu idiom: a raised, slightly
+   translucent panel with rounded rows, the pointed row filled with the
+   accent and white text, a short settle-in animation. Context menus
+   (ContextMenu.tsx) share every rule here. */
 .menu-dropdown {
   position: absolute;
-  top: calc(100% + 2px);
+  top: calc(100% + 4px);
   left: 0;
   z-index: 100;
   min-width: 220px;
-  padding: 5px;
+  padding: 6px;
   background: var(--bg-menu);
   border: 1px solid var(--border-menu);
-  border-radius: 7px;
-  box-shadow: var(--shadow-menu);
+  border-radius: 10px;
+  box-shadow:
+    inset 0 1px 0 var(--menu-highlight),
+    var(--shadow-menu);
   transform-origin: top left;
-  animation: menu-in 110ms cubic-bezier(0.2, 0, 0, 1);
+  animation: menu-in 120ms cubic-bezier(0.2, 0, 0, 1);
+}
+
+/* Where the engine can blur what lies behind, the panel lets a hint of the
+   terminal through, the way native menus do; elsewhere it stays opaque. */
+@supports ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .menu-dropdown {
+    background: var(--bg-menu-glass);
+    -webkit-backdrop-filter: blur(28px) saturate(1.6);
+    backdrop-filter: blur(28px) saturate(1.6);
+  }
 }
 
 /* The menubar's dropdowns share one fixed, narrow width so the panels do
@@ -361,14 +383,14 @@ textarea:focus {
    not fit is cut with an ellipsis (the shortcut stays whole). Submenus and
    context menus stay content-sized. */
 .menu-item > .menu-dropdown {
-  width: 208px;
+  width: 224px;
   min-width: 0;
 }
 
 @keyframes menu-in {
   from {
     opacity: 0;
-    transform: translateY(-4px) scale(0.98);
+    transform: translateY(-3px) scale(0.97);
   }
   to {
     opacity: 1;
@@ -385,11 +407,11 @@ textarea:focus {
 .menu-entry {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 10px;
   width: 100%;
-  height: 26px;
+  height: 28px;
   padding: 0 10px 0 8px;
-  border-radius: 4px;
+  border-radius: 6px;
   color: var(--fg);
   text-align: left;
   white-space: nowrap;
@@ -397,9 +419,11 @@ textarea:focus {
 
 /* A submenu's parent row stays lit while the pointer is inside the submenu. */
 .menu-entry:hover,
+.menu-entry:focus-visible,
 .menu-submenu-entry:hover > .menu-entry {
   background: var(--accent);
   color: var(--accent-contrast);
+  outline: none;
 }
 
 .menu-submenu-entry {
@@ -412,7 +436,7 @@ textarea:focus {
 
 .menu-submenu-arrow {
   display: inline-flex;
-  margin-left: 20px;
+  margin-left: 16px;
   margin-right: -4px;
   color: var(--fg-faint);
 }
@@ -423,8 +447,8 @@ textarea:focus {
 }
 
 .menu-submenu {
-  top: -6px;
-  left: calc(100% + 3px);
+  top: -7px;
+  left: calc(100% + 4px);
   display: none;
 }
 
@@ -433,46 +457,35 @@ textarea:focus {
   display: block;
 }
 
-/* An explicit width rather than a flex-basis: a blank check span has no
+/* The leading column holds a command's icon or a choice's check mark. An
+   explicit width rather than a flex-basis: a blank check span has no
    content, so a basis alone contributes nothing to the dropdown's
-   shrink-to-fit width and the widest row's shortcut overflows by 12px. */
+   shrink-to-fit width and the widest row's shortcut overflows. */
+.menu-icon,
 .menu-check {
   display: inline-flex;
   flex: none;
   width: 16px;
   height: 16px;
-  margin-left: -2px;
+  margin-left: -1px;
   align-items: center;
   justify-content: center;
-  box-sizing: border-box;
-  border: 1px solid transparent;
-  border-radius: 3px;
-  color: transparent;
-  transition:
-    background-color 80ms ease,
-    border-color 80ms ease,
-    color 80ms ease;
 }
 
-.menu-check.is-checkable {
-  border-color: var(--fg-faint);
+.menu-icon {
+  color: var(--fg-dim);
 }
 
-.menu-check.is-checkable.is-checked {
-  border-color: var(--accent);
-  background: var(--accent);
-  color: var(--accent-contrast);
-}
-
-.menu-entry:hover .menu-check.is-checkable {
-  border-color: var(--accent-contrast);
-}
-
-.menu-entry:hover .menu-check.is-checkable.is-checked,
-.menu-submenu-entry:hover > .menu-entry .menu-check.is-checkable.is-checked {
-  border-color: var(--accent-contrast);
-  background: var(--accent-contrast);
+.menu-check {
   color: var(--accent);
+}
+
+.menu-entry:hover .menu-icon,
+.menu-entry:hover .menu-check,
+.menu-entry:focus-visible .menu-icon,
+.menu-entry:focus-visible .menu-check,
+.menu-submenu-entry:hover > .menu-entry .menu-icon {
+  color: inherit;
 }
 
 .menu-entry-label {
@@ -484,21 +497,34 @@ textarea:focus {
 }
 
 .menu-shortcut {
-  margin-left: 28px;
+  margin-left: 24px;
   color: var(--fg-faint);
   font-size: 11px;
   font-variant-numeric: tabular-nums;
+  letter-spacing: 0.02em;
 }
 
-.menu-entry:hover .menu-shortcut {
+.menu-entry:hover .menu-shortcut,
+.menu-entry:focus-visible .menu-shortcut {
   color: inherit;
-  opacity: 0.8;
+  opacity: 0.75;
+}
+
+/* A caption over a run of choices, set apart by size and tone rather than
+   by a disabled row. */
+.menu-heading {
+  padding: 6px 10px 3px;
+  color: var(--fg-faint);
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.01em;
+  white-space: nowrap;
 }
 
 .menu-separator {
   height: 1px;
-  margin: 5px 6px;
-  background: var(--border-menu);
+  margin: 5px 8px;
+  background: var(--menu-separator);
 }
 
 .main {
@@ -807,7 +833,12 @@ textarea:focus {
 .context-menu {
   position: fixed;
   z-index: 150;
-  min-width: 180px;
+  min-width: 200px;
+}
+
+/* Hanging off a button at the right edge: it grows out of that corner. */
+.context-menu.is-right {
+  transform-origin: top right;
 }
 
 .context-menu .menu-submenu {
@@ -818,14 +849,20 @@ textarea:focus {
 /* Near the right edge (where the Filer lives) submenus open leftwards. */
 .context-menu.is-flipped .menu-submenu {
   left: auto;
-  right: calc(100% + 3px);
+  right: calc(100% + 4px);
+  transform-origin: top right;
 }
 
 .menu-entry.is-danger {
   color: var(--red);
 }
 
-.menu-entry.is-danger:hover {
+.menu-entry.is-danger .menu-icon {
+  color: inherit;
+}
+
+.menu-entry.is-danger:hover,
+.menu-entry.is-danger:focus-visible {
   background: var(--red);
   color: #ffffff;
 }
@@ -833,6 +870,10 @@ textarea:focus {
 .menu-entry:disabled {
   color: var(--fg-faint);
   cursor: default;
+}
+
+.menu-entry:disabled .menu-icon {
+  color: inherit;
 }
 
 .menu-entry:disabled:hover {

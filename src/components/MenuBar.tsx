@@ -22,6 +22,7 @@ import { tabTitle, useActiveTab, useStore } from "../store";
 import type { GutterMode, TerminalController } from "../terminal";
 import { getController } from "../terminalRegistry";
 import type { ThemeMode } from "../types";
+import { MenuCheck } from "./ContextMenu";
 import { Icon } from "./icons";
 
 const TUTORIAL_URL = "https://miskin-lee.github.io/EdgeTerm/tutorial.html";
@@ -184,27 +185,6 @@ function WindowControls({ maximized }: { maximized: boolean }) {
         </button>
       ))}
     </div>
-  );
-}
-
-/**
- * The selection column of a dropdown entry. Checkable choices keep their
- * outline when off; ordinary commands use the same-width blank spacer.
- */
-function MenuCheck({
-  checkable,
-  checked,
-}: {
-  checkable: boolean;
-  checked?: boolean;
-}) {
-  return (
-    <span
-      className={`menu-check${checkable ? " is-checkable" : ""}${checked ? " is-checked" : ""}`}
-      aria-hidden="true"
-    >
-      {checked && <Icon name="check" />}
-    </span>
   );
 }
 
@@ -612,7 +592,7 @@ export function MenuBar(props: Props) {
                         onMouseDown={(event) => event.stopPropagation()}
                       >
                         <div className="menu-entry" role="menuitem">
-                          {showCheck && <MenuCheck checkable={false} />}
+                          {showCheck && <MenuCheck />}
                           <span className="menu-entry-label">
                             {entry.label}
                           </span>
@@ -645,10 +625,7 @@ export function MenuBar(props: Props) {
                               }}
                             >
                               {showChildCheck && (
-                                <MenuCheck
-                                  checkable={child.checked !== undefined}
-                                  checked={child.checked}
-                                />
+                                <MenuCheck checked={child.checked} />
                               )}
                               <span className="menu-entry-label">
                                 {child.label}
@@ -678,10 +655,7 @@ export function MenuBar(props: Props) {
                       }}
                     >
                       {showCheck && (
-                        <MenuCheck
-                          checkable={entry.checked !== undefined}
-                          checked={entry.checked}
-                        />
+                        <MenuCheck checked={entry.checked} />
                       )}
                       <span className="menu-entry-label">{entry.label}</span>
                       {entry.shortcut && (
