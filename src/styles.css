@@ -1349,6 +1349,9 @@ textarea:focus {
   display: flex;
   align-items: center;
   gap: 8px;
+  /* Set on .term-gutter by TerminalController.measureCell. */
+  height: var(--gutter-cell);
+  line-height: var(--gutter-cell);
   white-space: nowrap;
   font-variant-numeric: tabular-nums;
 }

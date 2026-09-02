@@ -25,6 +25,14 @@ import {
 
 export type GutterMode = "off" | "line" | "time" | "both";
 
+/** The xterm-owned inputs to a gutter paint; see `gutterPainted`. */
+type GutterView = {
+  viewportY: number;
+  cursorIndex: number;
+  rows: number;
+  alternate: boolean;
+};
+
 /**
  * How many terminals hold a WebGL renderer at once, most recently shown
  * first. WebKit allows 16 live WebGL contexts per page and, on the 17th,
@@ -294,10 +302,14 @@ export class TerminalController {
    * fit/resize, which is the only time it can change.
    */
   private cellHeight = 0;
-  /** Last visible gutter state; unchanged selection paints can skip DOM work. */
-  private gutterSignature = "";
-  /** Bumped when line metadata changes without moving the viewport/cursor. */
-  private gutterEpoch = 0;
+  /**
+   * The xterm-owned state the gutter rows were last painted for. A paint
+   * that matches it is skipped: a selection drag re-renders every frame
+   * without moving the viewport or cursor. This class's own inputs to the
+   * rows (line times, line numbering, mode) are covered by `invalidateGutter`
+   * at their mutation sites instead of being compared here.
+   */
+  private gutterPainted: GutterView | null = null;
 
   constructor(
     readonly sessionId: string,
@@ -860,7 +872,6 @@ export class TerminalController {
     if (this.term.options.fontSize === fontSize) return;
     this.term.options.fontSize = fontSize;
     this.cellHeight = 0;
-    this.invalidateGutter();
     // Underline elements are sized in pixels at creation time.
     this.disposeAllSemanticColors();
     this.fit();
@@ -882,7 +893,6 @@ export class TerminalController {
     this.scrollback = scrollback;
     this.term.options.scrollback = scrollback;
     this.trimLineMetadata();
-    this.invalidateGutter();
     this.syncGutter();
   }
 
@@ -1528,40 +1538,40 @@ export class TerminalController {
     const height = screen.clientHeight / this.term.rows;
     if (Number.isFinite(height) && height > 0 && height !== this.cellHeight) {
       this.cellHeight = height;
-      this.invalidateGutter();
+      // Rows size themselves from this, so a height change costs one style
+      // write here instead of two per row on every sync.
+      this.gutter?.style.setProperty("--gutter-cell", `${height}px`);
     }
   }
 
+  /** Marks the gutter rows stale; the next sync repaints unconditionally. */
   private invalidateGutter() {
-    this.gutterEpoch += 1;
-    this.gutterSignature = "";
+    this.gutterPainted = null;
   }
 
   private syncGutter() {
     if (!this.gutter || !this.host || this.gutterMode === "off") return;
     if (this.cellHeight <= 0) this.measureCell();
-    const cellHeight = this.cellHeight;
-    if (cellHeight <= 0) return;
+    if (this.cellHeight <= 0) return;
 
     const buf = this.term.buffer.active;
+    const viewportY = buf.viewportY;
     const cursorIndex = buf.baseY + buf.cursorY;
     const rows = this.term.rows;
     // Full-screen programs (vim, top) paint into the alternate buffer, where
     // line numbers and produced-at times are meaningless.
     const alternate = buf.type === "alternate";
-    const signature = [
-      this.gutterMode,
-      this.gutterEpoch,
-      rows,
-      buf.viewportY,
-      cursorIndex,
-      alternate ? 1 : 0,
-      this.firstLineNumber,
-      this.lineTimes.length,
-      cellHeight,
-    ].join(":");
-    if (signature === this.gutterSignature) return;
-    this.gutterSignature = signature;
+    const painted = this.gutterPainted;
+    if (
+      painted &&
+      painted.viewportY === viewportY &&
+      painted.cursorIndex === cursorIndex &&
+      painted.rows === rows &&
+      painted.alternate === alternate
+    ) {
+      return;
+    }
+    this.gutterPainted = { viewportY, cursorIndex, rows, alternate };
 
     while (this.rowPool.length < rows) {
       const row = document.createElement("div");
@@ -1580,9 +1590,7 @@ export class TerminalController {
 
     for (let i = 0; i < rows; i++) {
       const row = this.rowPool[i];
-      const index = buf.viewportY + i;
-      row.style.height = `${cellHeight}px`;
-      row.style.lineHeight = `${cellHeight}px`;
+      const index = viewportY + i;
 
       // `buf.length` always spans the whole viewport, so it cannot tell a
       // written line from blank padding below the last one. A recorded
