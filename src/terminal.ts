@@ -18,11 +18,10 @@ import { patchImeInput } from "./imePatch";
 import { IS_MAC } from "./platform";
 import { matchAppShortcut } from "./shortcuts";
 import { semanticLine, type SemanticRange } from "./semanticColors";
+import type { TransferNoticeKind } from "./terminalTransfer";
 import type { ThemeMode } from "./types";
-import {
-  ZmodemController,
-  type ZmodemNoticeKind,
-} from "./zmodem";
+import { XmodemController, type XmodemBlockSize } from "./xmodem";
+import { ZmodemController } from "./zmodem";
 
 export type GutterMode = "off" | "line" | "time" | "both";
 
@@ -255,8 +254,9 @@ export class TerminalController {
   readonly onSearchResults = this.searchAddon.onDidChangeResults;
   private lastSearch: string | null = null;
   private readonly zmodem: ZmodemController;
-  private readonly zmodemNotice: HTMLElement;
-  private zmodemNoticeTimer: number | null = null;
+  private readonly xmodem: XmodemController;
+  private readonly transferNotice: HTMLElement;
+  private transferNoticeTimer: number | null = null;
 
   private root: HTMLElement | null = null;
   private host: HTMLElement | null = null;
@@ -357,20 +357,23 @@ export class TerminalController {
       rightClickSelectsWord: true,
     });
 
-    this.zmodemNotice = document.createElement("div");
-    this.zmodemNotice.className = "zmodem-notice is-hidden";
-    this.zmodemNotice.setAttribute("role", "status");
-    this.zmodemNotice.setAttribute("aria-live", "polite");
+    this.transferNotice = document.createElement("div");
+    this.transferNotice.className = "transfer-notice is-hidden";
+    this.transferNotice.setAttribute("role", "status");
+    this.transferNotice.setAttribute("aria-live", "polite");
 
     this.popup = document.createElement("div");
     this.popup.className = "term-suggest is-hidden";
     this.popup.setAttribute("role", "listbox");
 
-    this.zmodem = new ZmodemController(sessionId, {
-      toTerminal: (bytes) => this.term.write(bytes),
+    const transferCallbacks = {
+      toTerminal: (bytes: Uint8Array) => this.term.write(bytes),
       onStatus: callbacks.onStatus,
-      onNotice: (message, kind) => this.showZmodemNotice(message, kind),
-    });
+      onNotice: (message: string, kind: TransferNoticeKind) =>
+        this.showTransferNotice(message, kind),
+    };
+    this.zmodem = new ZmodemController(sessionId, transferCallbacks);
+    this.xmodem = new XmodemController(sessionId, transferCallbacks);
 
     this.term.loadAddon(this.fitAddon);
     this.term.loadAddon(this.searchAddon);
@@ -379,10 +382,10 @@ export class TerminalController {
     this.term.loadAddon(unicode);
     this.term.unicode.activeVersion = "11";
 
-    // ZMODEM owns the byte stream while a transfer is active. Forwarding
+    // A file transfer owns the byte stream while it is active. Forwarding
     // keystrokes or paste data in the middle of a binary frame corrupts it.
     this.term.onData((data) => {
-      if (this.zmodem.isActive()) return;
+      if (this.isTransferActive()) return;
       this.trackInput(data);
       this.callbacks.onData(data);
     });
@@ -592,7 +595,7 @@ export class TerminalController {
     // Re-parenting keeps the existing xterm instance (and its scrollback)
     // alive if React ever hands us a fresh container node.
     if (this.root && this.gutter && this.host) {
-      root.replaceChildren(this.gutter, this.host, this.zmodemNotice);
+      root.replaceChildren(this.gutter, this.host, this.transferNotice);
       this.root = root;
       this.fit();
       return;
@@ -609,7 +612,7 @@ export class TerminalController {
 
     root.appendChild(this.gutter);
     root.appendChild(this.host);
-    root.appendChild(this.zmodemNotice);
+    root.appendChild(this.transferNotice);
 
     this.term.open(this.host);
     // IME text takes the exactly-once path in imePatch.ts. It hooks the
@@ -775,7 +778,11 @@ export class TerminalController {
   }
 
   write(data: Uint8Array) {
-    this.zmodem.consume(data);
+    // XMODEM is started by the user and takes the whole stream while it
+    // runs; otherwise the ZMODEM sentry watches for its handshake and
+    // passes ordinary output through to xterm.
+    if (this.xmodem.isActive()) this.xmodem.consume(data);
+    else this.zmodem.consume(data);
   }
 
   writeText(text: string) {
@@ -798,6 +805,9 @@ export class TerminalController {
       // A reconnected shell starts over in its home directory; the old
       // report must not outlive the session it described.
       this.reported = null;
+      // A transfer cannot outlive its session either, and its peer is out
+      // of reach: fail it now rather than after its own timeouts.
+      this.xmodem.sessionEnded();
     }
   }
 
@@ -809,12 +819,37 @@ export class TerminalController {
     return this.reported;
   }
 
-  isZmodemActive(): boolean {
-    return this.zmodem.isActive();
+  /** True while ZMODEM or XMODEM owns the byte stream. */
+  isTransferActive(): boolean {
+    return this.zmodem.isActive() || this.xmodem.isActive();
   }
 
-  cancelZmodem(): boolean {
-    return this.zmodem.cancel();
+  /** Cancels the running transfer, whichever protocol; false when none. */
+  cancelTransfer(): boolean {
+    return this.xmodem.cancel() || this.zmodem.cancel();
+  }
+
+  /** Sends a local file (chosen in a dialog) with XMODEM; see xmodem.ts. */
+  sendXmodem(blockSize: XmodemBlockSize) {
+    if (this.canStartTransfer("XMODEM")) void this.xmodem.send(blockSize);
+  }
+
+  /** Receives a file (saved where a dialog says) with XMODEM. */
+  receiveXmodem() {
+    if (this.canStartTransfer("XMODEM")) void this.xmodem.receive();
+  }
+
+  private canStartTransfer(label: string): boolean {
+    if (this.disposed) return false;
+    if (this.locked) {
+      this.callbacks.onStatus(`${label}: the session is not connected`, true);
+      return false;
+    }
+    if (this.isTransferActive()) {
+      this.callbacks.onStatus(`${label}: a transfer is already running`, true);
+      return false;
+    }
+    return true;
   }
 
   focus() {
@@ -964,9 +999,9 @@ export class TerminalController {
   dispose() {
     this.disposed = true;
     this.dropAnchor();
-    if (this.zmodemNoticeTimer !== null) {
-      window.clearTimeout(this.zmodemNoticeTimer);
-      this.zmodemNoticeTimer = null;
+    if (this.transferNoticeTimer !== null) {
+      window.clearTimeout(this.transferNoticeTimer);
+      this.transferNoticeTimer = null;
     }
     if (this.webglTimer !== null) {
       window.clearTimeout(this.webglTimer);
@@ -974,6 +1009,7 @@ export class TerminalController {
     }
     this.unloadWebgl();
     this.zmodem.dispose();
+    this.xmodem.dispose();
     this.term.dispose();
     this.root = null;
     this.host = null;
@@ -984,20 +1020,20 @@ export class TerminalController {
 
   // --- internals ------------------------------------------------------------
 
-  private showZmodemNotice(message: string, kind: ZmodemNoticeKind) {
+  private showTransferNotice(message: string, kind: TransferNoticeKind) {
     if (this.disposed) return;
-    if (this.zmodemNoticeTimer !== null) {
-      window.clearTimeout(this.zmodemNoticeTimer);
-      this.zmodemNoticeTimer = null;
+    if (this.transferNoticeTimer !== null) {
+      window.clearTimeout(this.transferNoticeTimer);
+      this.transferNoticeTimer = null;
     }
 
-    this.zmodemNotice.textContent = message;
-    this.zmodemNotice.className = `zmodem-notice is-${kind}`;
+    this.transferNotice.textContent = message;
+    this.transferNotice.className = `transfer-notice is-${kind}`;
     if (kind !== "active") {
-      this.zmodemNoticeTimer = window.setTimeout(
+      this.transferNoticeTimer = window.setTimeout(
         () => {
-          this.zmodemNotice.classList.add("is-hidden");
-          this.zmodemNoticeTimer = null;
+          this.transferNotice.classList.add("is-hidden");
+          this.transferNoticeTimer = null;
         },
         kind === "error" ? 7000 : 4500,
       );
@@ -1265,7 +1301,7 @@ export class TerminalController {
       : "\x7f".repeat([...input].length) + candidate.command;
     this.dismissedInput = candidate.command;
     this.hidePopup();
-    if (data && !this.locked && !this.zmodem.isActive()) {
+    if (data && !this.locked && !this.isTransferActive()) {
       this.callbacks.onData(data);
     }
   }

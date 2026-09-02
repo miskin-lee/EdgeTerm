@@ -13,7 +13,7 @@ import { exportAppData, importAppData } from "../dataTransfer";
 import { commandHistory } from "../history";
 import { IS_MAC, shortcutLabel as sc } from "../platform";
 import { tabTitle, useActiveTab, useStore } from "../store";
-import type { GutterMode } from "../terminal";
+import type { GutterMode, TerminalController } from "../terminal";
 import { getController } from "../terminalRegistry";
 import type { ThemeMode } from "../types";
 
@@ -264,6 +264,14 @@ export function MenuBar(props: Props) {
     if (activeId) fn(activeId);
   };
 
+  // File transfers run over a terminal's byte stream; (S)FTP tabs have none.
+  const withTerminal = (fn: (terminal: TerminalController) => void) =>
+    withActive((id) => {
+      const terminal = getController(id);
+      if (terminal) fn(terminal);
+      else setStatus("File transfers need a terminal session");
+    });
+
   const gutterEntry = (label: string, mode: GutterMode): Entry => ({
     label,
     checked: gutterMode === mode,
@@ -308,12 +316,31 @@ export function MenuBar(props: Props) {
           action: withActive(requestCloseTab),
         },
         {
-          label: "Cancel ZMODEM Transfer",
-          action: withActive((id) => {
-            if (!getController(id)?.cancelZmodem()) {
-              setStatus("ZMODEM: no active transfer");
-            }
-          }),
+          // ZMODEM starts itself when `rz` / `sz` runs in the terminal;
+          // XMODEM has no such handshake and is started from here.
+          label: "File Transfer",
+          children: [
+            {
+              label: "Send via XMODEM…",
+              action: withTerminal((terminal) => terminal.sendXmodem(128)),
+            },
+            {
+              label: "Send via XMODEM-1K…",
+              action: withTerminal((terminal) => terminal.sendXmodem(1024)),
+            },
+            {
+              label: "Receive via XMODEM…",
+              action: withTerminal((terminal) => terminal.receiveXmodem()),
+            },
+            {
+              label: "Cancel Transfer",
+              action: withTerminal((terminal) => {
+                if (!terminal.cancelTransfer()) {
+                  setStatus("No file transfer is running");
+                }
+              }),
+            },
+          ],
         },
         "separator",
         {

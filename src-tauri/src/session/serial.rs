@@ -79,7 +79,13 @@ pub fn spawn(
         .stop_bits(stop_bits)
         .parity(parity)
         .flow_control(flow_control)
-        .timeout(Duration::from_millis(50))
+        // The owner loop only sees the command channel between reads, so
+        // this bounds how long a queued write waits before it goes out. For
+        // typing 50 ms went unnoticed, but XMODEM is stop-and-wait: the peer
+        // sends nothing until our block or ACK arrives, so that latency was
+        // paid once per block and dominated the transfer rate. The idle cost
+        // is one poll wake-up per timeout.
+        .timeout(Duration::from_millis(10))
         .open()
         .map_err(|e| AppError::new(format!("cannot open {port_name}: {e}")))?;
 

@@ -300,11 +300,13 @@ pub fn resize_session(state: State<'_, AppState>, id: String, cols: u16, rows: u
         .send(&id, SessionCommand::Resize { cols, rows })
 }
 
-// --- ZMODEM local file streaming -------------------------------------------
+// --- local file streaming for ZMODEM / XMODEM -------------------------------
 
 /// Keep file IPC bounded. zmodem.js further divides outgoing data into 8 KiB
-/// protocol subpackets, while this larger application-level chunk keeps the
-/// number of disk and IPC round trips reasonable.
+/// protocol subpackets and XMODEM into 128 / 1024-byte blocks, while this
+/// larger application-level chunk keeps the number of disk and IPC round
+/// trips reasonable. The frontend shares these commands between the two
+/// protocols (terminalTransfer.ts).
 const ZMODEM_FILE_CHUNK_SIZE: usize = 1024 * 1024;
 
 #[tauri::command]

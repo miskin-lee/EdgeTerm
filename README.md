@@ -47,9 +47,11 @@ With **Edit → Command Suggestions** enabled, EdgeTerm remembers the commands y
 
 **Session → Export Data…** writes the saved sessions and their groups, the Sender's saved commands, and the display settings to a single `.edgeterm` file (plain JSON inside); **Session → Import Data…** accepts only `.edgeterm` files.
 
-**ZMODEM transfers**
+**ZMODEM and XMODEM transfers**
 
 Local shell, SSH, and serial terminals automatically detect ZMODEM sessions. Run `rz` in the terminal to choose and send one or more local files, or run `sz <file>` to choose where each incoming file is saved.
+
+XMODEM has no handshake to detect, so it is started from **Session → File Transfer**. Start the other end in the terminal first (`rx <file>`, `sx <file>`, a bootloader's `loadx`, …), then choose **Send via XMODEM…** or **Send via XMODEM-1K…** and pick the file, or **Receive via XMODEM…** and pick where to save it. Receiving accepts CRC and checksum blocks of 128 bytes or 1 KiB; sending uses CRC when the receiver asks for it and falls back to plain 128-byte checksum blocks otherwise. XMODEM carries no file size, so a received file keeps the sender's `^Z` padding at the end of its last block. **Cancel Transfer** in the same menu aborts either protocol.
 
 **Keyboard shortcuts**
 

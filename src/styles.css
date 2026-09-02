@@ -1519,7 +1519,7 @@ textarea:focus {
   pointer-events: none;
 }
 
-.zmodem-notice {
+.transfer-notice {
   position: absolute;
   top: 10px;
   right: 12px;
@@ -1540,17 +1540,17 @@ textarea:focus {
   white-space: nowrap;
 }
 
-.zmodem-notice.is-hidden {
+.transfer-notice.is-hidden {
   display: none;
 }
 
-.zmodem-notice.is-success {
+.transfer-notice.is-success {
   border-color: color-mix(in srgb, var(--green) 60%, transparent);
   background: var(--notice-success-bg);
   color: var(--notice-success-fg);
 }
 
-.zmodem-notice.is-error {
+.transfer-notice.is-error {
   border-color: color-mix(in srgb, var(--red) 65%, transparent);
   background: var(--notice-error-bg);
   color: var(--notice-error-fg);

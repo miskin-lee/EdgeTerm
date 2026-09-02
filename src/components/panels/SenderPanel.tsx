@@ -365,10 +365,10 @@ export function SenderPanel() {
       return;
     }
     const ids = targetIds.filter(
-      (id) => !getController(id)?.isZmodemActive(),
+      (id) => !getController(id)?.isTransferActive(),
     );
     if (ids.length === 0) {
-      setStatus("Sender: blocked while ZMODEM is transferring");
+      setStatus("Sender: blocked while a file transfer is running");
       return;
     }
 
@@ -395,7 +395,7 @@ export function SenderPanel() {
       setStatus(
         ids.length === targetIds.length
           ? "Sender: sent command"
-          : `Sender: sent command; skipped ${targetIds.length - ids.length} ZMODEM session(s)`,
+          : `Sender: sent command; skipped ${targetIds.length - ids.length} session(s) with a file transfer running`,
       );
     } catch (e) {
       setStatus(`Sender: ${e}`);

@@ -138,7 +138,9 @@ export const writeSessionBinary = (id: string, base64: string) =>
 export const resizeSession = (id: string, cols: number, rows: number) =>
   invoke<void>("resize_session", { id, cols, rows });
 
-// --- ZMODEM local file streaming -------------------------------------------
+// --- local file streaming for ZMODEM / XMODEM -------------------------------
+// Bounded chunks so a transfer never holds a whole file in the WebView; used
+// through terminalTransfer.ts by both protocols.
 
 export const zmodemFileInfo = (path: string) =>
   invoke<ZmodemFileInfo>("zmodem_file_info", { path });

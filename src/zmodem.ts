@@ -8,18 +8,20 @@ import Zmodem, {
 } from "zmodem.js";
 
 import * as api from "./api";
+import {
+  BufferedFileWriter,
+  concatBytes,
+  errorMessage,
+  FILE_CHUNK_SIZE,
+  formatBytes,
+  formatProgress,
+  withTimeout,
+  type TransferCallbacks,
+  type TransferNoticeKind,
+} from "./terminalTransfer";
 
-const FILE_CHUNK_SIZE = 1024 * 1024;
 const OUTBOUND_FLUSH_SIZE = 1024 * 1024;
 const PEER_CONFIRM_TIMEOUT_MS = 30_000;
-
-interface Callbacks {
-  toTerminal: (bytes: Uint8Array) => void;
-  onStatus: (message: string, error?: boolean) => void;
-  onNotice: (message: string, kind: ZmodemNoticeKind) => void;
-}
-
-export type ZmodemNoticeKind = "active" | "success" | "error";
 
 /**
  * Intercepts a terminal's raw output long enough to detect and run ZMODEM.
@@ -42,7 +44,7 @@ export class ZmodemController {
 
   constructor(
     private readonly sessionId: string,
-    private readonly callbacks: Callbacks,
+    private readonly callbacks: TransferCallbacks,
   ) {
     this.sentry = new Zmodem.Sentry({
       to_terminal: (bytes) => {
@@ -404,7 +406,7 @@ export class ZmodemController {
     this.flushOutbound();
   }
 
-  private report(message: string, kind: ZmodemNoticeKind = "active") {
+  private report(message: string, kind: TransferNoticeKind = "active") {
     this.callbacks.onStatus(message, kind === "error");
     this.callbacks.onNotice(message, kind);
   }
@@ -429,83 +431,6 @@ export class ZmodemController {
     // current line as well as dropping this callback's remaining bytes.
     this.callbacks.toTerminal(Uint8Array.from([13, 27, 91, 50, 75]));
   }
-}
-
-class BufferedFileWriter {
-  private parts: Uint8Array[] = [];
-  private buffered = 0;
-  private scheduled = 0;
-  private queue: Promise<void> = Promise.resolve();
-  private failureResolver: (() => void) | null = null;
-
-  error: unknown = null;
-  readonly whenFailed = new Promise<void>((resolve) => {
-    this.failureResolver = resolve;
-  });
-
-  constructor(
-    private readonly path: string,
-    private readonly onProgress: (written: number) => void,
-    private readonly onError: () => void,
-  ) {}
-
-  push(bytes: number[] | Uint8Array) {
-    if (this.error || bytes.length === 0) return;
-    const source = Uint8Array.from(bytes);
-    let sourceOffset = 0;
-    while (sourceOffset < source.length) {
-      const length = Math.min(
-        FILE_CHUNK_SIZE - this.buffered,
-        source.length - sourceOffset,
-      );
-      this.parts.push(source.subarray(sourceOffset, sourceOffset + length));
-      this.buffered += length;
-      sourceOffset += length;
-      if (this.buffered === FILE_CHUNK_SIZE) this.flushBuffer();
-    }
-  }
-
-  async finish(): Promise<number> {
-    this.flushBuffer();
-    await this.queue;
-    if (this.error) throw this.error;
-    await api.zmodemFinishFile(this.path, this.scheduled);
-    return this.scheduled;
-  }
-
-  private flushBuffer() {
-    if (this.error || this.buffered === 0) return;
-    const bytes = concatBytes(this.parts, this.buffered);
-    const offset = this.scheduled;
-    this.parts = [];
-    this.buffered = 0;
-    this.scheduled += bytes.length;
-
-    this.queue = this.queue.then(async () => {
-      if (this.error) return;
-      try {
-        await api.zmodemWriteChunk(this.path, offset, bytes);
-        this.onProgress(offset + bytes.length);
-      } catch (error) {
-        this.error = error;
-        this.parts = [];
-        this.buffered = 0;
-        this.onError();
-        this.failureResolver?.();
-      }
-    });
-  }
-}
-
-function concatBytes(parts: Uint8Array[], length: number): Uint8Array {
-  if (parts.length === 1 && parts[0].length === length) return parts[0];
-  const joined = new Uint8Array(length);
-  let offset = 0;
-  for (const part of parts) {
-    joined.set(part, offset);
-    offset += part.length;
-  }
-  return joined;
 }
 
 function findSubarray(haystack: Uint8Array, needle: number[]): number {
@@ -534,47 +459,4 @@ function validSize(size: number | null | undefined): number | null {
   return typeof size === "number" && Number.isSafeInteger(size) && size >= 0
     ? size
     : null;
-}
-
-function formatProgress(transferred: number, total: number | null): string {
-  if (total === null || total === 0) return formatBytes(transferred);
-  const percent = Math.min(100, Math.floor((transferred / total) * 100));
-  return `${percent}% (${formatBytes(transferred)} / ${formatBytes(total)})`;
-}
-
-function formatBytes(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`;
-  const units = ["KiB", "MiB", "GiB", "TiB"];
-  let value = bytes / 1024;
-  let unit = units[0];
-  for (let index = 1; index < units.length && value >= 1024; index += 1) {
-    value /= 1024;
-    unit = units[index];
-  }
-  return `${value >= 10 ? value.toFixed(1) : value.toFixed(2)} ${unit}`;
-}
-
-function errorMessage(error: unknown): string {
-  if (error instanceof Error) return error.message;
-  return String(error);
-}
-
-function withTimeout<T>(
-  promise: Promise<T>,
-  timeoutMs: number,
-  message: string,
-): Promise<T> {
-  return new Promise<T>((resolve, reject) => {
-    const timer = window.setTimeout(() => reject(new Error(message)), timeoutMs);
-    promise.then(
-      (value) => {
-        window.clearTimeout(timer);
-        resolve(value);
-      },
-      (error) => {
-        window.clearTimeout(timer);
-        reject(error);
-      },
-    );
-  });
 }
