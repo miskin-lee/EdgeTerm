@@ -43,6 +43,10 @@ A small, lightweight, high-performance terminal, SSH, SFTP, FTP, and serial clie
 
 With **Edit → Command Suggestions** enabled, EdgeTerm remembers the commands you run in the terminal and shows matching history in a popup as you type. `↓` steps into the list, `Enter` / `Tab` accepts, `Esc` dismisses; while nothing in the popup is selected, every other key still reaches the shell. **Edit → Clear Command History…** clears the recorded history.
 
+**Tab activity**
+
+A background tab shows what is running in it and keeps a highlight afterwards until you visit it, so you can start something slow and switch away. Agentic CLIs — Claude Code, Codex, Gemini CLI, Aider and the like — are followed differently: their session lasts as long as you keep the tool open, so the tab reports the assistant's turns instead, running while it works and finished when it hands the terminal back.
+
 **Data export and import**
 
 **Session → Export Data…** writes the saved sessions and their groups, the Sender's saved commands, and the display settings to a single `.edgeterm` file (plain JSON inside); **Session → Import Data…** accepts only `.edgeterm` files.

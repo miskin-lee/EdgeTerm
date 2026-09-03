@@ -43,6 +43,10 @@
 
 开启 **Edit → Command Suggestions** 后，EdgeTerm 会记住在终端里执行过的命令，输入时弹窗列出历史匹配。`↓` 进入列表，`Enter` / `Tab` 采纳，`Esc` 关闭；弹窗尚未选中任何一项时，其余按键仍照常发给 Shell，**Edit → Clear Command History…** 可清空历史。
 
+**标签活动**
+
+后台标签会显示其中正在运行的内容，结束后保留高亮直到你切回去，方便跑长任务时先去忙别的。Claude Code、Codex、Gemini CLI、Aider 这类 AI 命令行工具则按另一套规则跟踪：它们的会话要一直开着，所以标签显示的是助手的每一轮——它在干活时显示运行中，把终端交还给你时显示已结束。
+
 **数据导出与导入**
 
 **Session → Export Data…** 把保存的会话及其分组、Sender 的常用命令和显示设置导出为一个 `.edgeterm` 文件（内容为 JSON）；**Session → Import Data…** 只接受 `.edgeterm` 文件。

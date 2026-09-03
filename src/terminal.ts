@@ -13,6 +13,7 @@ import {
   type ITheme,
 } from "@xterm/xterm";
 
+import { isAiSessionCommand } from "./aiTools";
 import { MONO_FONT_FAMILY } from "./fonts";
 import type { CommandSuggestion } from "./history";
 import { patchImeInput } from "./imePatch";
@@ -64,6 +65,15 @@ const WEBGL_RECOVERY_WINDOW_MS = 60_000;
 
 /** Terminals holding a WebGL renderer, most recently shown first. */
 const webglTerminals: TerminalController[] = [];
+
+/**
+ * How long an agentic CLI has to stay silent before its turn counts as
+ * finished. Comfortably above the repaint rate of every one of them — they
+ * animate a spinner and an elapsed-time counter for as long as they work,
+ * tool calls included — and short enough that the tab reports back while the
+ * answer is still on screen.
+ */
+const AI_QUIET_MS = 2000;
 
 /** A working directory the shell announced with an OSC sequence. */
 export interface ReportedCwd {
@@ -220,8 +230,15 @@ interface Callbacks {
   onStatus: (message: string, error?: boolean) => void;
   /** An executed command line, captured from the buffer after Enter. */
   onCommand: (command: string) => void;
-  /** Drives the background tab's running and unread-completion treatments. */
-  onCommandState: (state: "idle" | "running" | "complete") => void;
+  /**
+   * Drives the background tab's running and unread-completion treatments.
+   * `kind` says what the state is about: the submitted command, or one turn
+   * of an agentic CLI that holds the terminal for a whole session.
+   */
+  onCommandState: (
+    state: "idle" | "running" | "complete",
+    kind: "command" | "ai",
+  ) => void;
   /** Ranked history completions for the current input; [] when none. */
   suggest: (input: string) => CommandSuggestion[];
 }
@@ -289,6 +306,12 @@ export class TerminalController {
   private commandPromptRecognized = false;
   private commandOutputAdvanced = false;
   private commandRunning = false;
+  /** Set while an agentic CLI (see `aiTools.ts`) owns the terminal. */
+  private aiSession = false;
+  /** Open from the user's input until the assistant goes quiet again. */
+  private aiTurn = false;
+  private aiOutputAt = 0;
+  private aiQuietTimer: number | null = null;
   private readonly popup: HTMLElement;
   /** Rows currently displayed; [] while the popup is hidden. */
   private candidates: CommandSuggestion[] = [];
@@ -819,6 +842,9 @@ export class TerminalController {
   }
 
   write(data: Uint8Array) {
+    // Cheap enough for the byte path: one timestamp, only while a turn is
+    // open, and the quiet timer reads it instead of being re-armed here.
+    if (this.aiTurn) this.aiOutputAt = Date.now();
     // XMODEM is started by the user and takes the whole stream while it
     // runs; otherwise the ZMODEM sentry watches for its handshake and
     // passes ordinary output through to xterm.
@@ -835,15 +861,21 @@ export class TerminalController {
    * Call immediately before writing it so the current prompt can be used as
    * the completion signature.
    */
-  noteCommandSent() {
-    return this.beginCommand();
+  noteCommandSent(command?: string) {
+    // Text sent into an agentic CLI already holding the terminal is a turn
+    // for it, not a command line the shell will answer with a prompt.
+    if (this.aiSession) {
+      this.noteAiInput();
+      return false;
+    }
+    return this.beginCommand(undefined, command);
   }
 
   /** Rolls back `noteCommandSent` when the IPC write itself was rejected. */
   cancelCommandSent() {
     if (!this.commandRunning) return;
     this.resetCommandTracking();
-    if (!this.disposed) this.callbacks.onCommandState("idle");
+    this.emitCommandState("idle");
   }
 
   /**
@@ -1123,8 +1155,12 @@ export class TerminalController {
 
   // --- command history & inline suggestions --------------------------------
 
-  /** Begins (or replaces) the command currently represented by this tab. */
-  private beginCommand(anchor?: InputAnchor) {
+  /**
+   * Begins (or replaces) the command currently represented by this tab.
+   * `sent` carries the command line when it was not typed here (the Sender
+   * panel), where the buffer only holds the prompt it is about to follow.
+   */
+  private beginCommand(anchor?: InputAnchor, sent?: string) {
     if (
       this.disposed ||
       this.locked ||
@@ -1163,8 +1199,24 @@ export class TerminalController {
     this.commandPromptRecognized = isShellPrompt(`${prompt} `);
     this.commandOutputAdvanced = false;
     this.commandRunning = true;
-    this.callbacks.onCommandState("running");
+    this.aiSession = isAiSessionCommand(sent ?? this.submittedCommand(prompt));
+    // An agentic CLI runs until the user quits it, so reporting its whole
+    // session as one running command would say nothing. The tab stays quiet
+    // until the assistant itself is working.
+    this.emitCommandState(this.aiSession ? "idle" : "running");
     return true;
+  }
+
+  /**
+   * The command just submitted, read back from the line it was typed on.
+   * The prompt is cut off by its recognized end where there is one, so a
+   * shell-integration start (OSC 133 C, which arrives with the whole line
+   * already echoed) reads the same as a typed one.
+   */
+  private submittedCommand(prompt: string): string {
+    const text = this.cursorLine()?.text ?? "";
+    const end = shellPromptEnd(text);
+    return text.slice(end >= 0 ? end : prompt.length).trim();
   }
 
   /**
@@ -1231,8 +1283,9 @@ export class TerminalController {
     // the next command line. The anchor they left points at a row the
     // program painted, which history would then record as a command.
     this.dropAnchor();
+    const kind = this.aiSession ? "ai" : "command";
     this.resetCommandTracking();
-    if (!this.disposed) this.callbacks.onCommandState("complete");
+    if (!this.disposed) this.callbacks.onCommandState("complete", kind);
   }
 
   private resetCommandTracking() {
@@ -1242,6 +1295,53 @@ export class TerminalController {
     this.commandPromptRecognized = false;
     this.commandOutputAdvanced = false;
     this.commandRunning = false;
+    this.endAiSession();
+  }
+
+  private emitCommandState(state: "idle" | "running" | "complete") {
+    if (!this.disposed) {
+      this.callbacks.onCommandState(state, this.aiSession ? "ai" : "command");
+    }
+  }
+
+  /**
+   * A keystroke inside an agentic CLI opens a turn, and the tool's own
+   * repainting keeps it open: every one of them animates a spinner and an
+   * elapsed time while it works, and goes quiet the moment it wants the user
+   * back — quiet is the end of the turn. Output alone never opens one, or an
+   * idle tool's occasional repaint would announce work that never happened.
+   */
+  private noteAiInput() {
+    this.aiOutputAt = Date.now();
+    if (!this.aiTurn) {
+      this.aiTurn = true;
+      this.emitCommandState("running");
+    }
+    this.armAiQuiet(AI_QUIET_MS);
+  }
+
+  private armAiQuiet(delay: number) {
+    if (this.aiQuietTimer !== null) return;
+    this.aiQuietTimer = window.setTimeout(() => {
+      this.aiQuietTimer = null;
+      if (this.disposed || !this.aiTurn) return;
+      const quiet = Date.now() - this.aiOutputAt;
+      if (quiet < AI_QUIET_MS) {
+        this.armAiQuiet(AI_QUIET_MS - quiet);
+        return;
+      }
+      this.aiTurn = false;
+      this.emitCommandState("complete");
+    }, delay);
+  }
+
+  private endAiSession() {
+    if (this.aiQuietTimer !== null) {
+      window.clearTimeout(this.aiQuietTimer);
+      this.aiQuietTimer = null;
+    }
+    this.aiSession = false;
+    this.aiTurn = false;
   }
 
   /**
@@ -1251,6 +1351,9 @@ export class TerminalController {
    * *where* that text starts and *when* it was submitted.
    */
   private trackInput(data: string) {
+    // Before the alternate-screen check below: an agentic CLI may hold
+    // either buffer, and its turns are driven by these keystrokes.
+    if (this.aiSession) this.noteAiInput();
     const buf = this.term.buffer.active;
     if (buf.type !== "normal") {
       this.dropAnchor();

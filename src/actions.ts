@@ -83,10 +83,10 @@ export function ensureController(id: string): TerminalController {
     {
       onData: (data) => void api.writeSession(id, data).catch(() => undefined),
       onCommand: (command) => commandHistory.record(command, historyHost(id)),
-      onCommandState: (state) => {
+      onCommandState: (state, kind) => {
         const store = useStore.getState();
-        if (state === "running") store.markCommandStarted(id);
-        else if (state === "complete") store.markCommandCompleted(id);
+        if (state === "running") store.markCommandStarted(id, kind);
+        else if (state === "complete") store.markCommandCompleted(id, kind);
         else store.clearCommandActivity(id);
       },
       suggest: (input) => commandHistory.suggest(input, historyHost(id)),

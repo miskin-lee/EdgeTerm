@@ -14,6 +14,9 @@ import type {
   ThemeMode,
 } from "./types";
 
+/** What a tab's activity treatment stands for; see `Tab.activityKind`. */
+export type ActivityKind = "command" | "ai";
+
 export interface Tab {
   info: SessionInfo;
   /**
@@ -40,6 +43,12 @@ export interface Tab {
    * `complete` is an unread notification: selecting the tab acknowledges it.
    */
   commandActivity: "idle" | "running" | "complete";
+  /**
+   * What that activity is about: the submitted command, or one turn of an
+   * agentic CLI (Claude Code, Codex) that holds the terminal for a whole
+   * session and is only worth reporting while the assistant works.
+   */
+  activityKind: ActivityKind;
   message?: string;
   cols: number;
   rows: number;
@@ -317,10 +326,10 @@ interface AppStore {
   moveTab: (id: string, index: number) => void;
 
   applyState: (id: string, state: SessionState, message?: string) => void;
-  /** Records a command submitted to an interactive terminal. */
-  markCommandStarted: (id: string) => void;
+  /** Records a command, or an agentic CLI's turn, starting in a terminal. */
+  markCommandStarted: (id: string, kind?: ActivityKind) => void;
   /** Leaves an unread completion on a background tab until it is selected. */
-  markCommandCompleted: (id: string) => void;
+  markCommandCompleted: (id: string, kind?: ActivityKind) => void;
   /** Clears activity when a submitted write failed before reaching the shell. */
   clearCommandActivity: (id: string) => void;
   setSize: (id: string, cols: number, rows: number) => void;
@@ -459,6 +468,7 @@ export const useStore = create<AppStore>((set, get) => ({
       ordinal,
       state,
       commandActivity: "idle",
+      activityKind: "command",
       cols: 80,
       rows: 24,
     };
@@ -560,7 +570,9 @@ export const useStore = create<AppStore>((set, get) => ({
         message,
         // A command cannot remain in progress after its session ends; a
         // reconnect starts with a clean terminal activity state as well.
-        ...(state === "connected" ? {} : { commandActivity: "idle" as const }),
+        ...(state === "connected"
+          ? {}
+          : { commandActivity: "idle" as const, activityKind: "command" as const }),
       }),
     });
     // An ended session has nothing to type into; lock its terminal until a
@@ -568,19 +580,23 @@ export const useStore = create<AppStore>((set, get) => ({
     getController(id)?.setLocked(state === "closed" || state === "error");
   },
 
-  markCommandStarted(id) {
+  markCommandStarted(id, kind = "command") {
     set({
-      tabs: patchTab(get().tabs, id, { commandActivity: "running" }),
+      tabs: patchTab(get().tabs, id, {
+        commandActivity: "running",
+        activityKind: kind,
+      }),
     });
   },
 
-  markCommandCompleted(id) {
+  markCommandCompleted(id, kind = "command") {
     const state = get();
     set({
       tabs: patchTab(state.tabs, id, {
         // The active terminal already shows its returned prompt. Background
         // tabs retain a highlight until the user visits them.
         commandActivity: state.activeId === id ? "idle" : "complete",
+        activityKind: kind,
       }),
     });
   },

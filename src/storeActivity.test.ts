@@ -20,6 +20,7 @@ const makeTab = (id: string): Tab => ({
   ordinal: 0,
   state: "connected",
   commandActivity: "idle",
+  activityKind: "command",
   cols: 80,
   rows: 24,
 });

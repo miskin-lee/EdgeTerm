@@ -7,7 +7,7 @@ import {
   type CSSProperties,
 } from "react";
 
-import { tabTitle, useStore } from "../store";
+import { tabTitle, useStore, type Tab } from "../store";
 import { colorForSession } from "../types";
 import { ContextMenu, type MenuItem } from "./ContextMenu";
 import { Icon } from "./icons";
@@ -19,6 +19,18 @@ const EDGE_SCROLL_ZONE = 32;
 const EDGE_SCROLL_STEP = 6;
 /** Kept deliberately small: every open tab owns these DOM-only particles. */
 const COMMAND_PARTICLES = 6;
+
+/**
+ * What the tab's activity treatment is reporting, or null while there is
+ * nothing to report. An agentic CLI is named for what it is: its session
+ * lasts as long as the user keeps it open, so only the assistant's own turns
+ * are worth a running or a finished tab.
+ */
+function activityLabel(tab: Tab): string | null {
+  if (tab.commandActivity === "idle") return null;
+  const subject = tab.activityKind === "ai" ? "AI" : "command";
+  return `${subject} ${tab.commandActivity === "running" ? "running" : "finished"}`;
+}
 
 interface TabDrag {
   id: string;
@@ -71,11 +83,7 @@ export function TabStrip() {
   const listWasOpen = useRef(false);
   const listItems: MenuItem[] = tabs.map((tab) => ({
     label: `${tab.number}. ${tabTitle(tab)}${
-      tab.commandActivity === "running"
-        ? " · command running"
-        : tab.commandActivity === "complete"
-          ? " · command finished"
-          : ""
+      activityLabel(tab) ? ` · ${activityLabel(tab)}` : ""
     }`,
     checked: tab.info.id === activeId,
     mark: "radio" as const,
@@ -279,9 +287,9 @@ export function TabStrip() {
             onMouseDown={() => setActive(tab.info.id)}
             title={`${tab.info.protocol} · ${tab.info.address} · ${
               tab.commandActivity === "running"
-                ? "command running"
+                ? activityLabel(tab)
                 : tab.commandActivity === "complete"
-                  ? "command finished — select to view"
+                  ? `${activityLabel(tab)} — select to view`
                   : (tab.message ?? tab.state)
             }`}
           >

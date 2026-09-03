@@ -390,7 +390,10 @@ export function SenderPanel() {
         ids.map(async (id) => {
           const controller = getController(id);
           const tracked =
-            commandEnding !== "none" && controller?.noteCommandSent() === true;
+            commandEnding !== "none" &&
+            controller?.noteCommandSent(
+              typeof unit === "string" ? unit : undefined,
+            ) === true;
           try {
             if (typeof unit === "string") await api.writeSession(id, unit);
             else await api.writeSessionBinary(id, api.bytesToBase64(unit));
