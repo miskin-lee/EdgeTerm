@@ -2519,6 +2519,45 @@ textarea:focus {
   box-shadow: var(--shadow-dialog);
 }
 
+/* A backdrop click on a dialog that holds a form does not close it; the
+   dialog blinks its accent ring twice instead (see dialogAttention.ts).
+   `animationend` removes the class, so reduced motion swaps in a steady,
+   single-step ring rather than `animation: none`, which would never end. */
+.dialog.is-attention {
+  animation: dialog-attention 640ms ease-out;
+}
+
+@keyframes dialog-attention {
+  0%,
+  55% {
+    border-color: var(--accent);
+    box-shadow:
+      0 0 0 2px var(--accent),
+      var(--shadow-dialog);
+  }
+  30%,
+  100% {
+    border-color: var(--border-strong);
+    box-shadow: var(--shadow-dialog);
+  }
+}
+
+@keyframes dialog-attention-steady {
+  from,
+  to {
+    border-color: var(--accent);
+    box-shadow:
+      0 0 0 2px var(--accent),
+      var(--shadow-dialog);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dialog.is-attention {
+    animation: dialog-attention-steady 500ms steps(1, end);
+  }
+}
+
 .dialog-header {
   display: flex;
   align-items: center;

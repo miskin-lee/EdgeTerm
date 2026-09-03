@@ -10,6 +10,10 @@ import {
   sectionLabel,
 } from "../sessionGroups";
 import { useStore } from "../store";
+import {
+  endDialogAttention,
+  requestDialogAttention,
+} from "./dialogAttention";
 import { useDialogDrag } from "./useDialogDrag";
 import {
   colorForSession,
@@ -351,7 +355,15 @@ export function SessionDialog({ initial, onClose }: Props) {
     profile.parity === "odd" ? "O" : profile.parity === "even" ? "E" : "N";
 
   return (
-    <div className="dialog-backdrop" onMouseDown={onClose}>
+    <div
+      className="dialog-backdrop"
+      onMouseDown={(event) => {
+        // A stray click outside must not discard the form (issue #33): keep
+        // the dialog and its focus, and flash it so the click is answered.
+        event.preventDefault();
+        requestDialogAttention(dialogRef.current);
+      }}
+    >
       <div
         ref={dialogRef}
         className="dialog session-dialog"
@@ -359,6 +371,7 @@ export function SessionDialog({ initial, onClose }: Props) {
         aria-modal="true"
         aria-labelledby="session-dialog-title"
         onMouseDown={(event) => event.stopPropagation()}
+        onAnimationEnd={endDialogAttention}
       >
         <div className="dialog-header is-drag-handle" {...dragHandleProps}>
           <div>
