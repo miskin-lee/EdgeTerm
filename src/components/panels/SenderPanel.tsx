@@ -611,6 +611,7 @@ export function SenderPanel() {
           ...chain.map((scope) => ({
             label: labelOf(scope),
             checked: sameScope(scope, preselected),
+            mark: "radio" as const,
             action: () => pickSaveScope(scope),
           })),
         ];
@@ -725,6 +726,7 @@ export function SenderPanel() {
             children: LINE_ENDINGS.map(([value, label]) => ({
               label,
               checked: command.ending === value,
+              mark: "radio" as const,
               disabled: libraryBusy,
               action: () => void updateSaved(command, { ending: value }),
             })),
@@ -735,6 +737,7 @@ export function SenderPanel() {
             children: chain.map((scope) => ({
               label: labelOf(scope),
               checked: sameScope(command.scope, scope),
+              mark: "radio" as const,
               disabled: libraryBusy,
               action: () => void updateSaved(command, { scope }),
             })),

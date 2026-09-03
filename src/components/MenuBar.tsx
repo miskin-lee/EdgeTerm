@@ -22,7 +22,7 @@ import { tabTitle, useActiveTab, useStore } from "../store";
 import type { GutterMode, TerminalController } from "../terminal";
 import { getController } from "../terminalRegistry";
 import type { ThemeMode } from "../types";
-import { MenuCheck } from "./ContextMenu";
+import { MenuCheck, menuRole, type MenuMark } from "./ContextMenu";
 import { Icon } from "./icons";
 
 const TUTORIAL_URL = "https://miskin-lee.github.io/EdgeTerm/tutorial.html";
@@ -198,7 +198,10 @@ function hasCheckable(entries: (Entry | "separator")[]): boolean {
 interface Entry {
   label: string;
   shortcut?: string;
+  /** Marks the entry as a choice, and says whether it is the chosen one. */
   checked?: boolean;
+  /** The control shape a checkable entry draws; a box by default. */
+  mark?: MenuMark;
   action?: () => void;
   children?: Entry[];
 }
@@ -276,15 +279,18 @@ export function MenuBar(props: Props) {
       else setStatus("File transfers need a terminal session");
     });
 
+  // One gutter mode and one theme are in force at a time: radios, not boxes.
   const gutterEntry = (label: string, mode: GutterMode): Entry => ({
     label,
     checked: gutterMode === mode,
+    mark: "radio",
     action: () => setGutterMode(mode),
   });
 
   const themeEntry = (label: string, mode: ThemeMode): Entry => ({
     label,
     checked: theme === mode,
+    mark: "radio",
     action: () => setTheme(mode),
   });
 
@@ -608,11 +614,7 @@ export function MenuBar(props: Props) {
                             <button
                               key={child.label}
                               className={`menu-entry${child.checked ? " is-checked" : ""}`}
-                              role={
-                                child.checked !== undefined
-                                  ? "menuitemcheckbox"
-                                  : "menuitem"
-                              }
+                              role={menuRole(child)}
                               aria-checked={
                                 child.checked !== undefined
                                   ? child.checked
@@ -625,7 +627,10 @@ export function MenuBar(props: Props) {
                               }}
                             >
                               {showChildCheck && (
-                                <MenuCheck checked={child.checked} />
+                                <MenuCheck
+                                  checked={child.checked}
+                                  mark={child.mark}
+                                />
                               )}
                               <span className="menu-entry-label">
                                 {child.label}
@@ -640,11 +645,7 @@ export function MenuBar(props: Props) {
                     <button
                       key={entry.label}
                       className={`menu-entry${entry.checked ? " is-checked" : ""}`}
-                      role={
-                        entry.checked !== undefined
-                          ? "menuitemcheckbox"
-                          : "menuitem"
-                      }
+                      role={menuRole(entry)}
                       aria-checked={
                         entry.checked !== undefined ? entry.checked : undefined
                       }
@@ -655,7 +656,7 @@ export function MenuBar(props: Props) {
                       }}
                     >
                       {showCheck && (
-                        <MenuCheck checked={entry.checked} />
+                        <MenuCheck checked={entry.checked} mark={entry.mark} />
                       )}
                       <span className="menu-entry-label">{entry.label}</span>
                       {entry.shortcut && (

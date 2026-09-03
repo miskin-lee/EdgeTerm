@@ -8,14 +8,22 @@ import {
 
 import { Icon, type IconName } from "./icons";
 
+/**
+ * Which control a checkable entry draws in the leading column: a box for an
+ * independent on / off setting, a radio for one choice out of a set.
+ */
+export type MenuMark = "check" | "radio";
+
 export interface MenuAction {
   label: string;
   action?: () => void;
   disabled?: boolean;
   /** Destructive entries are tinted red. */
   danger?: boolean;
-  /** Shows a check mark column; true marks the entry. */
+  /** Marks the entry as a choice, and says whether it is the chosen one. */
   checked?: boolean;
+  /** The control shape a checkable entry draws; a box by default. */
+  mark?: MenuMark;
   /** A Codicon in the leading column, before the label. */
   icon?: IconName;
   /** The key combination that runs the same command, shown at the right. */
@@ -70,19 +78,39 @@ function hasLeading(items: MenuItem[]): boolean {
 }
 
 /**
- * The selection column of a dropdown entry: a check mark on the chosen
- * entry, a same-width blank on the rest so the labels line up. Shared with
- * the menubar's dropdowns.
+ * The selection column of a dropdown entry. A checkable entry always draws
+ * its control — an empty box or radio when it is off — so the rows that are
+ * choices read as choices before anything is picked; entries that are plain
+ * commands get a same-width blank so every label shares one left edge.
+ * Shared with the menubar's dropdowns.
  */
-export function MenuCheck({ checked }: { checked?: boolean }) {
+export function MenuCheck({
+  checked,
+  mark = "check",
+}: {
+  checked?: boolean;
+  mark?: MenuMark;
+}) {
+  if (checked === undefined) {
+    return <span className="menu-check" aria-hidden="true" />;
+  }
   return (
     <span
-      className={`menu-check${checked ? " is-checked" : ""}`}
+      className={`menu-check is-${mark}${checked ? " is-checked" : ""}`}
       aria-hidden="true"
     >
-      {checked && <Icon name="check" />}
+      {mark === "check" && checked && <Icon name="check" />}
     </span>
   );
+}
+
+/** The ARIA role of an entry: a checkbox, a radio, or a plain command. */
+export function menuRole(item: {
+  checked?: boolean;
+  mark?: MenuMark;
+}): "menuitem" | "menuitemcheckbox" | "menuitemradio" {
+  if (item.checked === undefined) return "menuitem";
+  return item.mark === "radio" ? "menuitemradio" : "menuitemcheckbox";
 }
 
 /** The leading column: the entry's icon, else its check mark or a blank. */
@@ -94,7 +122,7 @@ function MenuLeading({ entry }: { entry: MenuAction }) {
       </span>
     );
   }
-  return <MenuCheck checked={entry.checked} />;
+  return <MenuCheck checked={entry.checked} mark={entry.mark} />;
 }
 
 /**
@@ -198,7 +226,7 @@ export function ContextMenu({
         <button
           key={key}
           type="button"
-          role={item.checked !== undefined ? "menuitemcheckbox" : "menuitem"}
+          role={menuRole(item)}
           aria-checked={item.checked !== undefined ? item.checked : undefined}
           className={[
             "menu-entry",

@@ -43,6 +43,7 @@
   --border-menu: #3f3f3f;
   --menu-highlight: rgba(255, 255, 255, 0.06);
   --menu-separator: rgba(255, 255, 255, 0.09);
+  --menu-mark: rgba(255, 255, 255, 0.32);
   --bg-track: #2d2d2d;
   --bg-knob: #4b4b4b;
   --shadow-knob: 0 1px 2px rgba(0, 0, 0, 0.4);
@@ -120,6 +121,7 @@
   --border-menu: #d6d6d6;
   --menu-highlight: rgba(255, 255, 255, 0.9);
   --menu-separator: rgba(0, 0, 0, 0.09);
+  --menu-mark: rgba(0, 0, 0, 0.32);
   --bg-track: #e6e6e6;
   --bg-knob: #ffffff;
   --shadow-knob: 0 1px 2px rgba(0, 0, 0, 0.14);
@@ -480,12 +482,85 @@ textarea:focus {
   color: var(--accent);
 }
 
+/* A checkable entry always draws its control, on or off, so a dropdown says
+   which of its rows are choices before anything is picked: a rounded box for
+   an independent setting, a circle for one choice out of a set. Rows that are
+   plain commands keep the blank of the same width. */
+.menu-check.is-check,
+.menu-check.is-radio {
+  position: relative;
+  border: 1px solid var(--menu-mark);
+  transition:
+    background-color 100ms ease,
+    border-color 100ms ease;
+}
+
+.menu-check.is-check {
+  border-radius: 5px;
+}
+
+.menu-check.is-radio {
+  border-radius: 50%;
+}
+
+/* The codicon keeps its own 16px box, centred over the smaller control. */
+.menu-check.is-check .icon {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+}
+
+.menu-check.is-check.is-checked {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--accent-contrast);
+}
+
+.menu-check.is-radio.is-checked {
+  border-color: var(--accent);
+}
+
+.menu-check.is-radio.is-checked::after {
+  content: "";
+  position: absolute;
+  inset: 3.5px;
+  border-radius: 50%;
+  background: var(--accent);
+}
+
 .menu-entry:hover .menu-icon,
 .menu-entry:hover .menu-check,
 .menu-entry:focus-visible .menu-icon,
 .menu-entry:focus-visible .menu-check,
 .menu-submenu-entry:hover > .menu-entry .menu-icon {
   color: inherit;
+}
+
+/* On the pointed row the accent is the background, so the control inverts:
+   the frame and the filled state are drawn in the row's own text colour. */
+.menu-entry:hover .menu-check.is-check,
+.menu-entry:hover .menu-check.is-radio,
+.menu-entry:focus-visible .menu-check.is-check,
+.menu-entry:focus-visible .menu-check.is-radio {
+  border-color: color-mix(in srgb, var(--accent-contrast) 70%, transparent);
+}
+
+.menu-entry:hover .menu-check.is-check.is-checked,
+.menu-entry:focus-visible .menu-check.is-check.is-checked {
+  background: var(--accent-contrast);
+  border-color: var(--accent-contrast);
+  color: var(--accent);
+}
+
+.menu-entry:hover .menu-check.is-radio.is-checked,
+.menu-entry:focus-visible .menu-check.is-radio.is-checked {
+  border-color: var(--accent-contrast);
+}
+
+.menu-entry:hover .menu-check.is-radio.is-checked::after,
+.menu-entry:focus-visible .menu-check.is-radio.is-checked::after {
+  background: var(--accent-contrast);
 }
 
 .menu-entry-label {
@@ -874,6 +949,10 @@ textarea:focus {
 
 .menu-entry:disabled .menu-icon {
   color: inherit;
+}
+
+.menu-entry:disabled .menu-check {
+  opacity: 0.55;
 }
 
 .menu-entry:disabled:hover {
@@ -2515,7 +2594,7 @@ textarea:focus {
   overflow: auto;
   background: var(--bg-panel);
   border: 1px solid var(--border-strong);
-  border-radius: 8px;
+  border-radius: 10px;
   box-shadow: var(--shadow-dialog);
 }
 
@@ -2606,52 +2685,88 @@ textarea:focus {
 .session-dialog {
   display: flex;
   flex-direction: column;
-  width: min(540px, calc(100vw - 32px));
-  max-height: min(760px, calc(100vh - 32px));
+  width: min(560px, calc(100vw - 32px));
+  max-height: min(780px, calc(100vh - 32px));
   overflow: hidden;
 }
 
-.session-dialog .dialog-header {
+/* Icon tile, title and live target line, then the close button. */
+.session-dialog-header {
   flex: 0 0 auto;
-  padding: 14px 18px;
+  gap: 12px;
+  padding: 14px 16px;
+}
+
+/* The tile wears the session colour picked in the form, as a tint rather
+   than a fill so the icon stays legible whichever colour that is. */
+.session-dialog-badge {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 9px;
+  color: var(--session-color);
+  background: color-mix(in srgb, var(--session-color) 16%, transparent);
+  box-shadow: inset 0 0 0 1px
+    color-mix(in srgb, var(--session-color) 34%, transparent);
+}
+
+.session-dialog-heading {
+  flex: 1;
+  min-width: 0;
 }
 
 .session-dialog-title {
   color: var(--fg);
   font-size: 14px;
   font-weight: 600;
+  line-height: 1.3;
+}
+
+.session-dialog-subtitle {
+  overflow: hidden;
+  color: var(--fg-faint);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .session-dialog-body {
   min-height: 0;
   overflow-y: auto;
-  gap: 12px;
-  padding: 14px 18px;
+  gap: 14px;
+  padding: 16px;
 }
 
+/* Each section is a card on the dialog surface rather than a run of fields
+   under a rule: the form reads as a few blocks instead of one long column. */
 .session-section {
-  padding: 0 0 14px;
-  border-bottom: 1px solid var(--border);
-}
-
-.session-section:last-of-type {
-  padding-bottom: 0;
-  border-bottom: 0;
+  padding: 13px 14px 14px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--bg-panel-alt);
 }
 
 .session-section-heading {
   display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 12px;
-  margin-bottom: 10px;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 11px;
   color: var(--fg);
   font-size: 12px;
   font-weight: 600;
 }
 
+.session-section-heading .icon {
+  color: var(--fg-dim);
+}
+
 .session-section-heading small {
   overflow: hidden;
+  margin-left: auto;
   color: var(--fg-faint);
   font-size: 10px;
   font-weight: 400;
@@ -2662,7 +2777,7 @@ textarea:focus {
 .session-form-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 10px 12px;
+  gap: 11px 12px;
 }
 
 .session-field {
@@ -2679,16 +2794,29 @@ textarea:focus {
 .session-field-label {
   color: var(--fg-dim);
   font-size: 11px;
+  font-weight: 500;
 }
 
 .session-field input,
 .session-field select {
   width: 100%;
   min-width: 0;
-  height: 28px;
-  padding: 4px 7px;
-  border-radius: 3px;
-  background: var(--bg-panel-alt);
+  height: 30px;
+  padding: 4px 8px;
+  border-radius: 6px;
+  background: var(--bg-field);
+  transition:
+    border-color 100ms ease,
+    box-shadow 100ms ease;
+}
+
+/* A soft ring rather than the browser outline, so focus reads at a glance
+   without moving anything in the grid. */
+.session-field input:focus,
+.session-field select:focus,
+.session-field .input-with-suffix:focus-within {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 22%, transparent);
 }
 
 /* No vertical padding on the select: WebKitGTK's Adwaita theme adds its own
@@ -2711,7 +2839,36 @@ textarea:focus {
   white-space: nowrap;
 }
 
-.session-field-hint.is-wide {
+/* A hint too long for one line: a tinted block that wraps, with the icon
+   saying whether it explains something or warns about it. */
+.session-note {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 8px 10px;
+  border: 1px solid color-mix(in srgb, var(--accent) 22%, transparent);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--accent) 8%, transparent);
+  color: var(--fg-dim);
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+.session-note .icon {
+  margin-top: 1px;
+  color: var(--accent);
+}
+
+.session-note.is-warning {
+  border-color: color-mix(in srgb, var(--yellow) 32%, transparent);
+  background: color-mix(in srgb, var(--yellow) 12%, transparent);
+}
+
+.session-note.is-warning .icon {
+  color: var(--yellow);
+}
+
+.session-note.is-wide {
   grid-column: 1 / -1;
 }
 
@@ -2719,31 +2876,37 @@ textarea:focus {
   display: grid;
   grid-template-columns: repeat(8, 20px);
   align-items: center;
-  gap: 5px;
-  min-height: 28px;
+  gap: 6px;
+  min-height: 30px;
 }
 
 .session-color-option {
   width: 20px;
   height: 20px;
   padding: 0;
-  border: 2px solid transparent;
-  border-radius: 4px;
+  border: 0;
+  border-radius: 50%;
   box-shadow: 0 0 0 1px var(--swatch-ring);
+  transition:
+    transform 120ms ease,
+    box-shadow 120ms ease;
 }
 
 .session-color-option:hover {
-  filter: brightness(1.15);
+  transform: scale(1.12);
 }
 
+/* The chosen swatch keeps a ring held off the colour by the card behind it. */
 .session-color-option.is-selected {
-  border-color: var(--fg);
-  box-shadow: 0 0 0 1px var(--bg-field);
+  transform: scale(1.06);
+  box-shadow:
+    0 0 0 2px var(--bg-panel-alt),
+    0 0 0 3px var(--fg);
 }
 
 .session-color-option:focus-visible {
   outline: 2px solid var(--accent);
-  outline-offset: 2px;
+  outline-offset: 3px;
 }
 
 .serial-port-row {
@@ -2753,14 +2916,14 @@ textarea:focus {
 }
 
 .serial-refresh {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 5px;
-  min-width: 30px;
-  width: 30px;
-  height: 28px;
+  min-width: 32px;
+  width: 32px;
   padding: 0;
+  color: var(--fg-dim);
+}
+
+.serial-refresh:hover {
+  color: var(--fg);
 }
 
 .input-with-suffix {
@@ -2768,18 +2931,22 @@ textarea:focus {
   align-items: stretch;
   overflow: hidden;
   border: 1px solid var(--border);
-  border-radius: 3px;
-  background: var(--bg-panel-alt);
-}
-
-.input-with-suffix:focus-within {
-  border-color: var(--accent);
+  border-radius: 6px;
+  background: var(--bg-field);
+  transition:
+    border-color 100ms ease,
+    box-shadow 100ms ease;
 }
 
 .session-field .input-with-suffix input {
-  height: 26px;
+  height: 28px;
   border: 0;
   border-radius: 0;
+  background: transparent;
+}
+
+.session-field .input-with-suffix input:focus {
+  box-shadow: none;
 }
 
 .input-with-suffix > span {
@@ -2788,7 +2955,7 @@ textarea:focus {
   padding: 0 9px;
   border-left: 1px solid var(--border);
   color: var(--fg-faint);
-  background: var(--bg-panel-alt);
+  background: var(--bg-panel);
   font-size: 10px;
 }
 
@@ -2802,14 +2969,38 @@ textarea:focus {
 }
 
 .btn {
-  padding: 5px 14px;
-  border-radius: 4px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  height: 30px;
+  padding: 0 14px;
+  border-radius: 6px;
   border: 1px solid var(--border-strong);
   background: var(--bg-panel-alt);
+  transition:
+    background-color 100ms ease,
+    border-color 100ms ease,
+    filter 100ms ease;
 }
 
 .btn:hover {
   background: var(--bg-hover);
+}
+
+.btn:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.btn:disabled {
+  cursor: default;
+  opacity: 0.5;
+}
+
+.btn:disabled:hover {
+  background: var(--bg-panel-alt);
+  filter: none;
 }
 
 .btn.is-primary {
@@ -2817,10 +3008,15 @@ textarea:focus {
   border-color: var(--accent);
   color: var(--accent-contrast);
   font-weight: 600;
+  box-shadow: 0 1px 2px color-mix(in srgb, var(--accent) 35%, transparent);
 }
 
 .btn.is-primary:hover {
   filter: brightness(1.1);
+}
+
+.btn.is-primary:disabled:hover {
+  background: var(--accent);
 }
 
 .btn.is-danger {
@@ -2836,11 +3032,23 @@ textarea:focus {
 
 .dialog-error {
   padding: 8px 10px;
-  border-radius: 4px;
+  border-radius: 6px;
   background: color-mix(in srgb, var(--red) 12%, transparent);
   border: 1px solid color-mix(in srgb, var(--red) 35%, transparent);
   color: var(--red);
   user-select: text;
+}
+
+/* The connection error keeps its icon beside the text it belongs to. */
+.session-dialog-error {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  line-height: 1.45;
+}
+
+.session-dialog-error .icon {
+  margin-top: 1px;
 }
 
 .font-size-dialog {
@@ -3071,39 +3279,119 @@ textarea:focus {
   }
 }
 
-.kind-picker {
+/* The protocol is picked from cards rather than a segmented strip: each one
+   carries the icon the session will wear, its name and what it is for, and
+   the chosen card is tinted in the accent instead of merely darker. */
+.protocol-picker {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 0;
+  gap: 8px;
+}
+
+.protocol-option {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  padding: 9px 6px 8px;
+  border: 1px solid var(--border-strong);
+  border-radius: 9px;
+  background: transparent;
+  color: var(--fg-dim);
+  transition:
+    background-color 120ms ease,
+    border-color 120ms ease,
+    color 120ms ease;
+}
+
+.protocol-option:hover {
+  background: var(--bg-hover);
+  color: var(--fg);
+}
+
+.protocol-option.is-active {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+  color: var(--fg);
+  box-shadow: inset 0 0 0 1px var(--accent);
+}
+
+.protocol-option:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.protocol-option-icon {
+  display: inline-flex;
+  color: var(--fg-faint);
+}
+
+.protocol-option:hover .protocol-option-icon,
+.protocol-option.is-active .protocol-option-icon {
+  color: var(--accent);
+}
+
+.protocol-option-label {
+  max-width: 100%;
   overflow: hidden;
+  font-size: 12px;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.protocol-option-hint {
+  max-width: 100%;
+  overflow: hidden;
+  color: var(--fg-faint);
+  font-size: 10px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* The SFTP / FTP sub-choice stays a segmented control: two names on one
+   track, the chosen one lit in the same accent tint as the cards above. */
+.kind-picker {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(0, 1fr);
+  gap: 3px;
+  padding: 3px;
   border: 1px solid var(--border);
-  border-radius: 3px;
-  background: var(--bg-field);
+  border-radius: 8px;
+  background: var(--bg-track);
 }
 
 .kind-option {
   min-width: 0;
-  height: 28px;
-  padding: 4px 10px;
-  border-right: 1px solid var(--border);
+  height: 26px;
+  padding: 0 10px;
+  border-radius: 6px;
   background: transparent;
   text-align: center;
   color: var(--fg-dim);
-}
-
-.kind-option:last-child {
-  border-right: 0;
+  transition:
+    background-color 120ms ease,
+    color 120ms ease;
 }
 
 .kind-option:hover {
   background: var(--bg-hover);
+  color: var(--fg);
 }
 
 .kind-option.is-active {
-  background: var(--bg-active);
+  background: color-mix(in srgb, var(--accent) 16%, transparent);
   color: var(--fg);
   font-weight: 600;
-  box-shadow: inset 0 -2px 0 var(--accent);
+  box-shadow: inset 0 0 0 1px
+    color-mix(in srgb, var(--accent) 55%, transparent);
+}
+
+.kind-option:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
 }
 
 @media (max-width: 560px) {
@@ -3116,8 +3404,14 @@ textarea:focus {
     grid-template-columns: minmax(0, 1fr);
   }
 
-  .session-field.is-wide {
+  .session-field.is-wide,
+  .session-note.is-wide {
     grid-column: auto;
+  }
+
+  /* Two rows of two cards rather than four squeezed names. */
+  .protocol-picker {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
 

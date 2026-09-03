@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type CSSProperties } from "react";
 
 import { openSession } from "../actions";
 import * as api from "../api";
@@ -24,7 +24,7 @@ import {
   type SessionKind,
   type SessionProfile,
 } from "../types";
-import { Icon } from "./icons";
+import { Icon, type IconName } from "./icons";
 
 interface Props {
   initial: SessionProfile | null;
@@ -61,14 +61,44 @@ const defaultPort = (kind: SessionKind, current?: number | null) =>
  * Protocol picker entries. FTP and SFTP share one "(S)FTP" choice, mirroring
  * the Session panel's merged section; a sub-toggle inside the connection
  * section picks the actual protocol. `kinds[0]` is the default when the choice
- * is selected fresh — SFTP, since it is the encrypted one.
+ * is selected fresh — SFTP, since it is the encrypted one. The icon and the
+ * one-word hint are what the picker cards show under the name.
  */
-const PROTOCOL_OPTIONS: { label: string; kinds: SessionKind[] }[] = [
-  { label: "SSH", kinds: ["ssh"] },
-  { label: "(S)FTP", kinds: ["sftp", "ftp"] },
-  { label: "Shell", kinds: ["local"] },
-  { label: "Serial", kinds: ["serial"] },
+const PROTOCOL_OPTIONS: {
+  label: string;
+  hint: string;
+  icon: IconName;
+  kinds: SessionKind[];
+}[] = [
+  { label: "SSH", hint: "Remote shell", icon: "server", kinds: ["ssh"] },
+  {
+    label: "(S)FTP",
+    hint: "File transfer",
+    icon: "folder",
+    kinds: ["sftp", "ftp"],
+  },
+  { label: "Shell", hint: "Local shell", icon: "terminal", kinds: ["local"] },
+  {
+    label: "Serial",
+    hint: "Device port",
+    icon: "circuit-board",
+    kinds: ["serial"],
+  },
 ];
+
+/** The picker icon of the choice a kind belongs to; also the dialog's badge. */
+const protocolIcon = (kind: SessionKind): IconName =>
+  PROTOCOL_OPTIONS.find((option) => option.kinds.includes(kind))?.icon ??
+  "server";
+
+/** How a kind is named in the header line, where the protocol is spelled out. */
+const PROTOCOL_NAMES: Record<SessionKind, string> = {
+  ssh: "SSH",
+  sftp: "SFTP",
+  ftp: "FTP",
+  local: "Shell",
+  serial: "Serial",
+};
 
 /** Column count of `.session-color-picker`; keep in sync with styles.css. */
 const COLOR_PICKER_COLUMNS = 8;
@@ -212,6 +242,25 @@ export function SessionDialog({ initial, onClose }: Props) {
       : null,
   });
 
+  // One line under the title saying what the form connects to as it is filled
+  // in, so the header always names the target rather than repeating the mode.
+  const summary = (): string => {
+    const name = PROTOCOL_NAMES[profile.kind];
+    if (profile.kind === "local") {
+      return `${name} · ${profile.shell?.trim() || (IS_WINDOWS ? "%COMSPEC%" : "$SHELL")}`;
+    }
+    if (profile.kind === "serial") {
+      const port = profile.portName?.trim();
+      return port
+        ? `${name} · ${port} · ${profile.baudRate ?? 115200} baud`
+        : `${name} · no port selected`;
+    }
+    const host = profile.host?.trim();
+    if (!host) return `${name} · no host yet`;
+    const user = profile.username?.trim();
+    return `${name} · ${user ? `${user}@` : ""}${host}:${profile.port ?? defaultPort(profile.kind)}`;
+  };
+
   // ProxyJump: tunnel this session through another saved SSH session.
   // Offered for SSH and SFTP alike, since both ride the same transport.
   const renderJumpHostField = () => (
@@ -237,10 +286,13 @@ export function SessionDialog({ initial, onClose }: Props) {
           ))}
         </select>
       </label>
-      <small className="session-field-hint is-wide">
-        Connect through a saved SSH session (ProxyJump) to reach a host that
-        is only visible from its network.
-      </small>
+      <div className="session-note is-wide">
+        <Icon name="info" />
+        <span>
+          Connect through a saved SSH session (ProxyJump) to reach a host that
+          is only visible from its network.
+        </span>
+      </div>
     </>
   );
 
@@ -373,13 +425,35 @@ export function SessionDialog({ initial, onClose }: Props) {
         onMouseDown={(event) => event.stopPropagation()}
         onAnimationEnd={endDialogAttention}
       >
-        <div className="dialog-header is-drag-handle" {...dragHandleProps}>
-          <div>
+        <div
+          className="dialog-header session-dialog-header is-drag-handle"
+          {...dragHandleProps}
+        >
+          {/* The badge carries the session colour picked below, so the
+              dialog wears the identity the tab will have. */}
+          <span
+            className="session-dialog-badge"
+            style={
+              {
+                "--session-color": profile.color ?? "var(--accent)",
+              } as CSSProperties
+            }
+            aria-hidden="true"
+          >
+            <Icon name={protocolIcon(profile.kind)} />
+          </span>
+          <div className="session-dialog-heading">
             <div id="session-dialog-title" className="session-dialog-title">
               {initial?.id ? "Edit Session" : "New Session"}
             </div>
+            <div className="session-dialog-subtitle">{summary()}</div>
           </div>
-          <button className="panel-action" onClick={onClose} aria-label="Close">
+          <button
+            className="panel-action"
+            type="button"
+            onClick={onClose}
+            aria-label="Close"
+          >
             <Icon name="close" />
           </button>
         </div>
@@ -387,13 +461,18 @@ export function SessionDialog({ initial, onClose }: Props) {
         <div className="dialog-body session-dialog-body">
           <section className="session-section">
             <div className="session-section-heading">
+              <Icon name="tag" />
               <span>Session</span>
               <small>Identity and protocol</small>
             </div>
             <div className="session-form-grid">
               <div className="session-field is-wide">
                 <span className="session-field-label">Protocol</span>
-                <div className="kind-picker">
+                <div
+                  className="protocol-picker"
+                  role="radiogroup"
+                  aria-label="Protocol"
+                >
                   {PROTOCOL_OPTIONS.map((option) => {
                     const active = option.kinds.includes(profile.kind);
                     // Keep the current sub-choice when the group already
@@ -402,7 +481,10 @@ export function SessionDialog({ initial, onClose }: Props) {
                     return (
                       <button
                         key={option.label}
-                        className={`kind-option${active ? " is-active" : ""}`}
+                        type="button"
+                        role="radio"
+                        aria-checked={active}
+                        className={`protocol-option${active ? " is-active" : ""}`}
                         onClick={() =>
                           patch({
                             kind: target,
@@ -421,7 +503,15 @@ export function SessionDialog({ initial, onClose }: Props) {
                           })
                         }
                       >
-                        {option.label}
+                        <span className="protocol-option-icon">
+                          <Icon name={option.icon} />
+                        </span>
+                        <span className="protocol-option-label">
+                          {option.label}
+                        </span>
+                        <small className="protocol-option-hint">
+                          {option.hint}
+                        </small>
                       </button>
                     );
                   })}
@@ -526,6 +616,7 @@ export function SessionDialog({ initial, onClose }: Props) {
           {profile.kind === "ssh" && (
             <section className="session-section">
               <div className="session-section-heading">
+                <Icon name="server" />
                 <span>SSH connection</span>
                 <small>Server and authentication</small>
               </div>
@@ -572,6 +663,7 @@ export function SessionDialog({ initial, onClose }: Props) {
           {(profile.kind === "sftp" || profile.kind === "ftp") && (
             <section className="session-section">
               <div className="session-section-heading">
+                <Icon name="folder" />
                 <span>(S)FTP connection</span>
                 <small>
                   {profile.kind === "sftp"
@@ -667,11 +759,14 @@ export function SessionDialog({ initial, onClose }: Props) {
                       />
                     </label>
 
-                    <small className="session-field-hint is-wide">
-                      Standard FTP sends credentials and file contents without
-                      encryption. Use it only on a trusted network — choose SFTP
-                      when transport security is required.
-                    </small>
+                    <div className="session-note is-warning is-wide">
+                      <Icon name="warning" />
+                      <span>
+                        Standard FTP sends credentials and file contents
+                        without encryption. Use it only on a trusted network —
+                        choose SFTP when transport security is required.
+                      </span>
+                    </div>
                   </>
                 )}
               </div>
@@ -681,6 +776,7 @@ export function SessionDialog({ initial, onClose }: Props) {
           {profile.kind === "local" && (
             <section className="session-section">
               <div className="session-section-heading">
+                <Icon name="terminal" />
                 <span>Local shell</span>
                 <small>Process and working directory</small>
               </div>
@@ -710,6 +806,7 @@ export function SessionDialog({ initial, onClose }: Props) {
           {profile.kind === "serial" && (
             <section className="session-section">
               <div className="session-section-heading">
+                <Icon name="circuit-board" />
                 <span>Serial connection</span>
                 <small>
                   {profile.dataBits ?? 8}-{parityCode}-{profile.stopBits ?? 1}
@@ -737,6 +834,7 @@ export function SessionDialog({ initial, onClose }: Props) {
                       ))}
                     </select>
                     <button
+                      type="button"
                       className="btn serial-refresh"
                       onClick={() =>
                         api
@@ -747,7 +845,7 @@ export function SessionDialog({ initial, onClose }: Props) {
                       title="Refresh serial ports"
                       aria-label="Refresh serial ports"
                     >
-                      <span aria-hidden="true">⟳</span>
+                      <Icon name="refresh" />
                     </button>
                   </div>
                   <small className="session-field-hint">
@@ -855,17 +953,29 @@ export function SessionDialog({ initial, onClose }: Props) {
             </section>
           )}
 
-          {error && <div className="dialog-error">{error}</div>}
+          {error && (
+            <div className="dialog-error session-dialog-error" role="alert">
+              <Icon name="error" />
+              <span>{error}</span>
+            </div>
+          )}
         </div>
 
         <div className="dialog-footer">
-          <button className="btn" onClick={onClose}>
+          <button type="button" className="btn" onClick={onClose}>
             Cancel
           </button>
-          <button className="btn" onClick={save} disabled={busy}>
+          <button type="button" className="btn" onClick={save} disabled={busy}>
+            <Icon name="save" />
             Save
           </button>
-          <button className="btn is-primary" onClick={connect} disabled={busy}>
+          <button
+            type="button"
+            className="btn is-primary"
+            onClick={connect}
+            disabled={busy}
+          >
+            <Icon name="plug" />
             {busy ? "Connecting…" : "Connect"}
           </button>
         </div>

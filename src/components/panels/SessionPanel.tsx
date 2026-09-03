@@ -328,6 +328,7 @@ export function SessionPanel({ onEditProfile, onNewSession }: Props) {
       {
         label: `${sectionLabel(profile.kind)} (no group)`,
         checked: current === null,
+        mark: "radio",
         action: move(null),
       },
     ];
@@ -339,6 +340,7 @@ export function SessionPanel({ onEditProfile, onNewSession }: Props) {
           label: group.name,
           indent: depth,
           checked: current === group.id,
+          mark: "radio",
           action: move(group.id),
         });
       }

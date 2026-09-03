@@ -78,6 +78,7 @@ export function TabStrip() {
           : ""
     }`,
     checked: tab.info.id === activeId,
+    mark: "radio" as const,
     action: () => setActive(tab.info.id),
   }));
 
