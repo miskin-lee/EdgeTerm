@@ -278,7 +278,6 @@ export class TerminalController {
   private gutterMode: GutterMode = "both";
   private themeMode: ThemeMode;
   private scrollback: number;
-  private pendingShellClear = false;
   private locked = false;
   /** Command history capture + completion popup. Opt-in via the Edit menu. */
   private suggestionsOn = false;
@@ -299,6 +298,8 @@ export class TerminalController {
   /** Input the user dismissed the popup for (Esc / accept); "" = none. */
   private dismissedInput = "";
   private popupSyncScheduled = false;
+  /** A viewport pass is queued for the end of the current task; see onScroll. */
+  private viewportSyncQueued = false;
   /**
    * Semantic coloring is viewport-driven: only rows in and around the
    * viewport are colored, on the frame they become visible or change. Three
@@ -429,22 +430,28 @@ export class TerminalController {
       else if (marker === "D" || marker === "A") this.finishCommand();
       return marker === "A" || marker === "B" || marker === "C" || marker === "D";
     });
+    // A shell's `clear` (ED 2, then ED 3 from ncurses 6) restarts the line
+    // numbering and drops the scrollback, the way WindTerm does. Both run
+    // right here, while the sequence is being parsed and before xterm's own
+    // erase: a full-screen program that paints in the normal buffer (Linux
+    // top, anything under a TERM without smcup) clears the screen and draws
+    // its frame in the same chunk, and clearing after the chunk had parsed
+    // wiped that frame, so top showed nothing until its next refresh
+    // (issue #32). The handler falls through so xterm still erases.
     this.term.parser.registerCsiHandler({ final: "J" }, (params) => {
+      if (this.term.buffer.active.type !== "normal") return false;
       const mode = params[0];
-      if (
-        (mode === 2 || mode === 3) &&
-        this.term.buffer.active.type === "normal"
-      ) {
-        this.pendingShellClear = true;
-      }
+      if (mode === 2) this.screenCleared();
+      else if (mode === 3) this.scrollbackErased();
       return false;
     });
+    this.term.buffer.onBufferChange((buffer) => {
+      // Decorations are matched to viewport rows by marker line alone, so
+      // the normal buffer's colors would show through the alternate screen
+      // of a full-screen program. The rows are recolored on the way back.
+      if (buffer.type === "alternate") this.disposeAllSemanticColors();
+    });
     this.term.onWriteParsed(() => {
-      if (this.pendingShellClear) {
-        this.pendingShellClear = false;
-        if (this.commandRunning) this.commandOutputAdvanced = true;
-        this.clearBufferAndMetadata();
-      }
       // New output: xterm has updated the buffer and queued its repaint but
       // not painted yet, so decorations registered here land in that same
       // frame. Coloring only from `onRender` (which fires *after* the
@@ -488,11 +495,15 @@ export class TerminalController {
     this.term.onScroll(() => {
       // Fires synchronously while xterm handles the scroll (wheel, scrollbar
       // drag, or its own scrollTop during an output flood), before the
-      // repaint it queues: the decorations land in the same paint. Rows
-      // colored here keep their state and are skipped by the `onRender`
-      // pass. New output is handled by the `onWriteParsed` hook.
-      this.refreshSemanticColors();
-      this.syncGutter();
+      // repaint it queues. The work is deferred to a microtask: that still
+      // runs before the paint, so the decorations land in the same frame,
+      // but an output flood, which scrolls once per line and fires this
+      // thousands of times per parse slice, pays for one viewport pass per
+      // slice instead of one per line (per line it throttled `seq 1 300000`
+      // to ~10k lines/s). Rows colored here keep their state and are skipped
+      // by the `onRender` pass. New output is handled by the `onWriteParsed`
+      // hook.
+      this.queueViewportSync();
       if (this.inputAnchor || this.candidates.length) this.schedulePopupSync();
     });
     this.term.attachCustomKeyEventHandler((event) => {
@@ -940,6 +951,25 @@ export class TerminalController {
     this.clearBufferAndMetadata();
   }
 
+  /** ED 2 in the normal buffer: the screen is about to be erased. */
+  private screenCleared() {
+    if (this.commandRunning) this.commandOutputAdvanced = true;
+    this.clearBufferAndMetadata();
+  }
+
+  /**
+   * ED 3 in the normal buffer: xterm is about to drop the lines above the
+   * viewport and keep the screen. The line metadata follows, so the top row
+   * becomes line 1; the semantic markers move with xterm's own trim.
+   */
+  private scrollbackErased() {
+    const dropped = this.term.buffer.active.length - this.term.rows;
+    if (dropped <= 0) return;
+    this.lineTimes.splice(0, dropped);
+    this.firstLineNumber = 1;
+    this.invalidateGutter();
+  }
+
   private clearBufferAndMetadata() {
     // Dispose our decorations while their markers still hold valid lines.
     // term.clear()'s own mass marker disposal invalidates the marker first,
@@ -1300,6 +1330,18 @@ export class TerminalController {
       }
     }
     return text;
+  }
+
+  /** Recolors and re-numbers the viewport once the current task is done. */
+  private queueViewportSync() {
+    if (this.viewportSyncQueued || this.disposed) return;
+    this.viewportSyncQueued = true;
+    queueMicrotask(() => {
+      this.viewportSyncQueued = false;
+      if (this.disposed) return;
+      this.refreshSemanticColors();
+      this.syncGutter();
+    });
   }
 
   private schedulePopupSync() {
