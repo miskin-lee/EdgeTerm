@@ -21,6 +21,7 @@ import { matchAppShortcut } from "./shortcuts";
 import {
   isShellPrompt,
   semanticLine,
+  shellPromptEnd,
   type SemanticRange,
 } from "./semanticColors";
 import type { TransferNoticeKind } from "./terminalTransfer";
@@ -1135,10 +1136,24 @@ export class TerminalController {
     }
 
     const buf = this.term.buffer.active;
-    const row = anchor?.marker.line ?? buf.baseY + buf.cursorY;
-    const col = anchor?.col ?? buf.cursorX;
-    const line = row >= 0 ? buf.getLine(row) : undefined;
-    const prompt = line?.translateToString(false, 0, col) ?? "";
+    const cursorRow = buf.baseY + buf.cursorY;
+    const anchored = anchor !== undefined && this.anchorOnCursorLine(anchor);
+
+    let prompt: string;
+    if (anchor && !anchored) {
+      // The anchor no longer marks where the prompt ends, so read the
+      // boundary off the submitted line itself. Without a recognizable
+      // prompt there is no signature to wait for, and claiming a command
+      // that can never complete is worse than tracking none.
+      const text = this.cursorLine()?.text ?? "";
+      const end = shellPromptEnd(text);
+      if (end < 0) return false;
+      prompt = text.slice(0, end);
+    } else {
+      const row = anchored ? anchor.marker.line : cursorRow;
+      const col = anchored ? anchor.col : buf.cursorX;
+      prompt = buf.getLine(row)?.translateToString(false, 0, col) ?? "";
+    }
 
     this.commandMarker?.dispose();
     this.commandMarker = this.term.registerMarker(0);
@@ -1150,6 +1165,24 @@ export class TerminalController {
     this.commandRunning = true;
     this.callbacks.onCommandState("running");
     return true;
+  }
+
+  /**
+   * True while the anchor still sits on the line the cursor is editing, the
+   * only case in which it says anything about that line. Keystrokes a
+   * foreground program consumed leave one behind pointing into the screen
+   * that program painted — `q` to leave Linux top, which runs in the normal
+   * buffer and never sees an Enter — and a scrollback trim retires its
+   * marker outright. A prompt read from there is never printed again, so the
+   * command would stay "running" for the rest of the session, and so would
+   * every command after it, because a running one blocks the next.
+   */
+  private anchorOnCursorLine(anchor: InputAnchor): boolean {
+    if (anchor.marker.isDisposed) return false;
+    const buf = this.term.buffer.active;
+    const cursorRow = buf.baseY + buf.cursorY;
+    const first = this.cursorLine()?.first ?? cursorRow;
+    return anchor.marker.line >= first && anchor.marker.line <= cursorRow;
   }
 
   /** Current logical line up to the cursor, including soft-wrapped rows. */
@@ -1193,6 +1226,11 @@ export class TerminalController {
 
   private finishCommand() {
     if (!this.commandRunning) return;
+    // Keystrokes sent while the command owned the terminal (`q` to leave
+    // top, a pager's keys, an answer to a question) belonged to it, not to
+    // the next command line. The anchor they left points at a row the
+    // program painted, which history would then record as a command.
+    this.dropAnchor();
     this.resetCommandTracking();
     if (!this.disposed) this.callbacks.onCommandState("complete");
   }
@@ -1264,6 +1302,12 @@ export class TerminalController {
     this.dismissedInput = "";
     this.hidePopup();
     if (!anchor) return;
+    if (!this.anchorOnCursorLine(anchor)) {
+      // Not the line being submitted: whatever it points at is output, not
+      // something the user typed here.
+      anchor.marker.dispose();
+      return;
+    }
 
     const snapshot = this.readInput(anchor);
     window.setTimeout(() => {

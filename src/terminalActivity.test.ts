@@ -11,14 +11,14 @@ import { TerminalController } from "./terminal";
 
 const controllers: TerminalController[] = [];
 
-function createController(states: string[]) {
+function createController(states: string[], commands: string[] = []) {
   const controller = new TerminalController(
     "activity-test",
     {
       onData() {},
       onResize() {},
       onStatus() {},
-      onCommand() {},
+      onCommand: (command) => commands.push(command),
       onCommandState: (state) => states.push(state),
       suggest: () => [],
     },
@@ -135,5 +135,65 @@ describe("terminal command activity", () => {
     await write(controller, `\r\n${prompt}`);
 
     expect(states).toEqual(["running", "complete"]);
+  });
+
+  /**
+   * procps top paints in the normal buffer: it clears the screen, draws its
+   * frames with absolute addressing and parks the cursor inside them. `q`
+   * hands the shell back without the user ever pressing Enter, so the
+   * keystroke's anchor is left sitting on a row top painted.
+   */
+  async function quitTop(controller: TerminalController, prompt: string) {
+    controller.term.input("top", true);
+    await write(controller, "top");
+    controller.term.input("\r", true);
+    await write(controller, "\r\n");
+    const frame = [
+      "top - 12:00:00 up 3 days,  1 user,  load average: 0.05, 0.03",
+      "Tasks: 123 total,   1 running, 122 sleeping,   0 stopped",
+      "    1 root      20   0  168940  12084 S   0.0   0:02.11 systemd",
+    ]
+      .map((row, index) => `\x1b[${index + 1}d\r${row}\x1b[K`)
+      .join("");
+    await write(controller, `\x1b[?7l\x1b[H\x1b[2J${frame}\x1b[H`);
+    controller.term.input("q", true);
+    // at_eoj: cursor to the last row, margins back, one newline.
+    await write(controller, `\x1b[99;1H\x1b[?7h\n${prompt}`);
+  }
+
+  it("tracks the next command after a full-screen program is quit", async () => {
+    const states: string[] = [];
+    const controller = createController(states);
+    const prompt = "root@server:~# ";
+
+    await write(controller, prompt);
+    await quitTop(controller, prompt);
+    expect(states).toEqual(["running", "complete"]);
+
+    controller.term.input("ls", true);
+    await write(controller, "ls");
+    controller.term.input("\r", true);
+    await write(controller, `\r\nfile-a  file-b\r\n${prompt}`);
+
+    expect(states).toEqual(["running", "complete", "running", "complete"]);
+  });
+
+  it("does not record a full-screen program's own screen as a command", async () => {
+    const states: string[] = [];
+    const commands: string[] = [];
+    const controller = createController(states, commands);
+    controller.setSuggestions(true);
+    const prompt = "root@server:~# ";
+
+    await write(controller, prompt);
+    await quitTop(controller, prompt);
+
+    controller.term.input("ls", true);
+    await write(controller, "ls");
+    controller.term.input("\r", true);
+    await write(controller, `\r\nfile-a  file-b\r\n${prompt}`);
+    await new Promise((resolve) => setTimeout(resolve, 200));
+
+    expect(commands).toEqual(["top", "ls"]);
   });
 });
