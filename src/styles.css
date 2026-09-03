@@ -2958,6 +2958,39 @@ textarea:focus {
   font-size: 11px;
 }
 
+.auth-prompt-dialog {
+  display: flex;
+  flex-direction: column;
+  width: min(460px, calc(100vw - 40px));
+}
+
+/* Server-supplied text: keep its line breaks, and never let a long line from
+   an MFA provider stretch the dialog. */
+.auth-prompt-instructions {
+  margin: 0;
+  color: var(--fg-dim);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  user-select: text;
+}
+
+.auth-prompt-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 2px;
+}
+
+.auth-prompt-field > span {
+  color: var(--fg-dim);
+  overflow-wrap: anywhere;
+}
+
+.auth-prompt-field input {
+  width: 100%;
+  font-family: var(--font-mono);
+}
+
 .host-key-dialog {
   width: min(520px, calc(100vw - 40px));
 }

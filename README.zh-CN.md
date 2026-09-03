@@ -28,7 +28,7 @@
 | 类型 | 后端实现 | 说明 |
 | --- | --- | --- |
 | 本地 Shell | `portable-pty` | 真正的伪终端，支持窗口尺寸同步；Shell 字段可填带参数的命令行，如 `wsl.exe -d Ubuntu`、`pwsh -NoLogo` |
-| SSH | `russh` + `russh-sftp` | 密码 / 公钥 / ssh-agent 认证，SFTP 复用同一条连接，文件及文件夹流式传输 |
+| SSH | `russh` + `russh-sftp` | 密码 / 公钥 / ssh-agent 认证，并支持服务端随后追加的 keyboard-interactive 二次验证（一次性验证码、推送确认等），SFTP 复用同一条连接，文件及文件夹流式传输 |
 | SFTP | `russh` + `russh-sftp` | 基于 SSH 的纯文件传输会话，认证与主机密钥策略同 SSH，无终端，直接进入双栏文件管理器 |
 | FTP | `suppaftp` | 密码或匿名认证，被动模式浏览，自动识别 UTF-8 / GBK 文件名，文件及文件夹双向流式传输 |
 | 串口 | `serialport` | 波特率、数据位、停止位、校验、流控可配 |

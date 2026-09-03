@@ -13,6 +13,7 @@ use crate::model::{
     APP_DATA_EXTENSION,
 };
 use crate::remote_edit::RemoteEdits;
+use crate::session::auth::{AuthPrompter, AuthPrompts};
 use crate::session::ssh::{ConnectOutcome, SftpConnectOutcome};
 use crate::session::{
     self, SessionCommand, SessionHandle, SessionManager, SftpRequest, SftpResponse,
@@ -24,6 +25,9 @@ pub struct AppState {
     pub sessions: SessionManager,
     pub store: Store,
     pub remote_edits: RemoteEdits,
+    /// Authentication challenges a connecting session is waiting on; see
+    /// `answer_auth_prompt`.
+    pub auth_prompts: AuthPrompts,
 }
 
 // --- profiles ---------------------------------------------------------------
@@ -215,7 +219,10 @@ pub async fn open_session(
             rx,
         )?),
         SessionKind::Ssh => {
-            match session::ssh::connect(&profile, &state.store.jump_chain(&profile)?).await? {
+            let prompter = AuthPrompter::ui(&app, &state.auth_prompts, &id);
+            match session::ssh::connect(&profile, &state.store.jump_chain(&profile)?, &prompter)
+                .await?
+            {
                 ConnectOutcome::Ready(conn) => {
                     session::ssh::spawn(app.clone(), id.clone(), conn, rx);
                     None
@@ -228,7 +235,14 @@ pub async fn open_session(
             }
         }
         SessionKind::Sftp => {
-            match session::ssh::connect_sftp(&profile, &state.store.jump_chain(&profile)?).await? {
+            let prompter = AuthPrompter::ui(&app, &state.auth_prompts, &id);
+            match session::ssh::connect_sftp(
+                &profile,
+                &state.store.jump_chain(&profile)?,
+                &prompter,
+            )
+            .await?
+            {
                 SftpConnectOutcome::Ready(conn) => {
                     session::ssh::spawn_sftp(app.clone(), id.clone(), conn, rx);
                     None
@@ -254,6 +268,19 @@ pub async fn open_session(
 #[tauri::command]
 pub fn accept_host_key(host: String, port: u16, public_key: String) -> Result<()> {
     session::ssh::accept_host_key(&host, port, &public_key)
+}
+
+/// Answers one round of an SSH server's keyboard-interactive challenge (an
+/// MFA code, a push confirmation, a menu choice) for the connection waiting
+/// on `id`. `responses` is `None` when the user cancelled. The answers are
+/// used once and never stored.
+#[tauri::command]
+pub fn answer_auth_prompt(
+    state: State<'_, AppState>,
+    id: String,
+    responses: Option<Vec<String>>,
+) -> Result<()> {
+    state.auth_prompts.answer(&id, responses)
 }
 
 #[tauri::command]

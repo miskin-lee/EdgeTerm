@@ -15,6 +15,7 @@ import {
   SESSION_CLOSED_NOTICE,
 } from "./actions";
 import * as api from "./api";
+import { AuthPromptDialog } from "./components/AuthPromptDialog";
 import { CloseSessionDialog } from "./components/CloseSessionDialog";
 import { QuitConfirmDialog } from "./components/QuitConfirmDialog";
 import { FontSizeDialog } from "./components/FontSizeDialog";
@@ -71,6 +72,10 @@ export default function App() {
   const applyState = useStore((s) => s.applyState);
   const hostKeyPrompt = useStore((s) => s.hostKeyPrompt);
   const setHostKeyPrompt = useStore((s) => s.setHostKeyPrompt);
+  // A connection stops mid-handshake for each round; answer the oldest first.
+  const authPrompt = useStore((s) => s.authPrompts[0] ?? null);
+  const addAuthPrompt = useStore((s) => s.addAuthPrompt);
+  const clearAuthPrompt = useStore((s) => s.clearAuthPrompt);
   const theme = useStore((s) => s.theme);
   const activeTab = useActiveTab();
   const fileMode = activeTab ? isFileSession(activeTab.info.kind) : false;
@@ -130,6 +135,13 @@ export default function App() {
       void unlisten.then((off) => off());
     };
   }, [applyState]);
+
+  useEffect(() => {
+    const unlisten = api.onAuthPrompt(addAuthPrompt);
+    return () => {
+      void unlisten.then((off) => off());
+    };
+  }, [addAuthPrompt]);
 
   // A tab-close prompt open underneath would race this dialog for
   // Enter/Esc (both listen on window in the capture phase), so drop it.
@@ -392,6 +404,14 @@ export default function App() {
             void exit(0);
           }}
           onCancel={() => setQuitPromptOpen(false)}
+        />
+      )}
+
+      {authPrompt && (
+        <AuthPromptDialog
+          key={authPrompt.id}
+          prompt={authPrompt}
+          onDone={() => clearAuthPrompt(authPrompt.id)}
         />
       )}
 

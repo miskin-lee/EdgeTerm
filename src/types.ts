@@ -97,6 +97,33 @@ export interface HostKeyChange {
   message: string;
 }
 
+/** One question in a server's keyboard-interactive challenge. */
+export interface AuthPromptField {
+  /** The server's wording, e.g. "Verification code:". */
+  prompt: string;
+  /** Whether what the user types may be shown; false for secrets. */
+  echo: boolean;
+}
+
+/**
+ * A round of questions an SSH server asked while authenticating (RFC 4256's
+ * keyboard-interactive, the usual carrier for MFA). The answers go back to
+ * `answerAuthPrompt` under the same id and are never saved.
+ */
+export interface AuthPrompt {
+  id: string;
+  /** The session being opened, so the dialog can name its tab. */
+  sessionId: string;
+  /** host:port of the hop asking; a jump host has challenges of its own. */
+  address: string;
+  username: string;
+  /** Server-supplied title for the round; usually empty. */
+  name: string;
+  /** Server-supplied text shown above the questions; usually empty. */
+  instructions: string;
+  prompts: AuthPromptField[];
+}
+
 /** What open_session produced: a live session, or a decision for the user. */
 export type OpenSessionOutcome =
   | { status: "connected"; info: SessionInfo }

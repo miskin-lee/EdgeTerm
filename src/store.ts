@@ -5,6 +5,7 @@ import { commandHistory } from "./history";
 import type { GutterMode } from "./terminal";
 import { disposeController, getController } from "./terminalRegistry";
 import type {
+  AuthPrompt,
   HostKeyChange,
   SessionGroup,
   SessionInfo,
@@ -257,6 +258,12 @@ interface AppStore {
    */
   hostKeyPrompt: HostKeyPrompt | null;
   /**
+   * Verification challenges from servers still authenticating a session (an
+   * MFA code, a push confirmation). Each is a round the connection is
+   * blocked on, so they queue: the oldest is shown and the rest wait.
+   */
+  authPrompts: AuthPrompt[];
+  /**
    * Id of a live tab whose close is waiting for the user's confirmation.
    * Kept in the store so every close entry point (tab ✕, menu, ⌘W) funnels
    * into the one dialog rendered by App.
@@ -337,6 +344,9 @@ interface AppStore {
   setStatus: (status: string) => void;
   setError: (error: string | null, sessionId?: string) => void;
   setHostKeyPrompt: (prompt: HostKeyPrompt | null) => void;
+  addAuthPrompt: (prompt: AuthPrompt) => void;
+  /** Drops a challenge the dialog has just answered. */
+  clearAuthPrompt: (id: string) => void;
   /** Points the Filer at `path` for `sessionId`, showing the panel if hidden. */
   revealInFiler: (sessionId: string, path: string) => void;
 }
@@ -370,6 +380,7 @@ export const useStore = create<AppStore>((set, get) => ({
   error: null,
   errorSessionId: null,
   hostKeyPrompt: null,
+  authPrompts: [],
   closePrompt: null,
   filerTarget: null,
   senderLibraryVersion: 0,
@@ -467,6 +478,13 @@ export const useStore = create<AppStore>((set, get) => ({
     // Files from this session opened in local editors stop syncing back.
     await api.stopRemoteEdits(id).catch(() => undefined);
     disposeController(id);
+    // A challenge nobody will answer now would hold its half-open connection
+    // until the backend's own timeout; release it here instead.
+    for (const prompt of get().authPrompts) {
+      if (prompt.sessionId === id) {
+        void api.answerAuthPrompt(prompt.id, null).catch(() => undefined);
+      }
+    }
     const current = get();
     const remaining = current.tabs.filter((tab) => tab.info.id !== id);
     const wasActive = current.activeId === id;
@@ -482,6 +500,9 @@ export const useStore = create<AppStore>((set, get) => ({
       errorSessionId: clearsSessionError ? null : current.errorSessionId,
       hostKeyPrompt:
         current.hostKeyPrompt?.sessionId === id ? null : current.hostKeyPrompt,
+      authPrompts: current.authPrompts.filter(
+        (prompt) => prompt.sessionId !== id,
+      ),
       closePrompt: current.closePrompt === id ? null : current.closePrompt,
     });
   },
@@ -702,6 +723,16 @@ export const useStore = create<AppStore>((set, get) => ({
 
   setError(error, sessionId) {
     set({ error, errorSessionId: error ? (sessionId ?? null) : null });
+  },
+
+  addAuthPrompt(prompt) {
+    set({ authPrompts: [...get().authPrompts, prompt] });
+  },
+
+  clearAuthPrompt(id) {
+    set({
+      authPrompts: get().authPrompts.filter((prompt) => prompt.id !== id),
+    });
   },
 
   setHostKeyPrompt(prompt) {

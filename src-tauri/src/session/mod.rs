@@ -1,3 +1,4 @@
+pub mod auth;
 pub mod cwd;
 pub mod ftp;
 pub mod local;

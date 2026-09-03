@@ -3,13 +3,13 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use russh::client::{self, Handle, Msg};
+use russh::client::{self, AuthResult, Handle, KeyboardInteractiveAuthResponse, Msg, Prompt};
 use russh::keys::agent::client::{AgentClient, AgentStream};
 use russh::keys::known_hosts::{
     check_known_hosts_path, known_host_keys_path, learn_known_hosts_path,
 };
 use russh::keys::{HashAlg, PrivateKeyWithHashAlg, PublicKey};
-use russh::{Channel, ChannelMsg};
+use russh::{Channel, ChannelMsg, MethodKind, MethodSet};
 use russh_sftp::client::error::Error as SftpError;
 use russh_sftp::client::SftpSession;
 use russh_sftp::protocol::{OpenFlags, StatusCode};
@@ -17,6 +17,7 @@ use tauri::AppHandle;
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 use tokio::sync::mpsc::UnboundedReceiver;
 
+use super::auth::{AuthPrompter, Challenge};
 use super::transfer::{
     ensure_local_directory, plan_local_upload, safe_local_child, validate_local_file_target,
     ProgressReporter,
@@ -26,7 +27,9 @@ use super::{
     TransferProgress,
 };
 use crate::error::{AppError, Result};
-use crate::model::{AuthKind, DirListing, FileEntry, HostKeyChange, SessionProfile};
+use crate::model::{
+    AuthKind, AuthPromptField, DirListing, FileEntry, HostKeyChange, SessionProfile,
+};
 
 /// How long output may sit in the pump before it is flushed to the UI.
 const FLUSH_INTERVAL: Duration = Duration::from_millis(8);
@@ -35,6 +38,10 @@ const TRANSFER_CHUNK_SIZE: usize = 1024 * 1024;
 /// How often an SFTP-only session, which has no channel to read from, checks
 /// that its transport is still alive so a dropped connection is reported.
 const SFTP_HEALTH_INTERVAL: Duration = Duration::from_secs(5);
+/// Most keyboard-interactive rounds one authentication attempt will answer.
+/// RFC 4256 puts no limit on them, and a server that keeps asking would
+/// otherwise keep the connection — and the user — busy forever.
+const MAX_AUTH_ROUNDS: usize = 16;
 
 /// Host key policy: trust on first use, refuse on change.
 ///
@@ -273,6 +280,7 @@ enum HopOutcome {
 async fn connect_handle(
     profile: &SessionProfile,
     jumps: &[SessionProfile],
+    prompter: &AuthPrompter<'_>,
 ) -> Result<HandleOutcome> {
     let mut hops: Vec<Handle<Client>> = Vec::with_capacity(jumps.len());
     for (index, jump) in jumps.iter().enumerate() {
@@ -280,7 +288,7 @@ async fn connect_handle(
             handle: &hops[previous],
             label: jumps[previous].address(),
         });
-        match connect_hop(jump, via.as_ref()).await? {
+        match connect_hop(jump, via.as_ref(), prompter).await? {
             HopOutcome::Ready(handle) => hops.push(handle),
             HopOutcome::HostKeyChanged(change) => {
                 return Ok(HandleOutcome::HostKeyChanged(change));
@@ -291,7 +299,7 @@ async fn connect_handle(
         handle: hops.last().expect("one hop per jump host"),
         label: jump.address(),
     });
-    match connect_hop(profile, via.as_ref()).await? {
+    match connect_hop(profile, via.as_ref(), prompter).await? {
         HopOutcome::Ready(handle) => Ok(HandleOutcome::Ready(Transport {
             handle,
             hops: Hops(hops),
@@ -312,7 +320,11 @@ struct Via<'a> {
 /// The host-key policy and the credentials are the profile's own either way:
 /// the handshake is end to end and the jump host only ever carries
 /// ciphertext, so no key or password has to exist on it.
-async fn connect_hop(profile: &SessionProfile, via: Option<&Via<'_>>) -> Result<HopOutcome> {
+async fn connect_hop(
+    profile: &SessionProfile,
+    via: Option<&Via<'_>>,
+    prompter: &AuthPrompter<'_>,
+) -> Result<HopOutcome> {
     let host = profile
         .host
         .clone()
@@ -380,12 +392,23 @@ async fn connect_hop(profile: &SessionProfile, via: Option<&Via<'_>>) -> Result<
         }
     };
 
-    authenticate(&mut handle, profile, &username).await?;
+    authenticate(
+        &mut handle,
+        profile,
+        &username,
+        &format!("{host}:{port}"),
+        prompter,
+    )
+    .await?;
     Ok(HopOutcome::Ready(handle))
 }
 
-pub async fn connect(profile: &SessionProfile, jumps: &[SessionProfile]) -> Result<ConnectOutcome> {
-    let Transport { handle, hops } = match connect_handle(profile, jumps).await? {
+pub async fn connect(
+    profile: &SessionProfile,
+    jumps: &[SessionProfile],
+    prompter: &AuthPrompter<'_>,
+) -> Result<ConnectOutcome> {
+    let Transport { handle, hops } = match connect_handle(profile, jumps, prompter).await? {
         HandleOutcome::Ready(transport) => transport,
         HandleOutcome::HostKeyChanged(change) => {
             return Ok(ConnectOutcome::HostKeyChanged(change));
@@ -417,8 +440,9 @@ pub async fn connect(profile: &SessionProfile, jumps: &[SessionProfile]) -> Resu
 pub async fn connect_sftp(
     profile: &SessionProfile,
     jumps: &[SessionProfile],
+    prompter: &AuthPrompter<'_>,
 ) -> Result<SftpConnectOutcome> {
-    match connect_handle(profile, jumps).await? {
+    match connect_handle(profile, jumps, prompter).await? {
         HandleOutcome::Ready(Transport { handle, hops }) => {
             Ok(SftpConnectOutcome::Ready(SftpConnection {
                 handle: Arc::new(handle),
@@ -429,16 +453,31 @@ pub async fn connect_sftp(
     }
 }
 
-async fn authenticate(
-    handle: &mut Handle<Client>,
+/// Authenticates one hop. The profile's own method goes first; a server that
+/// answers it with "not enough, continue with keyboard-interactive" — the
+/// shape every SSH MFA deployment takes, whether the second factor is a TOTP
+/// code, a push, or a menu — is then followed through `keyboard_interactive`,
+/// which asks the user for each round.
+///
+/// `address` is the `host:port` being authenticated against, which is a jump
+/// host for every hop but the last, so the user can see who is asking.
+async fn authenticate<H: client::Handler>(
+    handle: &mut Handle<H>,
     profile: &SessionProfile,
     username: &str,
+    address: &str,
+    prompter: &AuthPrompter<'_>,
 ) -> Result<()> {
     let auth = profile.auth.unwrap_or_default();
+    let password = profile
+        .password
+        .clone()
+        .filter(|password| !password.is_empty());
     let result = match auth {
         AuthKind::Password => {
-            let password = profile.password.clone().unwrap_or_default();
-            handle.authenticate_password(username, password).await?
+            handle
+                .authenticate_password(username, password.clone().unwrap_or_default())
+                .await?
         }
         AuthKind::PublicKey => {
             let path = profile
@@ -457,24 +496,163 @@ async fn authenticate(
                 .authenticate_publickey(username, PrivateKeyWithHashAlg::new(Arc::new(key), hash))
                 .await?
         }
-        AuthKind::Agent => return authenticate_agent(handle, username).await,
+        AuthKind::Agent => authenticate_agent(handle, username).await?,
     };
 
-    if result.success() {
-        Ok(())
-    } else {
-        Err(AppError::new(format!(
-            "authentication failed for {username} ({})",
-            match auth {
-                AuthKind::Password => "password",
-                AuthKind::PublicKey => "public key",
-                AuthKind::Agent => "agent",
-            }
-        )))
+    let AuthResult::Failure {
+        remaining_methods,
+        partial_success,
+    } = result
+    else {
+        return Ok(());
+    };
+
+    if remaining_methods.contains(&MethodKind::KeyboardInteractive) {
+        // Only the profile's own password answers the server's password
+        // question; see `saved_answer`.
+        let saved = password.filter(|_| matches!(auth, AuthKind::Password));
+        return keyboard_interactive(handle, username, address, prompter, saved).await;
     }
+    Err(auth_failure(
+        auth,
+        username,
+        partial_success,
+        &remaining_methods,
+    ))
 }
 
-async fn authenticate_agent(handle: &mut Handle<Client>, username: &str) -> Result<()> {
+/// Why authentication stopped, when no method is left that EdgeTerm can run.
+fn auth_failure(
+    auth: AuthKind,
+    username: &str,
+    partial_success: bool,
+    remaining_methods: &MethodSet,
+) -> AppError {
+    let method = match auth {
+        AuthKind::Password => "password",
+        AuthKind::PublicKey => "public key",
+        AuthKind::Agent => "agent",
+    };
+    if partial_success {
+        // The credential was accepted; the account simply needs another
+        // factor, and the server offers no way to supply it here.
+        let remaining = remaining_methods
+            .iter()
+            .map(|method| <&str>::from(method))
+            .collect::<Vec<_>>()
+            .join(", ");
+        return AppError::new(format!(
+            "the {method} was accepted for {username}, but the server requires another \
+             authentication factor and offers only: {remaining}"
+        ));
+    }
+    AppError::new(match auth {
+        AuthKind::Agent => format!("no identity in the ssh agent was accepted for {username}"),
+        _ => format!("authentication failed for {username} ({method})"),
+    })
+}
+
+/// Runs SSH's `keyboard-interactive` method (RFC 4256) to its end: the server
+/// asks questions in rounds, each round is answered, and the server finally
+/// accepts or refuses. Providers split a password, a one-time code, a push
+/// confirmation and a menu choice over separate rounds, so the loop keeps
+/// going until the server stops asking.
+async fn keyboard_interactive<H: client::Handler>(
+    handle: &mut Handle<H>,
+    username: &str,
+    address: &str,
+    prompter: &AuthPrompter<'_>,
+    mut saved_password: Option<String>,
+) -> Result<()> {
+    let mut reply = handle
+        .authenticate_keyboard_interactive_start(username, None)
+        .await?;
+    // A round with nothing to answer only carries text ("a push was sent").
+    // Keep it for the next round that does ask, so the user still reads it.
+    let mut carried = String::new();
+    for _ in 0..MAX_AUTH_ROUNDS {
+        let (name, instructions, prompts) = match reply {
+            KeyboardInteractiveAuthResponse::Success => return Ok(()),
+            KeyboardInteractiveAuthResponse::Failure { .. } => {
+                return Err(AppError::new(format!(
+                    "the server rejected the verification response for {username}"
+                )));
+            }
+            KeyboardInteractiveAuthResponse::InfoRequest {
+                name,
+                instructions,
+                prompts,
+            } => (name, instructions, prompts),
+        };
+
+        let answers = if prompts.is_empty() {
+            carried = text_block(&[&carried, &name, &instructions]);
+            Vec::new()
+        } else if let Some(password) = saved_answer(&prompts, &mut saved_password) {
+            vec![password]
+        } else {
+            let challenge = Challenge {
+                address: address.to_string(),
+                username: username.to_string(),
+                name,
+                instructions: text_block(&[&carried, &instructions]),
+                prompts: prompts
+                    .iter()
+                    .map(|prompt| AuthPromptField {
+                        prompt: prompt.prompt.clone(),
+                        echo: prompt.echo,
+                    })
+                    .collect(),
+            };
+            carried.clear();
+            match prompter.ask(challenge).await? {
+                Some(answers) => answers,
+                None => {
+                    return Err(AppError::new(format!(
+                        "authentication for {username} was cancelled"
+                    )));
+                }
+            }
+        };
+        reply = handle
+            .authenticate_keyboard_interactive_respond(answers)
+            .await?;
+    }
+    Err(AppError::new(format!(
+        "the server asked {username} for more than {MAX_AUTH_ROUNDS} rounds of verification"
+    )))
+}
+
+/// The saved password, but only where the server is asking for exactly that:
+/// a single hidden answer to a question that names a password. A one-time
+/// code, a push confirmation or a menu choice is not in the profile, and the
+/// account password must never be sent in answer to one.
+fn saved_answer(prompts: &[Prompt], saved: &mut Option<String>) -> Option<String> {
+    let [only] = prompts else { return None };
+    if only.echo || !only.prompt.to_lowercase().contains("password") {
+        return None;
+    }
+    saved.take()
+}
+
+/// Joins the parts a server supplies as one block of text, dropping the empty
+/// ones — most servers leave both the name and the instructions blank.
+fn text_block(parts: &[&str]) -> String {
+    parts
+        .iter()
+        .map(|part| part.trim())
+        .filter(|part| !part.is_empty())
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+/// Offers the agent's identities in turn. A key the server accepts outright
+/// ends the loop, and so does one it accepts pending another factor: that is
+/// the identity the session continues with.
+async fn authenticate_agent<H: client::Handler>(
+    handle: &mut Handle<H>,
+    username: &str,
+) -> Result<AuthResult> {
     let mut agent = connect_agent().await?;
     let identities = agent
         .request_identities()
@@ -485,6 +663,10 @@ async fn authenticate_agent(handle: &mut Handle<Client>, username: &str) -> Resu
     }
 
     let hash = handle.best_supported_rsa_hash().await?.flatten();
+    let mut last = AuthResult::Failure {
+        remaining_methods: MethodSet::empty(),
+        partial_success: false,
+    };
     for identity in identities {
         let key = match &identity {
             russh::keys::agent::AgentIdentity::PublicKey { key, .. } => key.clone(),
@@ -499,13 +681,16 @@ async fn authenticate_agent(handle: &mut Handle<Client>, username: &str) -> Resu
             .authenticate_publickey_with(username, key, hash, &mut agent)
             .await
             .map_err(|e| AppError::new(format!("agent authentication failed: {e}")))?;
-        if result.success() {
-            return Ok(());
+        match result {
+            AuthResult::Success => return Ok(result),
+            AuthResult::Failure {
+                partial_success: true,
+                ..
+            } => return Ok(result),
+            AuthResult::Failure { .. } => last = result,
         }
     }
-    Err(AppError::new(format!(
-        "no identity in the ssh agent was accepted for {username}"
-    )))
+    Ok(last)
 }
 
 type DynamicAgentClient = AgentClient<Box<dyn AgentStream + Send + Unpin>>;
@@ -1133,13 +1318,23 @@ mod tests {
     use russh::keys::PublicKey;
 
     use super::{
-        connect, connect_sftp, copy_in_chunks, ensure_sftp, replace_host_key, run_sftp,
-        verify_host_key, ConnectOutcome, HandshakeError, SftpConnectOutcome, SftpRequest,
-        SftpResponse, TRANSFER_CHUNK_SIZE,
+        auth_failure, authenticate, connect, connect_sftp, copy_in_chunks, ensure_sftp,
+        replace_host_key, run_sftp, saved_answer, verify_host_key, AuthPrompter, ConnectOutcome,
+        Handle, HandshakeError, Prompt, SftpConnectOutcome, SftpRequest, SftpResponse,
+        TRANSFER_CHUNK_SIZE,
     };
-    use crate::model::{AuthKind, SessionKind, SessionProfile};
-    use russh::ChannelMsg;
+    use crate::model::{AuthKind, AuthPromptField, SessionKind, SessionProfile};
+    use crate::session::auth::CannedAnswers;
+    use parking_lot::Mutex;
+    use russh::client;
+    use russh::keys::ssh_key::private::Ed25519Keypair;
+    use russh::keys::ssh_key::LineEnding;
+    use russh::keys::PrivateKey;
+    use russh::server::{Auth, Response};
+    use russh::{ChannelMsg, MethodKind, MethodSet};
+    use std::sync::Arc;
     use std::time::Duration;
+    use tokio::net::TcpListener;
 
     const HOST: &str = "192.0.2.10";
     const ED25519_A: &str =
@@ -1228,10 +1423,14 @@ mod tests {
         let home = scratch.path().parent().expect("scratch dir").to_path_buf();
         std::fs::create_dir_all(home.join(".ssh")).expect("create .ssh");
         std::env::set_var("HOME", &home);
+        // Both hops authenticate with a key; a server that asked anything
+        // else would cancel rather than hang this test.
+        let user = Mutex::new(CannedAnswers::default());
+        let prompter = AuthPrompter::canned(&user);
 
         // A shell through the tunnel: what the shell prints comes back. The
         // marker is computed so the echoed command line cannot match it.
-        let mut conn = match connect(&target, std::slice::from_ref(&jump))
+        let mut conn = match connect(&target, std::slice::from_ref(&jump), &prompter)
             .await
             .expect("connect through the jump host")
         {
@@ -1267,7 +1466,7 @@ mod tests {
         conn.hops.disconnect().await;
 
         // SFTP through the same kind of tunnel.
-        let sftp = match connect_sftp(&target, std::slice::from_ref(&jump))
+        let sftp = match connect_sftp(&target, std::slice::from_ref(&jump), &prompter)
             .await
             .expect("sftp through the jump host")
         {
@@ -1301,7 +1500,7 @@ mod tests {
         // A target the jump host cannot reach is reported as such.
         let mut unreachable = target.clone();
         unreachable.port = Some(1);
-        let error = connect(&unreachable, std::slice::from_ref(&jump))
+        let error = connect(&unreachable, std::slice::from_ref(&jump), &prompter)
             .await
             .err()
             .expect("port 1 is closed");
@@ -1410,6 +1609,404 @@ mod tests {
                 .windows(2)
                 .all(|pair| pair[1] - pair[0] <= TRANSFER_CHUNK_SIZE as u64),
             "no transfer step may exceed the fixed-size buffer"
+        );
+    }
+
+    // --- keyboard-interactive authentication ---------------------------------
+
+    /// A throwaway ed25519 key. The seed only has to be constant, not secret:
+    /// these keys never leave the test process.
+    fn test_key(seed: u8) -> PrivateKey {
+        PrivateKey::from(Ed25519Keypair::from_seed(&[seed; 32]))
+    }
+
+    /// A private key file inside a private temporary directory that is
+    /// removed again on drop, since a profile names its key by path.
+    struct SecretKeyFile(PathBuf);
+
+    impl SecretKeyFile {
+        fn new(key: &PrivateKey) -> Self {
+            let dir = std::env::temp_dir().join(format!("edgeterm-test-{}", uuid::Uuid::new_v4()));
+            std::fs::create_dir_all(&dir).expect("create temp dir");
+            let path = dir.join("id_ed25519");
+            let encoded = key.to_openssh(LineEnding::LF).expect("encode key");
+            std::fs::write(&path, encoded.as_bytes()).expect("write key");
+            SecretKeyFile(path)
+        }
+
+        fn path(&self) -> String {
+            self.0.to_string_lossy().into_owned()
+        }
+    }
+
+    impl Drop for SecretKeyFile {
+        fn drop(&mut self) {
+            if let Some(dir) = self.0.parent() {
+                let _ = std::fs::remove_dir_all(dir);
+            }
+        }
+    }
+
+    /// One keyboard-interactive round the test server runs: what it asks, and
+    /// the answers it accepts.
+    #[derive(Clone, Copy)]
+    struct Round {
+        instructions: &'static str,
+        prompts: &'static [(&'static str, bool)],
+        expected: &'static [&'static str],
+    }
+
+    /// How the test server answers the client's first authentication method.
+    #[derive(Clone, Copy)]
+    enum FirstReply {
+        /// The credential is good, but the account needs the listed methods too.
+        Partial(&'static [MethodKind]),
+        /// The credential is refused; these methods are suggested instead.
+        Refused(&'static [MethodKind]),
+    }
+
+    impl FirstReply {
+        fn auth(self) -> Auth {
+            let (methods, partial_success) = match self {
+                FirstReply::Partial(methods) => (methods, true),
+                FirstReply::Refused(methods) => (methods, false),
+            };
+            Auth::Reject {
+                proceed_with_methods: Some(MethodSet::from(methods)),
+                partial_success,
+            }
+        }
+    }
+
+    /// An SSH server that scripts one authentication exchange: it answers the
+    /// client's first method, then runs the keyboard-interactive rounds and
+    /// records every answer it received.
+    #[derive(Clone)]
+    struct AuthServer {
+        first: FirstReply,
+        rounds: &'static [Round],
+        /// The next round to ask.
+        next: usize,
+        answers: Arc<Mutex<Vec<Vec<String>>>>,
+    }
+
+    impl AuthServer {
+        fn new(first: FirstReply, rounds: &'static [Round]) -> Self {
+            Self {
+                first,
+                rounds,
+                next: 0,
+                answers: Arc::new(Mutex::new(Vec::new())),
+            }
+        }
+    }
+
+    impl russh::server::Handler for AuthServer {
+        type Error = russh::Error;
+
+        async fn auth_publickey(
+            &mut self,
+            _user: &str,
+            _key: &PublicKey,
+        ) -> std::result::Result<Auth, Self::Error> {
+            Ok(self.first.auth())
+        }
+
+        async fn auth_password(
+            &mut self,
+            _user: &str,
+            password: &str,
+        ) -> std::result::Result<Auth, Self::Error> {
+            self.answers.lock().push(vec![password.to_string()]);
+            Ok(self.first.auth())
+        }
+
+        async fn auth_keyboard_interactive<'a>(
+            &'a mut self,
+            _user: &str,
+            _submethods: &str,
+            response: Option<Response<'a>>,
+        ) -> std::result::Result<Auth, Self::Error> {
+            if let Some(response) = response {
+                let answers: Vec<String> = response
+                    .map(|value| String::from_utf8_lossy(&value).into_owned())
+                    .collect();
+                let answered = self.rounds[self.next - 1];
+                if !answers
+                    .iter()
+                    .map(String::as_str)
+                    .eq(answered.expected.iter().copied())
+                {
+                    return Ok(Auth::reject());
+                }
+                self.answers.lock().push(answers);
+            }
+            let Some(round) = self.rounds.get(self.next) else {
+                return Ok(Auth::Accept);
+            };
+            self.next += 1;
+            Ok(Auth::Partial {
+                name: "".into(),
+                instructions: round.instructions.into(),
+                prompts: round
+                    .prompts
+                    .iter()
+                    .map(|(prompt, echo)| ((*prompt).into(), *echo))
+                    .collect::<Vec<_>>()
+                    .into(),
+            })
+        }
+    }
+
+    /// The host key policy has its own tests above; these run against a
+    /// throwaway server whose key nothing has ever recorded.
+    struct AcceptAnyKey;
+
+    impl client::Handler for AcceptAnyKey {
+        type Error = russh::Error;
+
+        async fn check_server_key(
+            &mut self,
+            _key: &PublicKey,
+        ) -> std::result::Result<bool, Self::Error> {
+            Ok(true)
+        }
+    }
+
+    /// Runs `server` on a loopback port for one connection and hands back a
+    /// client transport that has finished the handshake but not authenticated.
+    async fn handshake(server: AuthServer) -> Handle<AcceptAnyKey> {
+        let listener = TcpListener::bind("127.0.0.1:0").await.expect("bind");
+        let address = listener.local_addr().expect("local address");
+        let config = Arc::new(russh::server::Config {
+            keys: vec![test_key(1)],
+            auth_rejection_time: Duration::ZERO,
+            ..Default::default()
+        });
+        tokio::spawn(async move {
+            let (stream, _) = listener.accept().await.expect("accept");
+            let session = russh::server::run_stream(config, stream, server)
+                .await
+                .expect("serve the connection");
+            let _ = session.await;
+        });
+        client::connect(Arc::new(client::Config::default()), address, AcceptAnyKey)
+            .await
+            .expect("handshake")
+    }
+
+    fn public_key_profile(key: &SecretKeyFile) -> SessionProfile {
+        let mut profile = crate::tests::profile(SessionKind::Ssh);
+        profile.auth = Some(AuthKind::PublicKey);
+        profile.private_key_path = Some(key.path());
+        profile
+    }
+
+    /// The JumpServer/KoKo shape from issue #34: the key is accepted, the
+    /// server then asks for a one-time code, and the login has to continue
+    /// instead of failing as "public key rejected".
+    #[tokio::test]
+    async fn a_public_key_that_needs_a_verification_code_finishes_the_login() {
+        const ROUNDS: &[Round] = &[
+            Round {
+                instructions: "",
+                prompts: &[("Verification code: ", false)],
+                expected: &["424242"],
+            },
+            // Providers also send rounds that ask nothing and only carry text.
+            Round {
+                instructions: "Approve the push on your phone.",
+                prompts: &[],
+                expected: &[],
+            },
+        ];
+        let server = AuthServer::new(
+            FirstReply::Partial(&[MethodKind::KeyboardInteractive]),
+            ROUNDS,
+        );
+        let answers = server.answers.clone();
+        let mut handle = handshake(server).await;
+
+        let key = SecretKeyFile::new(&test_key(2));
+        let user = Mutex::new(CannedAnswers::new([vec!["424242".to_string()]]));
+        authenticate(
+            &mut handle,
+            &public_key_profile(&key),
+            "alice",
+            "mfa.example:22",
+            &AuthPrompter::canned(&user),
+        )
+        .await
+        .expect("the second factor completes the login");
+
+        assert_eq!(
+            *answers.lock(),
+            vec![vec!["424242".to_string()], Vec::<String>::new()]
+        );
+        let user = user.lock();
+        assert_eq!(
+            user.asked().len(),
+            1,
+            "only the round that asks something reaches the user"
+        );
+        let asked = &user.asked()[0];
+        assert_eq!(asked.address, "mfa.example:22");
+        assert_eq!(asked.username, "alice");
+        assert_eq!(
+            asked.prompts,
+            [AuthPromptField {
+                prompt: "Verification code: ".into(),
+                echo: false,
+            }]
+        );
+    }
+
+    /// A key the server simply refuses is still reported as a refused key,
+    /// and nothing is asked of the user.
+    #[tokio::test]
+    async fn a_refused_public_key_is_reported_as_a_refused_key() {
+        let mut handle = handshake(AuthServer::new(
+            FirstReply::Refused(&[MethodKind::PublicKey]),
+            &[],
+        ))
+        .await;
+
+        let key = SecretKeyFile::new(&test_key(2));
+        let user = Mutex::new(CannedAnswers::default());
+        let error = authenticate(
+            &mut handle,
+            &public_key_profile(&key),
+            "alice",
+            "mfa.example:22",
+            &AuthPrompter::canned(&user),
+        )
+        .await
+        .expect_err("the server refuses the key");
+
+        assert_eq!(
+            error.to_string(),
+            "authentication failed for alice (public key)"
+        );
+        assert!(user.lock().asked().is_empty());
+    }
+
+    /// An accepted credential whose account still needs a factor EdgeTerm
+    /// cannot run says so, rather than blaming the credential. russh's own
+    /// test server cannot set the partial-success flag, so the wording is
+    /// checked here rather than over a connection.
+    #[test]
+    fn an_accepted_credential_awaiting_another_factor_is_not_blamed() {
+        let remaining = MethodSet::from(&[MethodKind::Password][..]);
+
+        assert_eq!(
+            auth_failure(AuthKind::PublicKey, "alice", true, &remaining).to_string(),
+            concat!(
+                "the public key was accepted for alice, but the server requires ",
+                "another authentication factor and offers only: password"
+            )
+        );
+        assert_eq!(
+            auth_failure(AuthKind::PublicKey, "alice", false, &remaining).to_string(),
+            "authentication failed for alice (public key)"
+        );
+        assert_eq!(
+            auth_failure(AuthKind::Agent, "alice", false, &remaining).to_string(),
+            "no identity in the ssh agent was accepted for alice"
+        );
+    }
+
+    /// Servers that turn the password itself into a keyboard-interactive
+    /// round get the saved password without troubling the user; the code that
+    /// follows it is nowhere in the profile, so that one is asked for.
+    #[tokio::test]
+    async fn a_password_round_is_answered_from_the_profile_but_a_code_is_not() {
+        const ROUNDS: &[Round] = &[
+            Round {
+                instructions: "",
+                prompts: &[("Password: ", false)],
+                expected: &["hunter2"],
+            },
+            Round {
+                instructions: "",
+                prompts: &[("Verification code: ", false)],
+                expected: &["424242"],
+            },
+        ];
+        let server = AuthServer::new(
+            FirstReply::Refused(&[MethodKind::KeyboardInteractive]),
+            ROUNDS,
+        );
+        let answers = server.answers.clone();
+        let mut handle = handshake(server).await;
+
+        let mut profile = crate::tests::profile(SessionKind::Ssh);
+        profile.auth = Some(AuthKind::Password);
+        profile.password = Some("hunter2".into());
+
+        let user = Mutex::new(CannedAnswers::new([vec!["424242".to_string()]]));
+        authenticate(
+            &mut handle,
+            &profile,
+            "alice",
+            "mfa.example:22",
+            &AuthPrompter::canned(&user),
+        )
+        .await
+        .expect("password plus code completes the login");
+
+        assert_eq!(
+            *answers.lock(),
+            vec![
+                // The `password` method the server does not run,
+                vec!["hunter2".to_string()],
+                // then the same password as the first interactive round,
+                vec!["hunter2".to_string()],
+                // and the code, which only the user could supply.
+                vec!["424242".to_string()],
+            ]
+        );
+        let user = user.lock();
+        assert_eq!(user.asked().len(), 1);
+        assert_eq!(user.asked()[0].prompts[0].prompt, "Verification code: ");
+    }
+
+    #[test]
+    fn the_saved_password_answers_only_a_password_question() {
+        let hidden = |prompt: &str| Prompt {
+            prompt: prompt.to_string(),
+            echo: false,
+        };
+        let mut saved = Some("hunter2".to_string());
+
+        assert_eq!(
+            saved_answer(&[hidden("Verification code: ")], &mut saved),
+            None
+        );
+        assert_eq!(
+            saved_answer(&[hidden("Password: "), hidden("Code: ")], &mut saved),
+            None,
+            "a round that asks for more than a password is the user's to answer"
+        );
+        assert_eq!(
+            saved_answer(
+                &[Prompt {
+                    prompt: "Password: ".into(),
+                    echo: true
+                }],
+                &mut saved
+            ),
+            None,
+            "a question whose answer is echoed is not asking for a secret"
+        );
+
+        assert_eq!(
+            saved_answer(&[hidden("Password: ")], &mut saved),
+            Some("hunter2".to_string())
+        );
+        assert_eq!(
+            saved_answer(&[hidden("Password: ")], &mut saved),
+            None,
+            "the saved password is offered once; a second refusal is the user's to answer"
         );
     }
 }

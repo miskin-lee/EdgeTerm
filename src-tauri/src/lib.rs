@@ -171,6 +171,7 @@ pub fn run() {
             sessions: Default::default(),
             store: store::Store::load(),
             remote_edits: Default::default(),
+            auth_prompts: Default::default(),
         })
         .invoke_handler(tauri::generate_handler![
             commands::list_profiles,
@@ -190,6 +191,7 @@ pub fn run() {
             commands::import_app_data,
             commands::open_session,
             commands::accept_host_key,
+            commands::answer_auth_prompt,
             commands::close_session,
             commands::list_sessions,
             commands::write_session,

@@ -3,6 +3,7 @@ import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 
 import type {
   AppData,
+  AuthPrompt,
   DataSummary,
   DirListing,
   HostKeyChange,
@@ -124,6 +125,14 @@ export const acceptHostKey = (change: HostKeyChange) =>
     port: change.port,
     publicKey: change.publicKey,
   });
+
+/**
+ * Answers one round of an SSH server's keyboard-interactive challenge for the
+ * session still connecting behind it; `null` cancels the attempt. Nothing
+ * typed here is stored.
+ */
+export const answerAuthPrompt = (id: string, responses: string[] | null) =>
+  invoke<void>("answer_auth_prompt", { id, responses });
 
 export const closeSession = (id: string) => invoke<void>("close_session", { id });
 
@@ -354,6 +363,12 @@ export const onSessionState = (
   handler: (event: StateEvent) => void,
 ): Promise<UnlistenFn> =>
   listen<StateEvent>("session:state", (e) => handler(e.payload));
+
+/** A server asking for a verification code (or another factor) mid-connect. */
+export const onAuthPrompt = (
+  handler: (prompt: AuthPrompt) => void,
+): Promise<UnlistenFn> =>
+  listen<AuthPrompt>("session:auth-prompt", (e) => handler(e.payload));
 
 /**
  * Fired by the Rust menu handler when the user hits ⌘Q / Quit on macOS;

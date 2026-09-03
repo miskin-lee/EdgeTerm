@@ -202,6 +202,37 @@ pub struct HostKeyChange {
     pub message: String,
 }
 
+/// One question in a keyboard-interactive challenge.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AuthPromptField {
+    /// The server's wording, e.g. `Verification code:`.
+    pub prompt: String,
+    /// Whether what the user types may be shown; false for secrets.
+    pub echo: bool,
+}
+
+/// A round of questions an SSH server asked while authenticating a session
+/// (RFC 4256's `keyboard-interactive`, the usual carrier for MFA). The
+/// frontend collects the answers and hands them back to `answer_auth_prompt`
+/// under the same `id`; nothing typed here is ever saved.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AuthPrompt {
+    /// Identifies this round to `answer_auth_prompt`.
+    pub id: String,
+    /// The session being opened, so the dialog can name its tab.
+    pub session_id: String,
+    /// `host:port` of the hop asking; a jump host has its own challenges.
+    pub address: String,
+    pub username: String,
+    /// Server-supplied title for the round; usually empty.
+    pub name: String,
+    /// Server-supplied text shown above the questions; usually empty.
+    pub instructions: String,
+    pub prompts: Vec<AuthPromptField>,
+}
+
 /// What `open_session` produced: a live session, or a decision the user has
 /// to make before one can be opened.
 #[derive(Debug, Clone, Serialize)]
