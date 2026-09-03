@@ -99,6 +99,22 @@ describe("agentic CLI sessions", () => {
     expect(events).toEqual(["running:ai", "complete:ai"]);
   });
 
+  it("does not open a turn for the terminal's own replies", async () => {
+    const events: string[] = [];
+    const controller = createController(events);
+    await write(controller, PROMPT);
+    await submit(controller, "claude");
+    events.length = 0;
+
+    // What one of these tools asks the terminal on startup: which device it
+    // is, where the cursor sits, and to be told about focus — the last of
+    // which reports back on every tab switch. xterm answers through the
+    // same channel as the keyboard, and none of it is the user typing.
+    await write(controller, "\x1b[c\x1b[6n\x1b[?1004h");
+    await vi.advanceTimersByTimeAsync(3000);
+    expect(events).toEqual([]);
+  });
+
   it("opens a new turn for every answer the user gives", async () => {
     const events: string[] = [];
     const controller = createController(events);

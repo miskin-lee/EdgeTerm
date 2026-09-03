@@ -75,6 +75,18 @@ const webglTerminals: TerminalController[] = [];
  */
 const AI_QUIET_MS = 2000;
 
+/**
+ * Data xterm sends back on the terminal's own behalf rather than the user's:
+ * answers to what a program asked it (device attributes, cursor position,
+ * colors, mode state), focus notifications, and mouse tracking. They travel
+ * the same path as keystrokes and must reach the program, but they say
+ * nothing about what the user is doing — a TUI queries the terminal the
+ * moment it starts and is told about every focus change, so counting them as
+ * input opened an agentic CLI's turn for a tool nobody had typed into.
+ */
+const TERMINAL_REPORT =
+  /^(?:\x1b\[[?>]?[0-9;]*(?:[cnRtIO]|\$y)|\x1b\[<[0-9;]*[Mm]|\x1b\[M[\s\S]{3}|\x1b\][0-9]+;[\s\S]*?(?:\x07|\x1b\\)|\x1bP[\s\S]*?\x1b\\)$/;
+
 /** A working directory the shell announced with an OSC sequence. */
 export interface ReportedCwd {
   /** Host part of an OSC 7 URL; "" when the sequence carried none. */
@@ -1351,6 +1363,9 @@ export class TerminalController {
    * *where* that text starts and *when* it was submitted.
    */
   private trackInput(data: string) {
+    // Terminal reports come through here as well; nothing below is about
+    // them (see `TERMINAL_REPORT`).
+    if (TERMINAL_REPORT.test(data)) return;
     // Before the alternate-screen check below: an agentic CLI may hold
     // either buffer, and its turns are driven by these keystrokes.
     if (this.aiSession) this.noteAiInput();
