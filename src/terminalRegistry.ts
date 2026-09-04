@@ -1,4 +1,4 @@
-import { TerminalController } from "./terminal";
+import type { TerminalController } from "./terminal";
 
 /**
  * Terminal instances outlive the React components that display them, so that

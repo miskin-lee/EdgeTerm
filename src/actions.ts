@@ -2,7 +2,7 @@ import * as api from "./api";
 import { commandHistory } from "./history";
 import { IS_WINDOWS } from "./platform";
 import { tabTitle, useStore, type HostKeyPrompt, type Tab } from "./store";
-import { TerminalController } from "./terminal";
+import type { TerminalController } from "./terminal";
 import {
   disposeController,
   getController,
@@ -73,10 +73,19 @@ function historyHost(id: string): string {
  * Returns the terminal for a session, creating it if needed. Wiring lives here
  * rather than in the React component so a terminal can exist before anything
  * renders.
+ *
+ * xterm and its addons are the largest thing the application loads and no
+ * session needs them until one is opened, so they arrive with the first
+ * terminal instead of with the window.
  */
-export function ensureController(id: string): TerminalController {
+export async function ensureController(id: string): Promise<TerminalController> {
   const existing = getController(id);
   if (existing) return existing;
+
+  const { TerminalController } = await import("./terminal");
+  // A second caller may have finished while this one waited for the module.
+  const raced = getController(id);
+  if (raced) return raced;
 
   const controller = new TerminalController(
     id,
@@ -122,7 +131,7 @@ export async function openSession(
   useStore
     .getState()
     .addTab(pendingSessionInfo(id, profile), profile, "connecting");
-  if (!isFileSession(profile.kind)) ensureController(id);
+  if (!isFileSession(profile.kind)) await ensureController(id);
   return connectSession(id, profile);
 }
 

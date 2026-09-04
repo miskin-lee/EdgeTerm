@@ -1,4 +1,6 @@
 import {
+  lazy,
+  Suspense,
   useCallback,
   useEffect,
   useRef,
@@ -13,7 +15,12 @@ import type { TerminalController } from "../terminal";
 import { getController } from "../terminalRegistry";
 import { isFileSession } from "../types";
 import { ContextMenu, type MenuItem } from "./ContextMenu";
-import { FtpPane } from "./FtpPane";
+
+// The dual-pane file workspace only exists for FTP and SFTP tabs, so it loads
+// with the first one instead of with the window.
+const FtpPane = lazy(() =>
+  import("./FtpPane").then((module) => ({ default: module.FtpPane })),
+);
 
 interface Props {
   onNewSession: () => void;
@@ -27,11 +34,9 @@ export function TerminalPane({ onNewSession }: Props) {
     <div className="term-stack">
       {tabs.map((tab) => (
         isFileSession(tab.info.kind) ? (
-          <FtpPane
-            key={tab.info.id}
-            tab={tab}
-            active={tab.info.id === activeId}
-          />
+          <Suspense key={tab.info.id} fallback={null}>
+            <FtpPane tab={tab} active={tab.info.id === activeId} />
+          </Suspense>
         ) : (
           <TerminalHost
             key={tab.info.id}
@@ -169,13 +174,21 @@ function TerminalHost({ tab, active }: { tab: Tab; active: boolean }) {
     const element = ref.current;
     if (!element) return;
 
-    ensureController(id).attach(element);
+    // The terminal already exists by the time a session is open; this only
+    // waits when the xterm module is still on its way (see ensureController).
+    let live = true;
+    void ensureController(id).then((controller) => {
+      if (live) controller.attach(element);
+    });
 
     const observer = new ResizeObserver(() => {
       getController(id)?.fit();
     });
     observer.observe(element);
-    return () => observer.disconnect();
+    return () => {
+      live = false;
+      observer.disconnect();
+    };
   }, [id]);
 
   useEffect(() => {

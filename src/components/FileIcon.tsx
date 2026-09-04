@@ -1,6 +1,5 @@
 import { useEffect, useReducer } from "react";
 
-import { fileIconUrl } from "../fileIcons";
 import type { ThemeMode } from "../types";
 
 // The Material icons ship as ~1000 separate SVG files (see vite.config.ts) that
@@ -40,20 +39,40 @@ function loadIconSource(assetUrl: string): Promise<void> {
   return request;
 }
 
-function useIconSource(assetUrl: string): string | null {
+// The theme is a megabyte of name-to-icon mapping plus the URL of every SVG
+// in it, and nothing needs it until a file list is drawn, so it is fetched
+// with the first icon rather than with the window. Once it is here, every row
+// resolves its icon synchronously.
+let theme: typeof import("../fileIcons") | null = null;
+let themeRequest: Promise<void> | null = null;
+
+function loadIconTheme(): Promise<void> {
+  return (themeRequest ??= import("../fileIcons").then((module) => {
+    theme = module;
+  }));
+}
+
+function useIconSource(
+  name: string,
+  isDir: boolean,
+  mode: ThemeMode,
+): string | null {
   const [, rerender] = useReducer((count: number) => count + 1, 0);
-  const source = sources.get(assetUrl) ?? null;
+  const assetUrl = theme?.fileIconUrl(name, isDir, mode) ?? null;
+  const source = assetUrl ? (sources.get(assetUrl) ?? null) : null;
 
   useEffect(() => {
-    if (sources.has(assetUrl)) return;
+    if (source) return;
     let active = true;
-    void loadIconSource(assetUrl).then(() => {
-      if (active) rerender();
-    });
+    void loadIconTheme()
+      .then(() => loadIconSource(theme!.fileIconUrl(name, isDir, mode)))
+      .then(() => {
+        if (active) rerender();
+      });
     return () => {
       active = false;
     };
-  }, [assetUrl]);
+  }, [name, isDir, mode, source]);
 
   return source;
 }
@@ -69,8 +88,8 @@ interface Props {
  * is being fetched; the wrapping element keeps the 16 px slot so rows do not
  * shift when it arrives.
  */
-export function FileIcon({ name, isDir, theme }: Props) {
-  const source = useIconSource(fileIconUrl(name, isDir, theme));
+export function FileIcon({ name, isDir, theme: mode }: Props) {
+  const source = useIconSource(name, isDir, mode);
   if (!source) return null;
   return <img src={source} alt="" draggable={false} />;
 }

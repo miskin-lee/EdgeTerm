@@ -2,6 +2,8 @@ import { getCurrentWindow } from "@tauri-apps/api/window";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { exit } from "@tauri-apps/plugin-process";
 import {
+  lazy,
+  Suspense,
   useCallback,
   useEffect,
   useRef,
@@ -25,7 +27,6 @@ import {
   SearchOverlay,
   type SearchOverlayHandle,
 } from "./components/SearchOverlay";
-import { SessionDialog } from "./components/SessionDialog";
 import { Splitter } from "./components/Splitter";
 import { StatusBar } from "./components/StatusBar";
 import { TabStrip } from "./components/TabStrip";
@@ -41,6 +42,14 @@ import { useActiveTab, useStore } from "./store";
 import { allControllers, getController } from "./terminalRegistry";
 import { isFileSession, type SessionProfile, type SessionState } from "./types";
 import { useUpdater } from "./updater";
+
+// The largest dialog in the application, and one nothing shows until the user
+// asks for a session, so it is not part of what the window opens with.
+const SessionDialog = lazy(() =>
+  import("./components/SessionDialog").then((module) => ({
+    default: module.SessionDialog,
+  })),
+);
 
 const REPO_URL = "https://github.com/miskin-lee/EdgeTerm";
 
@@ -113,6 +122,14 @@ export default function App() {
   // committed: the frame the window opens with is drawn from that DOM.
   useEffect(() => {
     void api.showMainWindow().catch(() => {});
+  }, []);
+
+  // xterm is loaded with the first session (see `ensureController`), which
+  // leaves the start-up bundle small but would make that first session wait
+  // for it. Fetch it in the quiet moment after the window is up instead.
+  useEffect(() => {
+    const timer = window.setTimeout(() => void import("./terminal"), 1000);
+    return () => window.clearTimeout(timer);
   }, []);
 
   // Theme is applied in three places: the CSS variable palette keys off the
@@ -390,10 +407,12 @@ export default function App() {
       />
 
       {dialog && (
-        <SessionDialog
-          initial={dialog.profile}
-          onClose={() => setDialog(null)}
-        />
+        <Suspense fallback={null}>
+          <SessionDialog
+            initial={dialog.profile}
+            onClose={() => setDialog(null)}
+          />
+        </Suspense>
       )}
 
       {closingTab && (

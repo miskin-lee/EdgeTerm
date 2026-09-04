@@ -19,6 +19,7 @@ import type { CommandSuggestion } from "./history";
 import { patchImeInput } from "./imePatch";
 import { IS_MAC } from "./platform";
 import { matchAppShortcut } from "./shortcuts";
+import { SEARCH_HIGHLIGHT_LIMIT } from "./terminalSearch";
 import {
   isShellPrompt,
   semanticLine,
@@ -225,16 +226,6 @@ const SEARCH_DECORATIONS: Record<ThemeMode, SearchDecorations> = {
     activeMatchColorOverviewRuler: "#ffb700",
   },
 };
-
-/** The search addon stops highlighting (and counting) past this many matches. */
-export const SEARCH_HIGHLIGHT_LIMIT = 1000;
-
-export interface SearchResults {
-  /** Zero-based index of the selected match; -1 when it is not among the highlighted ones. */
-  resultIndex: number;
-  /** Highlighted match count, capped at SEARCH_HIGHLIGHT_LIMIT. */
-  resultCount: number;
-}
 
 interface Callbacks {
   onData: (data: string) => void;

@@ -10,7 +10,10 @@ import { flushSync } from "react-dom";
 
 import { matchAppShortcut } from "../shortcuts";
 import { useActiveTab, useStore } from "../store";
-import { SEARCH_HIGHLIGHT_LIMIT, type SearchResults } from "../terminal";
+import {
+  SEARCH_HIGHLIGHT_LIMIT,
+  type SearchResults,
+} from "../terminalSearch";
 import { getController } from "../terminalRegistry";
 import { isFileSession } from "../types";
 import { Icon } from "./icons";
