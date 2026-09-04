@@ -250,11 +250,6 @@ export function FilerPanel() {
     await load(parent);
   };
 
-  const activate = (entry: FileEntry) => {
-    if (entry.isDir) void load(entry.path);
-    else setSelected(entry.path);
-  };
-
   const download = async (entry: FileEntry) => {
     if (!remoteId) return;
     let target: string | null = null;
@@ -482,6 +477,15 @@ export function FilerPanel() {
     } catch (e) {
       setError(String(e));
     }
+  };
+
+  /**
+   * A double-click does what the entry's own Open action does: enter a folder,
+   * or hand a file to its application (a remote one as a watched local copy).
+   */
+  const activate = (entry: FileEntry) => {
+    if (entry.isDir) void load(entry.path);
+    else if (!busy) void openEntry(entry);
   };
 
   /**
