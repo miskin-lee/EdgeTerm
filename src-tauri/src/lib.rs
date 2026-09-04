@@ -10,7 +10,19 @@ mod store;
 mod tests;
 
 use commands::AppState;
+use model::Theme;
 use tauri::Manager;
+
+/// What the window and the webview surface are painted in until the page has
+/// drawn its first frame: `--bg-app` of each theme in `styles.css`. WebView2
+/// takes long enough to start that a light-theme user saw the dark one as a
+/// black flash on every launch (issue #35), so the window opens in the theme
+/// the front end last applied (`store::startup_theme`). Windows honours it in
+/// both places (the window erases with it, WebView2 makes it its default
+/// background); WKWebView keeps painting its own white over the macOS window
+/// until the page loads.
+const DARK_BACKGROUND: tauri::window::Color = tauri::window::Color(0x18, 0x18, 0x18, 0xff);
+const LIGHT_BACKGROUND: tauri::window::Color = tauri::window::Color(0xf8, 0xf8, 0xf8, 0xff);
 
 /// Build the main window from `tauri.conf.json` (`create: false` there keeps
 /// Tauri from creating it first).
@@ -33,8 +45,13 @@ fn create_main_window(app: &tauri::App) -> tauri::Result<()> {
         .first()
         .cloned()
         .expect("tauri.conf.json defines the main window");
+    // `mut` is for the decorations below, which only Windows and Linux drop.
     #[allow(unused_mut)]
-    let mut builder = tauri::WebviewWindowBuilder::from_config(app.handle(), &config)?;
+    let mut builder = tauri::WebviewWindowBuilder::from_config(app.handle(), &config)?
+        .background_color(match store::startup_theme() {
+            Theme::Dark => DARK_BACKGROUND,
+            Theme::Light => LIGHT_BACKGROUND,
+        });
     #[cfg(any(target_os = "windows", target_os = "linux"))]
     {
         builder = builder.decorations(false);
@@ -230,6 +247,7 @@ pub fn run() {
             commands::stop_remote_edits,
             commands::list_serial_ports,
             commands::portable_mode,
+            commands::set_startup_theme,
             window_control,
         ])
         .build(tauri::generate_context!())

@@ -9,7 +9,7 @@ use crate::error::{err, AppError, Result};
 use crate::fs_local;
 use crate::model::{
     AppData, CommandHistoryEntry, DataSummary, DirListing, OpenSessionOutcome, SavedCommand,
-    SerialPortDesc, SessionGroup, SessionInfo, SessionKind, SessionProfile, ZmodemFileInfo,
+    SerialPortDesc, SessionGroup, SessionInfo, SessionKind, SessionProfile, Theme, ZmodemFileInfo,
     APP_DATA_EXTENSION,
 };
 use crate::remote_edit::RemoteEdits;
@@ -628,6 +628,13 @@ pub fn local_is_directory(path: String) -> bool {
 #[tauri::command]
 pub fn open_local_path(path: String, with: Option<String>) -> Result<()> {
     tauri_plugin_opener::open_path(&path, with.as_deref()).map_err(err)
+}
+
+/// Remembers the theme the front end is showing, so the next launch creates
+/// its window in the matching background colour (`store::save_startup_theme`).
+#[tauri::command]
+pub fn set_startup_theme(theme: Theme) -> Result<()> {
+    store::save_startup_theme(theme)
 }
 
 /// Whether this copy runs in portable mode (a `data` directory next to the

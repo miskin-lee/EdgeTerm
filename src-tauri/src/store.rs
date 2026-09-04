@@ -11,7 +11,8 @@ use serde::{Deserialize, Serialize};
 use crate::error::{AppError, Result};
 use crate::model::{
     AppData, AuthKind, CommandHistoryEntry, CommandScope, DataSummary, SavedCommand, SessionGroup,
-    SessionKind, SessionProfile, APP_DATA_APP, APP_DATA_EXTENSION, APP_DATA_FORMAT, MAX_JUMP_HOPS,
+    SessionKind, SessionProfile, Theme, APP_DATA_APP, APP_DATA_EXTENSION, APP_DATA_FORMAT,
+    MAX_JUMP_HOPS,
 };
 
 const MAX_SAVED_COMMANDS: usize = 1000;
@@ -788,6 +789,47 @@ impl Store {
     }
 }
 
+/// `appearance.json`: the little the window has to know before the webview
+/// exists. Every other front-end setting lives in the webview's localStorage,
+/// which nothing can read until the webview is up — and until the page paints,
+/// the window shows the colour it was created with.
+#[derive(Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct Appearance {
+    theme: Theme,
+}
+
+/// The theme the front end last applied, dark until it has said otherwise.
+/// The window is created in this theme's background colour, so a light-theme
+/// user no longer watches a dark window while the webview starts (issue #35).
+pub fn startup_theme() -> Theme {
+    startup_theme_at(&appearance_path_for(&config_path()))
+}
+
+/// Remembers the theme for the next launch.
+pub fn save_startup_theme(theme: Theme) -> Result<()> {
+    save_startup_theme_at(&appearance_path_for(&config_path()), theme)
+}
+
+pub(crate) fn startup_theme_at(path: &Path) -> Theme {
+    read_json::<Appearance>(path)
+        .map(|appearance| appearance.theme)
+        .unwrap_or(Theme::Dark)
+}
+
+pub(crate) fn save_startup_theme_at(path: &Path, theme: Theme) -> Result<()> {
+    // The front end applies its theme on every start, not only when it
+    // changes, so the usual call has nothing to write.
+    if read_json::<Appearance>(path).map(|appearance| appearance.theme) == Some(theme) {
+        return Ok(());
+    }
+    let parent = path
+        .parent()
+        .ok_or_else(|| AppError::new("config directory has no parent"))?;
+    std::fs::create_dir_all(parent)?;
+    write_owner_only(path, &serde_json::to_string_pretty(&Appearance { theme })?)
+}
+
 /// Whether `path` carries the data-file extension (`.edgeterm`, any case).
 pub fn is_data_file_path(path: &Path) -> bool {
     path.extension()
@@ -1010,6 +1052,10 @@ fn sender_commands_path_for(path: &Path) -> PathBuf {
 
 fn command_history_path_for(path: &Path) -> PathBuf {
     path.with_file_name("command_history.json")
+}
+
+fn appearance_path_for(path: &Path) -> PathBuf {
+    path.with_file_name("appearance.json")
 }
 
 /// A `data` directory next to the executable switches the application into

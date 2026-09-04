@@ -13,6 +13,7 @@ import type {
   SessionGroup,
   SessionInfo,
   SessionProfile,
+  ThemeMode,
 } from "./types";
 
 export interface OutputEvent {
@@ -389,6 +390,16 @@ export type WindowControlAction = "minimize" | "toggle-maximize";
  */
 export const windowControl = (action: WindowControlAction): Promise<void> =>
   invoke("window_control", { action });
+
+// --- appearance -------------------------------------------------------------
+
+/**
+ * Remembers the theme for the next launch. A window is created — and painted —
+ * before anything can read the settings this webview keeps, so the backend
+ * holds on to this one alone (see `create_main_window` in lib.rs).
+ */
+export const setStartupTheme = (theme: ThemeMode): Promise<void> =>
+  invoke("set_startup_theme", { theme });
 
 // --- portable mode ----------------------------------------------------------
 

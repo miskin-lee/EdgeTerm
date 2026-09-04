@@ -3,12 +3,7 @@ import ReactDOM from "react-dom/client";
 
 import App from "./App";
 import { applyMonoFontFamily } from "./fonts";
-import { loadTheme } from "./store";
 import "./styles.css";
-
-// Apply the stored theme before the first paint so a light-theme user never
-// sees a dark flash while React mounts.
-document.documentElement.dataset.theme = loadTheme();
 
 // The monospace stack is picked per platform in fonts.ts (VS Code's editor
 // defaults); publish it as --font-mono so CSS and xterm agree on one value.

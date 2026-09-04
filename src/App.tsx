@@ -108,11 +108,14 @@ export default function App() {
 
   // Theme is applied in three places: the CSS variable palette keys off the
   // root data-theme attribute, semantic decorations read a module-level
-  // palette, and each live terminal owns its own xterm theme object.
+  // palette, and each live terminal owns its own xterm theme object. The
+  // backend is told as well, so the next launch opens its window in this
+  // theme's background colour; a failed write only costs that.
   useEffect(() => {
     document.documentElement.dataset.theme = theme;
     setSemanticColorTheme(theme);
     for (const controller of allControllers()) controller.setTheme(theme);
+    void api.setStartupTheme(theme).catch(() => {});
   }, [theme]);
 
   useEffect(() => {

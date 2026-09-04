@@ -10,6 +10,16 @@ pub enum SessionKind {
     Serial,
 }
 
+/// The colour theme of the user interface. It is a front-end setting kept in
+/// the webview's own storage; the backend only remembers the last one so the
+/// next window can be created in its background colour (`store::startup_theme`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Theme {
+    Dark,
+    Light,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum AuthKind {

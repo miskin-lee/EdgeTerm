@@ -9,11 +9,13 @@ use crate::commands::{
 use crate::fs_local;
 use crate::model::{
     split_command_line, AppData, AuthKind, CommandScope, FileEntry, LineEnding, SavedCommand,
-    SenderFormat, SessionGroup, SessionKind, SessionProfile, APP_DATA_APP, APP_DATA_EXTENSION,
-    APP_DATA_FORMAT,
+    SenderFormat, SessionGroup, SessionKind, SessionProfile, Theme, APP_DATA_APP,
+    APP_DATA_EXTENSION, APP_DATA_FORMAT,
 };
 use crate::session::{join_remote, sort_entries};
-use crate::store::{is_data_file_path, portable_data_dir_in, Store};
+use crate::store::{
+    is_data_file_path, portable_data_dir_in, save_startup_theme_at, startup_theme_at, Store,
+};
 
 fn temp_dir(tag: &str) -> PathBuf {
     let dir = std::env::temp_dir().join(format!("edgeterm-test-{tag}-{}", uuid::Uuid::new_v4()));
@@ -1413,6 +1415,35 @@ fn portable_mode_requires_a_data_directory_next_to_the_executable() {
     std::fs::remove_file(dir.join("data")).expect("remove file");
     std::fs::create_dir(dir.join("data")).expect("create data dir");
     assert_eq!(portable_data_dir_in(&dir), Some(dir.join("data")));
+
+    std::fs::remove_dir_all(&dir).ok();
+}
+
+#[test]
+fn the_startup_theme_survives_a_restart_and_defaults_to_dark() {
+    let dir = temp_dir("appearance");
+    let path = dir.join("appearance.json");
+
+    // Nothing saved yet, and an unreadable file, both mean the dark palette
+    // the stylesheet starts from.
+    assert_eq!(startup_theme_at(&path), Theme::Dark);
+    std::fs::write(&path, b"not json").expect("write damaged file");
+    assert_eq!(startup_theme_at(&path), Theme::Dark);
+
+    save_startup_theme_at(&path, Theme::Light).expect("save light");
+    assert_eq!(startup_theme_at(&path), Theme::Light);
+
+    // The front end saves on every start, so a call that changes nothing
+    // leaves the file alone: what is on disk is still the untouched original.
+    std::fs::write(&path, br#"{"theme":"light","from":"a later build"}"#)
+        .expect("write file with an unknown field");
+    save_startup_theme_at(&path, Theme::Light).expect("save light again");
+    assert!(std::fs::read_to_string(&path)
+        .expect("read file")
+        .contains("a later build"));
+
+    save_startup_theme_at(&path, Theme::Dark).expect("save dark");
+    assert_eq!(startup_theme_at(&path), Theme::Dark);
 
     std::fs::remove_dir_all(&dir).ok();
 }
