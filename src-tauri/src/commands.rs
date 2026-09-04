@@ -637,6 +637,19 @@ pub fn set_startup_theme(theme: Theme) -> Result<()> {
     store::save_startup_theme(theme)
 }
 
+/// Reveals the main window, which is created hidden so that the first thing
+/// on screen is the painted interface rather than an empty frame. Called by
+/// the front end as soon as it has painted; `create_main_window` shows the
+/// window anyway if that call never comes.
+#[tauri::command]
+pub fn show_main_window(window: tauri::WebviewWindow) -> Result<()> {
+    window.show().map_err(err)?;
+    // The window was hidden while the application started, so on Windows it
+    // would otherwise appear behind whatever the user looked at meanwhile.
+    let _ = window.set_focus();
+    Ok(())
+}
+
 /// Whether this copy runs in portable mode (a `data` directory next to the
 /// executable holds all configuration). The updater must not run the NSIS
 /// installer then; the front end opens the release page instead.

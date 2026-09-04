@@ -27,6 +27,11 @@ const LIGHT_BACKGROUND: tauri::window::Color = tauri::window::Color(0xf8, 0xf8, 
 /// Build the main window from `tauri.conf.json` (`create: false` there keeps
 /// Tauri from creating it first).
 ///
+/// It is created hidden and revealed by the front end once the interface has
+/// painted (`show_main_window`), so an empty frame is never on screen: the
+/// window colours below only paint what a webview has not drawn yet, and
+/// WKWebView paints its own white over them regardless (issue #35).
+///
 /// The menubar is the title bar: it is the drag region and shares its row
 /// with the window controls (see `MenuBar.tsx`), the VS Code arrangement.
 /// - macOS keeps `titleBarStyle: "Overlay"`: the native traffic lights are
@@ -56,7 +61,15 @@ fn create_main_window(app: &tauri::App) -> tauri::Result<()> {
     {
         builder = builder.decorations(false);
     }
-    builder.build()?;
+    let window = builder.visible(false).build()?;
+
+    // The guard for a front end that never reaches its first paint: without
+    // it a page that fails to load would leave the application running with
+    // no window to close it from.
+    std::thread::spawn(move || {
+        std::thread::sleep(std::time::Duration::from_secs(4));
+        let _ = window.show();
+    });
     Ok(())
 }
 
@@ -248,6 +261,7 @@ pub fn run() {
             commands::list_serial_ports,
             commands::portable_mode,
             commands::set_startup_theme,
+            commands::show_main_window,
             window_control,
         ])
         .build(tauri::generate_context!())

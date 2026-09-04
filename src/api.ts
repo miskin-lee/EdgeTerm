@@ -391,7 +391,7 @@ export type WindowControlAction = "minimize" | "toggle-maximize";
 export const windowControl = (action: WindowControlAction): Promise<void> =>
   invoke("window_control", { action });
 
-// --- appearance -------------------------------------------------------------
+// --- start-up appearance ----------------------------------------------------
 
 /**
  * Remembers the theme for the next launch. A window is created — and painted —
@@ -400,6 +400,14 @@ export const windowControl = (action: WindowControlAction): Promise<void> =>
  */
 export const setStartupTheme = (theme: ThemeMode): Promise<void> =>
   invoke("set_startup_theme", { theme });
+
+/**
+ * Reveals the main window. It starts hidden so that what appears is the
+ * painted interface and not an empty frame, so this belongs after the first
+ * paint and nowhere else; the backend shows the window itself if it never
+ * arrives.
+ */
+export const showMainWindow = (): Promise<void> => invoke("show_main_window");
 
 // --- portable mode ----------------------------------------------------------
 

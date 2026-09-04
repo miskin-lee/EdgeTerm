@@ -106,6 +106,15 @@ export default function App() {
     if (useStore.getState().suggestionsEnabled) commandHistory.load();
   }, [loadProfiles]);
 
+  // The window is hidden until there is an interface to show, so the
+  // application opens on the UI rather than on an empty frame (issue #35).
+  // A hidden window never paints, and `requestAnimationFrame` never fires
+  // with it, so the reveal goes out as soon as this first render is
+  // committed: the frame the window opens with is drawn from that DOM.
+  useEffect(() => {
+    void api.showMainWindow().catch(() => {});
+  }, []);
+
   // Theme is applied in three places: the CSS variable palette keys off the
   // root data-theme attribute, semantic decorations read a module-level
   // palette, and each live terminal owns its own xterm theme object. The
