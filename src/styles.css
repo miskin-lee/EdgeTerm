@@ -2071,6 +2071,11 @@ textarea:focus {
   color: var(--fg-faint);
 }
 
+.term-empty-icon {
+  width: 64px;
+  height: 64px;
+}
+
 .term-empty h1 {
   margin: 0;
   font-size: 22px;
@@ -2080,11 +2085,9 @@ textarea:focus {
 }
 
 .term-empty-hint {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  align-items: center;
+  margin: 0;
   line-height: 1.7;
+  text-align: center;
 }
 
 .term-empty kbd {

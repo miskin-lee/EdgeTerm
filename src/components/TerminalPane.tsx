@@ -8,6 +8,7 @@ import {
   type MouseEvent as ReactMouseEvent,
 } from "react";
 
+import appIcon from "../../src-tauri/icons/128x128@2x.png";
 import { ensureController, revealCwdInFiler } from "../actions";
 import { IS_MAC, shortcutLabel as sc } from "../platform";
 import { useStore, type Tab } from "../store";
@@ -48,14 +49,17 @@ export function TerminalPane({ onNewSession }: Props) {
 
       {tabs.length === 0 && (
         <div className="term-empty">
+          <img
+            className="term-empty-icon"
+            src={appIcon}
+            alt=""
+            draggable={false}
+          />
           <h1>EdgeTerm</h1>
-          <div className="term-empty-hint">
-            <span>No session is open.</span>
-            <span>
-              Press <kbd>{sc("⌘N", "Alt+N")}</kbd> for a new session, or pick
-              one from the Session panel.
-            </span>
-          </div>
+          <p className="term-empty-hint">
+            Press <kbd>{sc("⌘N", "Alt+N")}</kbd> for a new session, or pick one
+            from the Session panel.
+          </p>
           <button className="btn is-primary" onClick={onNewSession}>
             New Session
           </button>
