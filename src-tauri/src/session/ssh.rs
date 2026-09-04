@@ -468,6 +468,20 @@ async fn authenticate<H: client::Handler>(
     address: &str,
     prompter: &AuthPrompter<'_>,
 ) -> Result<()> {
+    // Every SSH client opens with the "none" method: it is how the server is
+    // asked which methods it will accept, and a server that requires no
+    // authentication at all answers it with success instead of a method list.
+    // A router whose root password was never set is exactly that case
+    // (issue #37) — dropbear lets "none" through for a blank password but
+    // refuses the empty password that would be sent below, so a device every
+    // other client walks into was the one EdgeTerm could not log in to.
+    if matches!(
+        handle.authenticate_none(username).await?,
+        AuthResult::Success
+    ) {
+        return Ok(());
+    }
+
     let auth = profile.auth.unwrap_or_default();
     let password = profile
         .password
@@ -1685,6 +1699,9 @@ mod tests {
     struct AuthServer {
         first: FirstReply,
         rounds: &'static [Round],
+        /// Whether the "none" method is granted, the way a device that has no
+        /// password set does.
+        open: bool,
         /// The next round to ask.
         next: usize,
         answers: Arc<Mutex<Vec<Vec<String>>>>,
@@ -1695,14 +1712,30 @@ mod tests {
             Self {
                 first,
                 rounds,
+                open: false,
                 next: 0,
                 answers: Arc::new(Mutex::new(Vec::new())),
+            }
+        }
+
+        /// A server that asks for no authentication at all.
+        fn open() -> Self {
+            Self {
+                open: true,
+                ..Self::new(FirstReply::Refused(&[MethodKind::Password]), &[])
             }
         }
     }
 
     impl russh::server::Handler for AuthServer {
         type Error = russh::Error;
+
+        async fn auth_none(&mut self, _user: &str) -> std::result::Result<Auth, Self::Error> {
+            if self.open {
+                return Ok(Auth::Accept);
+            }
+            Ok(Auth::reject())
+        }
 
         async fn auth_publickey(
             &mut self,
@@ -1858,6 +1891,41 @@ mod tests {
                 prompt: "Verification code: ".into(),
                 echo: false,
             }]
+        );
+    }
+
+    /// A device that was never given a root password — an OpenWrt/dropbear
+    /// router as it comes out of a flash (issue #37) — grants the "none"
+    /// method. The login goes through on that alone: no credential is sent
+    /// and the user is not asked for one.
+    #[tokio::test]
+    async fn a_server_that_asks_for_nothing_logs_straight_in() {
+        let server = AuthServer::open();
+        let answers = server.answers.clone();
+        let mut handle = handshake(server).await;
+
+        // The default profile: password authentication with nothing saved.
+        let mut profile = crate::tests::profile(SessionKind::Ssh);
+        profile.auth = Some(AuthKind::Password);
+
+        let user = Mutex::new(CannedAnswers::default());
+        authenticate(
+            &mut handle,
+            &profile,
+            "root",
+            "192.168.1.1:22",
+            &AuthPrompter::canned(&user),
+        )
+        .await
+        .expect("a server that asks for nothing lets the session in");
+
+        assert!(
+            answers.lock().is_empty(),
+            "no password is sent to a server that already let the session in"
+        );
+        assert!(
+            user.lock().asked().is_empty(),
+            "nothing is asked of the user"
         );
     }
 
