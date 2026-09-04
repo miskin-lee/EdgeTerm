@@ -93,6 +93,13 @@ function TerminalHost({ tab, active }: { tab: Tab; active: boolean }) {
   const [menu, setMenu] = useState<TerminalMenu | null>(null);
   const closeMenu = useCallback(() => setMenu(null), []);
   const id = tab.info.id;
+  // xterm loads on demand, so the terminal can arrive a tick after the pane
+  // first renders (see ensureController). Effects that looked it up in the
+  // registry right away found nothing and silently did nothing — which cost
+  // the active tab its `setVisible(true)`, and with it the WebGL renderer and
+  // the semantic colors that ride on it. Keeping it in state re-runs them the
+  // moment it exists.
+  const [terminal, setTerminal] = useState<TerminalController | null>(null);
 
   const ownsClick = (event: ReactMouseEvent) => {
     const controller = getController(id);
@@ -182,7 +189,9 @@ function TerminalHost({ tab, active }: { tab: Tab; active: boolean }) {
     // waits when the xterm module is still on its way (see ensureController).
     let live = true;
     void ensureController(id).then((controller) => {
-      if (live) controller.attach(element);
+      if (!live) return;
+      controller.attach(element);
+      setTerminal(controller);
     });
 
     const observer = new ResizeObserver(() => {
@@ -196,35 +205,35 @@ function TerminalHost({ tab, active }: { tab: Tab; active: boolean }) {
   }, [id]);
 
   useEffect(() => {
-    getController(id)?.setGutterMode(gutterMode);
-  }, [id, gutterMode]);
+    terminal?.setGutterMode(gutterMode);
+  }, [terminal, gutterMode]);
 
   useEffect(() => {
-    getController(id)?.setFontSize(bufferFontSize);
-  }, [bufferFontSize, id]);
+    terminal?.setFontSize(bufferFontSize);
+  }, [bufferFontSize, terminal]);
 
   useEffect(() => {
-    getController(id)?.setScrollback(terminalScrollback);
-  }, [id, terminalScrollback]);
+    terminal?.setScrollback(terminalScrollback);
+  }, [terminal, terminalScrollback]);
 
   useEffect(() => {
-    getController(id)?.setSuggestions(suggestionsEnabled);
-  }, [id, suggestionsEnabled]);
+    terminal?.setSuggestions(suggestionsEnabled);
+  }, [terminal, suggestionsEnabled]);
 
   useEffect(() => {
+    if (!terminal) return;
     // The terminal keeps its WebGL renderer for the tabs shown recently
     // and gives it up for the rest; see TerminalController.setVisible.
-    getController(id)?.setVisible(active);
+    terminal.setVisible(active);
     if (!active) return;
     // The pane is hidden while inactive, so it can only be measured and
     // focused once it is on screen again.
     const frame = requestAnimationFrame(() => {
-      const controller = getController(id);
-      controller?.fit();
-      controller?.focus();
+      terminal.fit();
+      terminal.focus();
     });
     return () => cancelAnimationFrame(frame);
-  }, [active, id]);
+  }, [active, terminal]);
 
   return (
     <>
