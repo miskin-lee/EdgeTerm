@@ -23,8 +23,8 @@ use super::transfer::{
     ProgressReporter,
 };
 use super::{
-    emit_state, join_remote, sort_entries, OutputPump, SessionCommand, SftpRequest, SftpResponse,
-    TransferProgress,
+    emit_state, join_remote, locale, sort_entries, OutputPump, SessionCommand, SftpRequest,
+    SftpResponse, TransferProgress,
 };
 use crate::error::{AppError, Result};
 use crate::model::{
@@ -424,6 +424,13 @@ pub async fn connect(
     // modern CLI applications select their 24-bit color output automatically.
     let _ = channel.set_env(false, "COLORTERM", "truecolor").await;
     let _ = channel.set_env(false, "TERM_PROGRAM", "EdgeTerm").await;
+    // The locale the profile asks the server for, so its `ls` prints UTF-8
+    // rather than octal escapes (issue #39). Applied by servers configured
+    // with `AcceptEnv LANG`; see `locale::ssh_lang` for why only a locale
+    // the user named is sent.
+    if let Some(lang) = locale::ssh_lang(profile) {
+        let _ = channel.set_env(false, "LANG", lang).await;
+    }
     channel.request_shell(true).await?;
 
     Ok(ConnectOutcome::Ready(SshConnection {

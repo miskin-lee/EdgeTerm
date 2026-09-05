@@ -30,6 +30,8 @@ pub(crate) fn profile(kind: SessionKind) -> SessionProfile {
         kind,
         color: None,
         group_id: None,
+        encoding: None,
+        locale: None,
         shell: None,
         cwd: None,
         host: None,

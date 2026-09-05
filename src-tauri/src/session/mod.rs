@@ -1,7 +1,9 @@
 pub mod auth;
 pub mod cwd;
+pub mod encoding;
 pub mod ftp;
 pub mod local;
+pub mod locale;
 pub mod serial;
 pub mod ssh;
 pub mod transfer;
@@ -9,6 +11,7 @@ pub mod transfer;
 use std::collections::HashMap;
 
 use base64::{engine::general_purpose::STANDARD as B64, Engine as _};
+use encoding_rs::Encoding;
 use parking_lot::Mutex;
 use serde::Serialize;
 use tauri::{ipc::Channel, AppHandle, Emitter};
@@ -107,6 +110,9 @@ pub enum SessionCommand {
 pub struct SessionHandle {
     pub info: SessionInfo,
     pub tx: mpsc::UnboundedSender<SessionCommand>,
+    /// What the session's bytes are in; keyboard text is encoded to it by
+    /// `write_text` (see `encoding`).
+    pub encoding: &'static Encoding,
     /// Serial sessions use a blocking owner thread. Joining it during close
     /// guarantees that the OS device handle is gone before the command returns.
     pub owner_thread: Option<std::thread::JoinHandle<()>>,
@@ -136,13 +142,31 @@ impl SessionManager {
 
     pub fn send(&self, id: &str, cmd: SessionCommand) -> Result<()> {
         let guard = self.sessions.lock();
-        let handle = guard
+        Self::dispatch(Self::handle(&guard, id)?, cmd)
+    }
+
+    /// Keyboard and paste text, encoded the way the session expects it.
+    pub fn write_text(&self, id: &str, text: &str) -> Result<()> {
+        let guard = self.sessions.lock();
+        let handle = Self::handle(&guard, id)?;
+        let bytes = encoding::encode_input(handle.encoding, text);
+        Self::dispatch(handle, SessionCommand::Write(bytes))
+    }
+
+    fn handle<'a>(
+        guard: &'a HashMap<String, SessionHandle>,
+        id: &str,
+    ) -> Result<&'a SessionHandle> {
+        guard
             .get(id)
-            .ok_or_else(|| AppError::new(format!("session {id} is not open")))?;
+            .ok_or_else(|| AppError::new(format!("session {id} is not open")))
+    }
+
+    fn dispatch(handle: &SessionHandle, cmd: SessionCommand) -> Result<()> {
         handle
             .tx
             .send(cmd)
-            .map_err(|_| AppError::new(format!("session {id} has terminated")))
+            .map_err(|_| AppError::new(format!("session {} has terminated", handle.info.id)))
     }
 
     /// Sends one bounded binary chunk and waits until the owning session has
@@ -354,6 +378,7 @@ mod tests {
                 supports_remote_files: true,
             },
             tx,
+            encoding: encoding_rs::UTF_8,
             owner_thread: None,
         });
 
@@ -381,5 +406,34 @@ mod tests {
             .await
             .expect("write task should not panic")
             .expect("confirmed write should succeed");
+    }
+
+    #[tokio::test]
+    async fn text_is_encoded_for_the_session_it_goes_to() {
+        let manager = SessionManager::default();
+        let (tx, mut rx) = mpsc::unbounded_channel();
+        manager.insert(SessionHandle {
+            info: SessionInfo {
+                id: "gbk".into(),
+                profile_id: None,
+                name: "test".into(),
+                kind: SessionKind::Ssh,
+                protocol: "ssh".into(),
+                address: "example.test:22".into(),
+                color: None,
+                supports_remote_files: true,
+            },
+            tx,
+            encoding: encoding_rs::GBK,
+            owner_thread: None,
+        });
+
+        manager.write_text("gbk", "ls 你好\r").expect("write");
+        let SessionCommand::Write(bytes) = rx.recv().await.expect("write command") else {
+            panic!("expected a plain write");
+        };
+        assert_eq!(bytes, b"ls \xc4\xe3\xba\xc3\r".to_vec());
+
+        assert!(manager.write_text("missing", "x").is_err());
     }
 }

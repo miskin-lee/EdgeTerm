@@ -14,6 +14,7 @@ import {
 } from "@xterm/xterm";
 
 import { isAiSessionCommand } from "./aiTools";
+import { createOutputDecoder } from "./encodings";
 import { MONO_FONT_FAMILY } from "./fonts";
 import type { CommandSuggestion } from "./history";
 import { patchImeInput } from "./imePatch";
@@ -283,6 +284,11 @@ export class TerminalController {
   private lastSearch: string | null = null;
   private readonly zmodem: ZmodemController;
   private readonly xmodem: XmodemController;
+  /**
+   * Decodes session output when the session is not in UTF-8, the only
+   * encoding xterm reads itself; null feeds xterm the bytes as they are.
+   */
+  private decoder: TextDecoder | null = null;
   private readonly transferNotice: HTMLElement;
   private transferNoticeTimer: number | null = null;
 
@@ -407,7 +413,7 @@ export class TerminalController {
     this.popup.setAttribute("role", "listbox");
 
     const transferCallbacks = {
-      toTerminal: (bytes: Uint8Array) => this.term.write(bytes),
+      toTerminal: (bytes: Uint8Array) => this.feed(bytes),
       onStatus: callbacks.onStatus,
       onNotice: (message: string, kind: TransferNoticeKind) =>
         this.showTransferNotice(message, kind),
@@ -853,6 +859,29 @@ export class TerminalController {
     // passes ordinary output through to xterm.
     if (this.xmodem.isActive()) this.xmodem.consume(data);
     else this.zmodem.consume(data);
+  }
+
+  /**
+   * Sets the encoding the session's output arrives in (a WHATWG label;
+   * UTF-8 or unknown means none). Called for every connect, which also
+   * discards a partial character left over from the previous session.
+   */
+  setEncoding(label: string | null | undefined) {
+    this.decoder = createOutputDecoder(label);
+  }
+
+  /**
+   * Hands ordinary output — what the transfer sentries let through — to
+   * xterm. Only the terminal's own bytes are decoded: the sentries and the
+   * transfers behind them need the raw stream, so the conversion has to sit
+   * after them, not in `write`.
+   */
+  private feed(bytes: Uint8Array) {
+    if (this.decoder) {
+      this.term.write(this.decoder.decode(bytes, { stream: true }));
+    } else {
+      this.term.write(bytes);
+    }
   }
 
   writeText(text: string) {

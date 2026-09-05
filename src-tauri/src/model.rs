@@ -51,6 +51,21 @@ pub struct SessionProfile {
     #[serde(default)]
     pub group_id: Option<String>,
 
+    // --- terminal text (local / ssh / serial) ---
+    /// Character encoding of the terminal byte stream, as a WHATWG label
+    /// (`gbk`, `big5`, `shift_jis`, …); absent or unknown means UTF-8.
+    /// Output is decoded in the frontend right before it reaches xterm —
+    /// after the ZMODEM / XMODEM sentries, which need the raw bytes — and
+    /// keyboard input is encoded by `SessionManager::write_text`; the
+    /// binary write path never converts. See `session::encoding`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub encoding: Option<String>,
+    /// Locale handed to the shell as `LANG`: put in a local shell's
+    /// environment, requested from an SSH server (which applies it only with
+    /// `AcceptEnv LANG`). Absent means automatic; see `session::locale`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub locale: Option<String>,
+
     // --- local ---
     #[serde(default)]
     pub shell: Option<String>,

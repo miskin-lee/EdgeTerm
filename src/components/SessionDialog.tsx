@@ -2,6 +2,13 @@ import { useEffect, useRef, useState, type CSSProperties } from "react";
 
 import { openSession } from "../actions";
 import * as api from "../api";
+import {
+  encodingLabel,
+  DEFAULT_ENCODING,
+  LOCALE_NAME,
+  LOCALE_SUGGESTIONS,
+  TERMINAL_ENCODINGS,
+} from "../encodings";
 import { IS_WINDOWS } from "../platform";
 import {
   flattenGroups,
@@ -17,6 +24,7 @@ import {
 import { useDialogDrag } from "./useDialogDrag";
 import {
   colorForSession,
+  isFileSession,
   isSshTransport,
   randomSessionColor,
   SESSION_COLORS,
@@ -146,6 +154,9 @@ const describeJumpHost = (p: SessionProfile) =>
   `${p.name} — ${p.username ?? ""}@${p.host ?? ""}:${p.port ?? 22}`;
 
 function validateProfile(profile: SessionProfile): string | null {
+  if (profile.locale && !LOCALE_NAME.test(profile.locale)) {
+    return "Locale must be a locale name such as en_US.UTF-8 or C.UTF-8.";
+  }
   if (profile.kind !== "serial") return null;
 
   const baudRate = profile.baudRate;
@@ -240,6 +251,17 @@ export function SessionDialog({ initial, onClose }: Props) {
     jumpProfileId: isSshTransport(profile.kind)
       ? profile.jumpProfileId || null
       : null,
+    // Encoding and locale belong to terminal sessions; UTF-8 and "automatic"
+    // are stored as nothing, so an untouched profile stays as it was.
+    encoding:
+      !isFileSession(profile.kind) &&
+      encodingLabel(profile.encoding) !== DEFAULT_ENCODING
+        ? encodingLabel(profile.encoding)
+        : null,
+    locale:
+      profile.kind === "local" || profile.kind === "ssh"
+        ? profile.locale?.trim() || null
+        : null,
   });
 
   // One line under the title saying what the form connects to as it is filled
@@ -259,6 +281,65 @@ export function SessionDialog({ initial, onClose }: Props) {
     if (!host) return `${name} · no host yet`;
     const user = profile.username?.trim();
     return `${name} · ${user ? `${user}@` : ""}${host}:${profile.port ?? defaultPort(profile.kind)}`;
+  };
+
+  // What the session's bytes mean, for every terminal kind, and the locale
+  // to ask the shell for — a local shell gets it as LANG, an SSH server is
+  // asked for it; a serial device has no environment to hand it to.
+  const renderTextFields = (withLocale: boolean) => {
+    const encoding = encodingLabel(profile.encoding);
+    const choices = TERMINAL_ENCODINGS.some((e) => e.label === encoding)
+      ? TERMINAL_ENCODINGS
+      : [...TERMINAL_ENCODINGS, { label: encoding, name: encoding }];
+    return (
+      <>
+        <label className="session-field">
+          <span className="session-field-label">Encoding</span>
+          <select
+            value={encoding}
+            onChange={(event) => patch({ encoding: event.target.value })}
+          >
+            {choices.map((choice) => (
+              <option key={choice.label} value={choice.label}>
+                {choice.name}
+              </option>
+            ))}
+          </select>
+        </label>
+        {withLocale && (
+          <>
+            <label className="session-field">
+              <span className="session-field-label">Locale</span>
+              <input
+                {...RAW_TEXT_INPUT}
+                list="session-locale-suggestions"
+                value={profile.locale ?? ""}
+                placeholder="Automatic"
+                onChange={(event) => patch({ locale: event.target.value })}
+              />
+              <datalist id="session-locale-suggestions">
+                {LOCALE_SUGGESTIONS.map((locale) => (
+                  <option key={locale} value={locale} />
+                ))}
+              </datalist>
+            </label>
+            <div className="session-note is-wide">
+              <Icon name="info" />
+              <span>
+                {profile.kind === "ssh"
+                  ? "The locale is sent as LANG when the shell starts, so " +
+                    "a server with AcceptEnv LANG prints file names in " +
+                    "UTF-8 instead of octal escapes. Empty keeps the " +
+                    "server's default."
+                  : "The locale becomes the shell's LANG. Empty inherits " +
+                    "the environment, with a UTF-8 locale filled in when " +
+                    "the environment names none."}
+              </span>
+            </div>
+          </>
+        )}
+      </>
+    );
   };
 
   // ProxyJump: tunnel this session through another saved SSH session.
@@ -656,6 +737,7 @@ export function SessionDialog({ initial, onClose }: Props) {
 
                 {renderServerAuthFields()}
                 {renderJumpHostField()}
+                {renderTextFields(true)}
               </div>
             </section>
           )}
@@ -799,6 +881,7 @@ export function SessionDialog({ initial, onClose }: Props) {
                     onChange={(event) => patch({ cwd: event.target.value })}
                   />
                 </label>
+                {renderTextFields(true)}
               </div>
             </section>
           )}
@@ -949,6 +1032,7 @@ export function SessionDialog({ initial, onClose }: Props) {
                     <option value="hardware">RTS/CTS (hardware)</option>
                   </select>
                 </label>
+                {renderTextFields(false)}
               </div>
             </section>
           )}

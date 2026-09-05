@@ -1280,6 +1280,8 @@ name = "edgeterm"
 version = "0.7.0"
 dependencies = [
  "base64 0.22.1",
+ "core-foundation 0.10.1",
+ "core-foundation-sys",
  "dirs",
  "encoding_rs",
  "libc",

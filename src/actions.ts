@@ -214,6 +214,11 @@ async function connectSession(
   store.setError(null);
   store.applyState(id, "connecting");
 
+  // The decoder for the profile's encoding must be in place before the
+  // first byte of the banner arrives; a reconnect may carry a re-edited
+  // profile, so it is set on every connect.
+  getController(id)?.setEncoding(profile.encoding);
+
   pendingConnects.add(id);
   try {
     const outcome = await api.openSession(profile, id);

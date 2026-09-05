@@ -56,6 +56,13 @@ tauri-plugin-updater = "2"
 [target."cfg(unix)".dependencies]
 libc = "0.2"
 
+# Already in the tree through tao / wry; used directly for the user's locale
+# identifier, which picks the `LANG` a local shell starts with (see
+# `session/locale.rs`).
+[target."cfg(target_os = \"macos\")".dependencies]
+core-foundation = "0.10"
+core-foundation-sys = "0.8"
+
 # Drive enumeration and volume labels for the Filer's "This PC" view, the
 # registry MachineGuid the credential key is bound to, and the WM_SYSCOMMAND
 # route behind the menubar's window controls (see `window_control`).

@@ -258,6 +258,7 @@ pub async fn open_session(
     state.sessions.insert(SessionHandle {
         info: info.clone(),
         tx,
+        encoding: session::encoding::terminal_encoding(&profile),
         owner_thread,
     });
     Ok(OpenSessionOutcome::Connected { info })
@@ -301,12 +302,11 @@ pub fn list_sessions(state: State<'_, AppState>) -> Vec<SessionInfo> {
     state.sessions.list()
 }
 
-/// Keyboard and paste input, which xterm.js hands us as a UTF-8 string.
+/// Keyboard and paste input, which xterm.js hands us as a UTF-8 string; it
+/// goes out in the session's own encoding.
 #[tauri::command]
 pub fn write_session(state: State<'_, AppState>, id: String, data: String) -> Result<()> {
-    state
-        .sessions
-        .send(&id, SessionCommand::Write(data.into_bytes()))
+    state.sessions.write_text(&id, &data)
 }
 
 /// Raw bytes, base64-encoded. Used by the Sender pane's hex mode.

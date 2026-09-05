@@ -29,6 +29,18 @@ export interface SessionProfile {
    */
   groupId?: string | null;
 
+  // terminal text (local / ssh / serial)
+  /**
+   * Character encoding of the terminal byte stream, a WHATWG label such as
+   * "gbk"; null / unknown means UTF-8. See encodings.ts.
+   */
+  encoding?: string | null;
+  /**
+   * Locale handed to the shell as LANG — set on a local shell, requested
+   * from an SSH server. Null means automatic (see session/locale.rs).
+   */
+  locale?: string | null;
+
   // local
   shell?: string | null;
   cwd?: string | null;

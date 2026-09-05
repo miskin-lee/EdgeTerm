@@ -6,7 +6,7 @@ use portable_pty::{native_pty_system, CommandBuilder, PtySize};
 use tauri::AppHandle;
 use tokio::sync::mpsc::UnboundedReceiver;
 
-use super::{cwd, emit_state, reject_unsupported, OutputPump, SessionCommand};
+use super::{cwd, emit_state, locale, reject_unsupported, OutputPump, SessionCommand};
 use crate::error::{err, Result};
 use crate::model::{split_command_line, SessionKind, SessionProfile};
 
@@ -41,6 +41,12 @@ pub fn spawn(
     cmd.env("COLORTERM", "truecolor");
     cmd.env("TERM_PROGRAM", "EdgeTerm");
     cmd.env("TERM_PROGRAM_VERSION", env!("CARGO_PKG_VERSION"));
+    // A GUI application's environment names no locale on macOS, and a shell
+    // without one runs in the C locale, where `ls` shows a Chinese file
+    // name as `???` (issue #39). See `locale` for what is set and when.
+    if let Some(lang) = locale::local_shell_lang(profile) {
+        cmd.env("LANG", lang);
+    }
     if let Some(cwd) = profile.cwd.as_deref().filter(|c| !c.is_empty()) {
         cmd.cwd(cwd);
     } else if let Some(home) = dirs::home_dir() {

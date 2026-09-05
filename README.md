@@ -33,6 +33,10 @@ A small, lightweight, high-performance terminal, SSH, SFTP, FTP, and serial clie
 | FTP | `suppaftp` | Password or anonymous authentication; passive-mode browsing, UTF-8/GBK filename decoding, and streaming file and folder transfers in both directions |
 | Serial | `serialport` | Configurable baud rate, data bits, stop bits, parity, and flow control |
 
+**Text encoding and locale**
+
+Terminal sessions are UTF-8 unless the session dialog's **Encoding** says otherwise: a server or device that talks GB18030 / GBK, Big5, Shift_JIS, EUC-JP, EUC-KR or a Windows / KOI8 code page has its output decoded for the terminal and typed input encoded for the far end, while ZMODEM and XMODEM transfers stay binary. What a shell prints for a non-ASCII file name is decided by *its* locale, not by the terminal — `$'\346\226\207'`-style escapes from `ls` mean the shell's locale is not UTF-8 — so a local shell started with no locale in its environment (every GUI application on macOS) is given a UTF-8 `LANG`, and the dialog's **Locale** field sets `LANG` explicitly: for an SSH session it is sent with the shell request and applied by servers whose `sshd_config` has `AcceptEnv LANG`.
+
 **Interface**
 - **Timestamp and line-number gutter** — WindTerm's most recognizable feature. Every output line includes `[HH:MM:SS.SSS]` and a cumulative line number, with the cursor line highlighted. Four display modes are available from the `Session` menu.
 - **Session** (left): saved connection profiles in a collapsible tree; double-click to connect. Right-click a heading or a group to create (nested) groups, rename or delete them; right-click a session to connect, edit, move it to another group, or delete it. The New Session dialog lets you choose which group a session is saved to.
