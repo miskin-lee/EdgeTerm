@@ -1277,7 +1277,7 @@ dependencies = [
 
 [[package]]
 name = "edgeterm"
-version = "0.7.0"
+version = "0.7.1"
 dependencies = [
  "base64 0.22.1",
  "core-foundation 0.10.1",
