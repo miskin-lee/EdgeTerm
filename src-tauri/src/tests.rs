@@ -12,7 +12,7 @@ use crate::model::{
     SenderFormat, SessionGroup, SessionKind, SessionProfile, Theme, APP_DATA_APP,
     APP_DATA_EXTENSION, APP_DATA_FORMAT,
 };
-use crate::session::{join_remote, sort_entries};
+use crate::session::{join_remote, sort_entries, TransferProgress};
 use crate::store::{
     is_data_file_path, portable_data_dir_in, save_startup_theme_at, startup_theme_at, Store,
 };
@@ -21,6 +21,138 @@ fn temp_dir(tag: &str) -> PathBuf {
     let dir = std::env::temp_dir().join(format!("edgeterm-test-{tag}-{}", uuid::Uuid::new_v4()));
     std::fs::create_dir_all(&dir).expect("create temp dir");
     dir
+}
+
+/// A progress channel for tests that only care about the result.
+fn silent_progress() -> tauri::ipc::Channel<TransferProgress> {
+    tauri::ipc::Channel::new(|_| Ok(()))
+}
+
+#[test]
+fn dropping_a_folder_on_the_filer_merges_it_into_the_shown_directory() {
+    let dir = temp_dir("copy-into");
+    let source = dir.join("project");
+    std::fs::create_dir_all(source.join("src")).unwrap();
+    std::fs::write(source.join("README.md"), b"hello").unwrap();
+    std::fs::write(source.join("src/main.rs"), vec![7; 40]).unwrap();
+    let destination = dir.join("shown");
+    // An existing folder of the same name is merged into, and a file already
+    // there is replaced — the rules a download into a local folder follows.
+    std::fs::create_dir_all(destination.join("project")).unwrap();
+    std::fs::write(destination.join("project/keep.txt"), b"kept").unwrap();
+    std::fs::write(destination.join("project/README.md"), b"stale").unwrap();
+
+    let summary = fs_local::copy_into(
+        source.to_str().unwrap(),
+        destination.to_str().unwrap(),
+        &silent_progress(),
+    )
+    .unwrap();
+
+    assert_eq!(summary.files, 2);
+    assert_eq!(summary.skipped, 0);
+    let copied = destination.join("project");
+    assert_eq!(std::fs::read(copied.join("README.md")).unwrap(), b"hello");
+    assert_eq!(
+        std::fs::read(copied.join("src/main.rs")).unwrap(),
+        vec![7; 40]
+    );
+    assert_eq!(std::fs::read(copied.join("keep.txt")).unwrap(), b"kept");
+
+    std::fs::remove_dir_all(&dir).unwrap();
+}
+
+#[test]
+fn dropping_an_item_on_the_folder_it_lives_in_leaves_it_alone() {
+    let dir = temp_dir("copy-self");
+    let file = dir.join("notes.txt");
+    std::fs::write(&file, b"original").unwrap();
+
+    // Copying a path onto itself would truncate it, so it is skipped instead.
+    let summary = fs_local::copy_into(
+        file.to_str().unwrap(),
+        dir.to_str().unwrap(),
+        &silent_progress(),
+    )
+    .unwrap();
+    assert_eq!((summary.files, summary.skipped), (0, 1));
+    assert_eq!(std::fs::read(&file).unwrap(), b"original");
+
+    let folder = dir.join("tree");
+    std::fs::create_dir_all(&folder).unwrap();
+    std::fs::write(folder.join("inner.txt"), b"inner").unwrap();
+    let summary = fs_local::copy_into(
+        folder.to_str().unwrap(),
+        dir.to_str().unwrap(),
+        &silent_progress(),
+    )
+    .unwrap();
+    assert_eq!((summary.files, summary.skipped), (0, 1));
+    assert_eq!(std::fs::read(folder.join("inner.txt")).unwrap(), b"inner");
+
+    std::fs::remove_dir_all(&dir).unwrap();
+}
+
+#[test]
+fn a_copy_refuses_a_destination_inside_its_own_source() {
+    let dir = temp_dir("copy-loop");
+    let source = dir.join("outer");
+    std::fs::create_dir_all(source.join("inner")).unwrap();
+
+    assert!(fs_local::copy_into(
+        source.to_str().unwrap(),
+        source.join("inner").to_str().unwrap(),
+        &silent_progress(),
+    )
+    .is_err());
+
+    std::fs::remove_dir_all(&dir).unwrap();
+}
+
+#[cfg(unix)]
+#[test]
+fn a_copy_follows_file_links_skips_directory_links_and_never_writes_through_one() {
+    let dir = temp_dir("copy-links");
+    let source = dir.join("tree");
+    std::fs::create_dir_all(source.join("real")).unwrap();
+    std::fs::write(source.join("real/data.bin"), vec![1; 10]).unwrap();
+    std::os::unix::fs::symlink(source.join("real/data.bin"), source.join("alias.bin")).unwrap();
+    std::os::unix::fs::symlink(&source, source.join("loop")).unwrap();
+    std::os::unix::fs::symlink(source.join("missing"), source.join("dangling")).unwrap();
+    let destination = dir.join("shown");
+    std::fs::create_dir_all(&destination).unwrap();
+
+    let summary = fs_local::copy_into(
+        source.to_str().unwrap(),
+        destination.to_str().unwrap(),
+        &silent_progress(),
+    )
+    .unwrap();
+
+    assert_eq!((summary.files, summary.skipped), (2, 0));
+    let copied = destination.join("tree");
+    assert!(copied.join("alias.bin").is_file());
+    assert!(copied.join("real/data.bin").is_file());
+    assert!(!copied.join("loop").exists());
+    assert!(!copied.join("dangling").exists());
+
+    // A link already sitting where a file would land must not be written
+    // through: the write would land wherever it points.
+    let outside = dir.join("outside.txt");
+    std::fs::write(&outside, b"untouched").unwrap();
+    let planted = dir.join("planted");
+    std::fs::create_dir_all(&planted).unwrap();
+    std::os::unix::fs::symlink(&outside, planted.join("notes.txt")).unwrap();
+    std::fs::write(dir.join("notes.txt"), b"new").unwrap();
+    assert!(fs_local::copy_into(
+        dir.join("notes.txt").to_str().unwrap(),
+        planted.to_str().unwrap(),
+        &silent_progress(),
+    )
+    .is_err());
+    assert_eq!(std::fs::read(&outside).unwrap(), b"untouched");
+
+    std::fs::remove_dir_all(&dir).unwrap();
 }
 
 pub(crate) fn profile(kind: SessionKind) -> SessionProfile {

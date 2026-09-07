@@ -1,3 +1,4 @@
+import type { PhysicalPosition } from "@tauri-apps/api/dpi";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
 import { open as openDialog, save as saveDialog } from "@tauri-apps/plugin-dialog";
 import {
@@ -6,6 +7,7 @@ import {
   useRef,
   useState,
   type MouseEvent,
+  type PointerEvent as ReactPointerEvent,
 } from "react";
 
 import { revealCwdInFiler } from "../../actions";
@@ -19,8 +21,12 @@ import { Icon } from "../icons";
 import type { FileEntry, ThemeMode } from "../../types";
 
 interface TransferState {
-  /** `sync` is a remote file edited locally being sent back after a save. */
-  kind: "upload" | "download" | "sync";
+  /**
+   * `sync` is a remote file edited locally being sent back after a save;
+   * `stage` is the copy a drag out of the window needs before the system
+   * can take it; `copy` is a drop landing in a local folder.
+   */
+  kind: "upload" | "download" | "sync" | "stage" | "copy";
   name: string;
   transferred: number;
   total: number;
@@ -38,6 +44,49 @@ interface MenuState {
   y: number;
   items: MenuItem[];
 }
+
+/** An entry on its way out of the window; `staging` while its copy downloads. */
+interface DragOutState {
+  path: string;
+  name: string;
+  staging: boolean;
+}
+
+/** A press on an entry that has not yet travelled far enough to be a drag. */
+interface DragPress {
+  pointerId: number;
+  x: number;
+  y: number;
+  entry: FileEntry;
+}
+
+/** Pointer travel before a press on an entry turns into a drag out. */
+const DRAG_OUT_THRESHOLD = 5;
+
+/**
+ * Whether a drop on the panel would be uploaded. `reason` carries the message
+ * to show when it would not; null means say nothing (this panel's own drag
+ * out is passing over the window).
+ */
+interface DropVerdict {
+  accept: boolean;
+  reason: string | null;
+}
+
+/**
+ * Where a drag currently is, in CSS pixels, so it can be compared with the
+ * panel's own `getBoundingClientRect()`.
+ *
+ * Tauri types the position as physical, but only Windows measures it that
+ * way: wry reads the client point from `ScreenToClient`. macOS passes
+ * AppKit's `draggingLocation` and Linux the widget coordinates of GTK's
+ * `drag-motion` straight through, and both of those are already logical
+ * points. Dividing them by the device pixel ratio put every drop at half its
+ * real position, which on a Retina display is far to the left of the Filer —
+ * the panel never saw a drop and nothing was ever uploaded.
+ */
+const dropPoint = (position: PhysicalPosition): { x: number; y: number } =>
+  IS_WINDOWS ? position.toLogical(window.devicePixelRatio) : position;
 
 export function FilerPanel() {
   const tab = useActiveTab();
@@ -79,12 +128,26 @@ export function FilerPanel() {
   const [pendingDelete, setPendingDelete] = useState<FileEntry | null>(null);
   const [openWithApps, setOpenWithApps] = useState<string[]>(loadOpenWithApps);
   const [transfer, setTransfer] = useState<TransferState | null>(null);
-  const [dragOverList, setDragOverList] = useState(false);
-  const listRef = useRef<HTMLDivElement>(null);
+  const [dragOver, setDragOver] = useState<DropVerdict | null>(null);
+  const [dragOut, setDragOut] = useState<DragOutState | null>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
   const remoteIdRef = useRef(remoteId);
   const pathRef = useRef(path);
   const busyRef = useRef(busy);
-  const uploadDroppedFilesRef = useRef<(paths: string[]) => void>(() => {});
+  const dropFilesRef = useRef<(paths: string[]) => void>(() => {});
+  /** Read from the drop handler, which must not act during our own drag. */
+  const dragOutRef = useRef<DragOutState | null>(null);
+  /**
+   * What the last drag out handed to the system. A drop carrying exactly
+   * those paths is that drag coming back over this window, and uploading it
+   * would send the copy straight back to where it came from. Matching on the
+   * paths rather than on "a drag is in flight" keeps a drag whose end was
+   * never reported from blocking every later upload.
+   */
+  const handedOutPaths = useRef<string[]>([]);
+  /** Whether the button that started a drag out is still held down. */
+  const pointerHeld = useRef(false);
+  const dragPress = useRef<DragPress | null>(null);
   const remoteEditRef = useRef<(event: api.RemoteEditEvent) => void>(() => {});
   const transferClearTimer = useRef<number | null>(null);
   const transferRateSamples = useRef<TransferRateSample[]>([]);
@@ -335,9 +398,216 @@ export function FilerPanel() {
     }
   };
 
-  uploadDroppedFilesRef.current = (paths) => {
-    void uploadPaths(paths);
+  /**
+   * Files dropped on a Filer that is showing local files land in the folder
+   * on screen, the way dropping on a file manager works: uploading needs a
+   * remote session, and this is the local half of the same gesture.
+   */
+  const copyPaths = async (sources: string[]) => {
+    if (remoteIdRef.current || !path || busyRef.current || sources.length === 0) {
+      return;
+    }
+    const destination = path;
+    busyRef.current = true;
+    setBusy(true);
+    setError(null);
+    let skipped = 0;
+    try {
+      for (const source of sources) {
+        beginTransfer("copy", localFileName(source));
+        const summary = await api.localCopyInto(
+          source,
+          destination,
+          updateTransferProgress,
+        );
+        if (summary.files === 0 && summary.skipped > 0) skipped += 1;
+        finishTransfer("complete");
+      }
+      await load(destination);
+      if (skipped > 0) {
+        setError(
+          skipped === sources.length
+            ? "Already in this folder"
+            : `${skipped} of ${sources.length} items were already in this folder`,
+        );
+      }
+    } catch (e) {
+      finishTransfer("error");
+      await load(destination);
+      setError(String(e));
+    } finally {
+      busyRef.current = false;
+      setBusy(false);
+    }
   };
+
+  dropFilesRef.current = (paths) => {
+    if (remoteId) void uploadPaths(paths);
+    else void copyPaths(paths);
+  };
+
+  const updateDragOut = (next: DragOutState | null) => {
+    dragOutRef.current = next;
+    setDragOut(next);
+  };
+
+  /**
+   * Whether files dropped on the panel right now would be uploaded, and what
+   * to tell the user when they would not. A refusal without a reason is this
+   * panel's own drag passing over the window, which says nothing.
+   */
+  const dropVerdict = (): DropVerdict => {
+    if (dragOutRef.current) return { accept: false, reason: null };
+    if (!pathRef.current) {
+      return { accept: false, reason: "No folder is open yet" };
+    }
+    // The Windows drive list is a virtual folder: drives can be opened but
+    // nothing can be written next to them.
+    if (!remoteIdRef.current && pathRef.current === api.LOCAL_DRIVES_ROOT) {
+      return { accept: false, reason: "Open a drive to copy files into" };
+    }
+    if (busyRef.current) {
+      return {
+        accept: false,
+        reason: "Busy — wait for the current transfer to finish",
+      };
+    }
+    return { accept: true, reason: null };
+  };
+
+  /**
+   * Hands local paths to the system, which carries them until the user drops
+   * them on a folder, the desktop or another application. The gesture the
+   * drag attaches to is the one still in progress, so this runs while the
+   * button is down; the callback lands when it is released.
+   */
+  const handToSystem = async (entry: FileEntry, paths: string[]) => {
+    handedOutPaths.current = paths;
+    updateDragOut({ path: entry.path, name: entry.name, staging: false });
+    try {
+      await api.startFileDrag(paths, (outcome) => {
+        updateDragOut(null);
+        if (outcome.error) {
+          setError(`Could not drag ${entry.name}: ${outcome.error}`);
+        }
+      });
+    } catch (e) {
+      updateDragOut(null);
+      setError(String(e));
+    }
+  };
+
+  /**
+   * Drags `entry` out of the window. A local entry is already a file the
+   * system can take; a remote one is downloaded into the staging folder
+   * first — there is no way to promise a file the drop target fetches later,
+   * so a large one has to finish while the button is still held.
+   */
+  const beginDragOut = async (entry: FileEntry) => {
+    if (busyRef.current || dragOutRef.current || atDrivesRoot) return;
+    const sessionId = remoteIdRef.current;
+    if (!sessionId) {
+      await handToSystem(entry, [entry.path]);
+      return;
+    }
+
+    updateDragOut({ path: entry.path, name: entry.name, staging: true });
+    busyRef.current = true;
+    setBusy(true);
+    setError(null);
+    beginTransfer("stage", entry.name);
+    try {
+      const staged = await api.dragStagingPath(entry.name);
+      if (entry.isDir) {
+        await api.sftpDownloadDirectory(
+          sessionId,
+          entry.path,
+          staged,
+          updateTransferProgress,
+        );
+      } else {
+        await api.sftpDownload(
+          sessionId,
+          entry.path,
+          staged,
+          updateTransferProgress,
+        );
+      }
+      finishTransfer("complete");
+      if (pointerHeld.current) {
+        await handToSystem(entry, [staged]);
+      } else {
+        updateDragOut(null);
+        setError(
+          `${entry.name} finished copying after the drag ended; drag it again to drop it`,
+        );
+      }
+    } catch (e) {
+      updateDragOut(null);
+      finishTransfer("error");
+      setError(String(e));
+    } finally {
+      busyRef.current = false;
+      setBusy(false);
+    }
+  };
+
+  const onEntryPointerDown = (
+    entry: FileEntry,
+    event: ReactPointerEvent<HTMLDivElement>,
+  ) => {
+    if (event.button !== 0) return;
+    pointerHeld.current = true;
+    dragPress.current = {
+      pointerId: event.pointerId,
+      x: event.clientX,
+      y: event.clientY,
+      entry,
+    };
+    // Without the capture a quick flick leaves the row before the threshold
+    // is reached and the drag never starts.
+    event.currentTarget.setPointerCapture(event.pointerId);
+  };
+
+  const onEntryPointerMove = (event: ReactPointerEvent<HTMLDivElement>) => {
+    const press = dragPress.current;
+    if (!press || press.pointerId !== event.pointerId) return;
+    if (
+      Math.abs(event.clientX - press.x) < DRAG_OUT_THRESHOLD &&
+      Math.abs(event.clientY - press.y) < DRAG_OUT_THRESHOLD
+    ) {
+      return;
+    }
+    dragPress.current = null;
+    // The system drag needs the pointer itself; a capture would keep every
+    // event inside the webview.
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
+    void beginDragOut(press.entry);
+  };
+
+  // The release may land anywhere — outside the row, outside the window —
+  // and staging needs to know whether the gesture is still alive.
+  useEffect(() => {
+    const release = () => {
+      pointerHeld.current = false;
+      dragPress.current = null;
+    };
+    // A fresh press means any earlier system drag is long over, whether or
+    // not its end was ever reported back.
+    const press = () => {
+      if (dragOutRef.current) updateDragOut(null);
+    };
+    window.addEventListener("pointerdown", press, true);
+    window.addEventListener("pointerup", release);
+    window.addEventListener("pointercancel", release);
+    return () => {
+      window.removeEventListener("pointerdown", press, true);
+      window.removeEventListener("pointerup", release);
+      window.removeEventListener("pointercancel", release);
+    };
+  }, []);
 
   // Progress of remote files edited locally, whichever tab is active: the
   // footer shows the save going out, and a failure lands in the error line.
@@ -366,35 +636,41 @@ export function FilerPanel() {
   useEffect(() => {
     const unlisten = getCurrentWebview().onDragDropEvent(({ payload }) => {
       if (payload.type === "leave") {
-        setDragOverList(false);
+        setDragOver(null);
         return;
       }
 
-      const position = payload.position.toLogical(window.devicePixelRatio);
-      const bounds = listRef.current?.getBoundingClientRect();
-      const isOverList = Boolean(
+      const position = dropPoint(payload.position);
+      const bounds = panelRef.current?.getBoundingClientRect();
+      const isOverPanel = Boolean(
         bounds &&
           position.x >= bounds.left &&
           position.x <= bounds.right &&
           position.y >= bounds.top &&
           position.y <= bounds.bottom,
       );
-      const canUpload = Boolean(
-        remoteIdRef.current &&
-          pathRef.current &&
-          !busyRef.current &&
-          isOverList,
-      );
+      if (!isOverPanel) {
+        setDragOver(null);
+        return;
+      }
+      const verdict = dropVerdict();
 
       if (payload.type === "drop") {
-        setDragOverList(false);
-        if (canUpload && payload.paths.length > 0) {
-          uploadDroppedFilesRef.current(payload.paths);
-        }
+        setDragOver(null);
+        if (payload.paths.length === 0) return;
+        // Our own drag out coming back over the window: dropping it here
+        // would upload the copy it was just made from.
+        const ours = payload.paths.every((dropped) =>
+          handedOutPaths.current.includes(dropped),
+        );
+        if (ours) return;
+        if (verdict.accept) dropFilesRef.current(payload.paths);
+        // Never swallow a drop in silence; say why it was not taken.
+        else if (verdict.reason) setError(verdict.reason);
         return;
       }
 
-      setDragOverList(canUpload);
+      setDragOver(verdict);
     });
     void unlisten.catch(() => {});
     return () => {
@@ -403,8 +679,8 @@ export function FilerPanel() {
   }, []);
 
   useEffect(() => {
-    if (!remote || busy) setDragOverList(false);
-  }, [remote, busy]);
+    if (busy) setDragOver(null);
+  }, [busy]);
 
   const upload = async () => {
     if (!remoteId) return;
@@ -666,19 +942,7 @@ export function FilerPanel() {
         : null
     : null;
   const transferLabel = transfer
-    ? transfer.status === "complete"
-      ? transfer.kind === "sync"
-        ? "Synced"
-        : `${transfer.kind === "upload" ? "Upload" : "Download"} complete`
-      : transfer.status === "error"
-        ? transfer.kind === "sync"
-          ? "Sync failed"
-          : `${transfer.kind === "upload" ? "Upload" : "Download"} failed`
-        : transfer.kind === "sync"
-          ? "Syncing"
-          : transfer.kind === "upload"
-            ? "Uploading"
-            : "Downloading"
+    ? TRANSFER_LABELS[transfer.kind][transfer.status]
     : "";
 
   const remoteTitle = (label: string) =>
@@ -689,7 +953,11 @@ export function FilerPanel() {
   const selectedEntry = entries.find((e) => e.path === selected) ?? null;
 
   return (
-    <div className="panel" style={{ flex: 1 }}>
+    <div
+      ref={panelRef}
+      className={`panel filer-panel${dragOver ? (dragOver.accept ? " is-drag-over" : dragOver.reason ? " is-drag-blocked" : "") : ""}`}
+      style={{ flex: 1 }}
+    >
       <div className="panel-header">
         <div className="panel-title is-filer">
           <Icon name="folder" />
@@ -821,13 +1089,12 @@ export function FilerPanel() {
       </div>
 
       <div
-        ref={listRef}
-        className={`panel-body filer-list${dragOverList ? " is-drag-over" : ""}`}
+        className="panel-body filer-list"
         onContextMenu={(event) => openMenu(event, folderMenu())}
         aria-label={
           remote
-            ? `${tab?.info.protocol.toUpperCase()} file list. Drop files or folders here to upload.`
-            : "Local file list"
+            ? `${tab?.info.protocol.toUpperCase()} file list. Drop files or folders here to upload, or drag an entry out of the window to download it.`
+            : "Local file list. Drop files or folders here to copy them into this folder, or drag an entry out of the window."
         }
       >
         {error && <div className="panel-empty">{error}</div>}
@@ -860,8 +1127,10 @@ export function FilerPanel() {
           return (
             <div
               key={entry.path}
-              className={`row filer-entry is-${kind}${entry.path === selected ? " is-active" : ""}`}
+              className={`row filer-entry is-${kind}${entry.path === selected ? " is-active" : ""}${dragOut?.path === entry.path ? " is-dragging-out" : ""}`}
               onMouseDown={() => setSelected(entry.path)}
+              onPointerDown={(event) => onEntryPointerDown(entry, event)}
+              onPointerMove={onEntryPointerMove}
               onDoubleClick={() => activate(entry)}
               onContextMenu={(event) => {
                 setSelected(entry.path);
@@ -951,8 +1220,14 @@ export function FilerPanel() {
               </span>
             </div>
           </div>
-        ) : dragOverList ? (
-          <span className="filer-drop-message">Drop files or folders to upload</span>
+        ) : dragOver?.accept ? (
+          <span className="filer-drop-message">
+            {remote
+              ? "Drop files or folders to upload"
+              : "Drop files or folders to copy here"}
+          </span>
+        ) : dragOver?.reason ? (
+          <span className="filer-drop-blocked">{dragOver.reason}</span>
         ) : (
           <>
             <span>{formatEntrySummary(entries)}</span>
@@ -963,6 +1238,34 @@ export function FilerPanel() {
     </div>
   );
 }
+
+/** Footer wording per transfer kind and state; see `TransferState`. */
+const TRANSFER_LABELS: Record<
+  TransferState["kind"],
+  Record<TransferState["status"], string>
+> = {
+  upload: {
+    running: "Uploading",
+    complete: "Upload complete",
+    error: "Upload failed",
+  },
+  download: {
+    running: "Downloading",
+    complete: "Download complete",
+    error: "Download failed",
+  },
+  sync: { running: "Syncing", complete: "Synced", error: "Sync failed" },
+  copy: {
+    running: "Copying",
+    complete: "Copy complete",
+    error: "Copy failed",
+  },
+  stage: {
+    running: "Preparing to drag",
+    complete: "Ready to drop",
+    error: "Could not prepare the drag",
+  },
+};
 
 type FilerEntryKind = "directory" | "file" | "symlink";
 

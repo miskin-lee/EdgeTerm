@@ -305,6 +305,33 @@ export const localRename = (from: string, to: string) =>
 export const localRemove = (path: string, isDir: boolean) =>
   invoke<void>("local_remove", { path, isDir });
 
+/** What a copy into the Filer's local folder did; see `localCopyInto`. */
+export interface LocalCopySummary {
+  files: number;
+  /** Items that were already in the destination, so there was nothing to do. */
+  skipped: number;
+}
+
+/**
+ * Copies a file or folder into `destination` under its own name, for a drop
+ * on a Filer that is showing local files. Folders are merged and files are
+ * replaced, as a download into a local folder does; an item dropped on the
+ * folder it already lives in is skipped rather than truncated.
+ */
+export const localCopyInto = (
+  source: string,
+  destination: string,
+  onProgress: (progress: TransferProgress) => void,
+) => {
+  const progress = new Channel<TransferProgress>();
+  progress.onmessage = onProgress;
+  return invoke<LocalCopySummary>("local_copy_into", {
+    source,
+    destination,
+    onProgress: progress,
+  });
+};
+
 /** Opens a local file with the default application, or with `app` if given. */
 export const openLocalPath = (path: string, app?: string) =>
   invoke<void>("open_local_path", { path, with: app ?? null });
@@ -312,6 +339,43 @@ export const openLocalPath = (path: string, app?: string) =>
 /** Windows only: the system "Open with" chooser for a local file. */
 export const openWithDialog = (path: string) =>
   invoke<void>("open_with_dialog", { path });
+
+// --- dragging files out of the window ---------------------------------------
+
+/**
+ * Where a remote entry is downloaded to before it is handed to the system
+ * drag. Each call returns a fresh path; the staging folder is cleared on the
+ * next launch, not when the drag ends, because the drop target does the copy
+ * itself and may still be reading.
+ */
+export const dragStagingPath = (name: string) =>
+  invoke<string>("drag_staging_path", { name });
+
+/** How a drag out of the window ended; see `startFileDrag`. */
+export interface FileDragOutcome {
+  /** True when a drop target took the files, false when it was cancelled. */
+  dropped: boolean;
+  /** Set when the drag could not be started at all. */
+  error: string | null;
+}
+
+/**
+ * Hands `paths` to the system as a drag, so the Filer can drop a file on the
+ * desktop or in a file manager. The pointer has to still be down: the drag
+ * attaches to the gesture the user is already making.
+ *
+ * The promise resolves as soon as the drag is queued; `onFinished` is what
+ * reports the outcome, once for every drag, and it is also where a drag that
+ * never started shows up.
+ */
+export const startFileDrag = (
+  paths: string[],
+  onFinished: (outcome: FileDragOutcome) => void,
+) => {
+  const events = new Channel<FileDragOutcome>();
+  events.onmessage = onFinished;
+  return invoke<void>("start_file_drag", { paths, onEvent: events });
+};
 
 // --- remote files edited locally -------------------------------------------
 

@@ -39,6 +39,12 @@ encoding_rs = "0.8"
 portable-pty = "0.9"
 serialport = "4"
 
+# Starts a system drag out of the window so the Filer can hand a file to the
+# desktop or a file manager. macOS and Linux need nothing new (objc2 and gtk
+# are already in the tree through tao / wry); Windows brings its own COM
+# bindings for IDataObject.
+drag = "2.1.1"
+
 parking_lot = "0.12"
 uuid = { version = "1", features = ["v4", "serde"] }
 base64 = "0.22"

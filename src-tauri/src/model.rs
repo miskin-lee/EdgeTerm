@@ -374,6 +374,16 @@ pub struct DataSummary {
     pub skipped_sender_commands: usize,
 }
 
+/// What a copy into the Filer's local folder actually did.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LocalCopySummary {
+    pub files: u32,
+    /// Files whose source and destination are the same path, so there was
+    /// nothing to do: the item was dropped on the folder it already lives in.
+    pub skipped: u32,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct FileEntry {

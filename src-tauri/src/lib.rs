@@ -193,8 +193,12 @@ pub fn run() {
             create_main_window(app)?;
             #[cfg(target_os = "macos")]
             install_menu(app)?;
-            // Off the startup path; no watch of this run exists yet.
-            std::thread::spawn(remote_edit::clean_leftovers);
+            // Off the startup path; no watch of this run exists yet, and no
+            // drag has staged anything.
+            std::thread::spawn(|| {
+                remote_edit::clean_leftovers();
+                fs_local::clean_drag_staging();
+            });
             Ok(())
         })
         .manage(AppState {
@@ -251,8 +255,11 @@ pub fn run() {
             commands::local_is_directory,
             commands::local_mkdir,
             commands::local_create_file,
+            commands::local_copy_into,
             commands::local_rename,
             commands::local_remove,
+            commands::drag_staging_path,
+            commands::start_file_drag,
             commands::open_local_path,
             commands::open_with_dialog,
             commands::remote_edit_path,

@@ -3,9 +3,15 @@ use std::io;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
-use crate::error::Result;
-use crate::model::{DirListing, FileEntry};
+use tauri::ipc::Channel;
+
+use crate::error::{AppError, Result};
+use crate::model::{DirListing, FileEntry, LocalCopySummary};
 use crate::session::sort_entries;
+use crate::session::transfer::{
+    ensure_local_directory, safe_local_child, validate_local_file_target, ProgressReporter,
+};
+use crate::session::TransferProgress;
 
 /// Path of the virtual folder that lists the drives on Windows. It is the
 /// parent of every drive root, so going up from `C:\` lands on the same view
@@ -352,6 +358,196 @@ pub fn remove(path: &str, is_dir: bool) -> Result<()> {
         std::fs::remove_file(path)?;
     }
     Ok(())
+}
+
+/// One regular file of a copy, and where it lands.
+struct CopyJob {
+    source: PathBuf,
+    target: PathBuf,
+    size: u64,
+}
+
+/// Everything a copy needs to know before the first byte moves.
+struct CopyPlan {
+    /// Directories to create, parents before children; empty for a single
+    /// file. The first entry is the destination root itself.
+    directories: Vec<PathBuf>,
+    files: Vec<CopyJob>,
+    total: u64,
+}
+
+/// Copies `source` into the `destination` folder under its own name, the way
+/// dropping it on a file manager would: folders are merged rather than
+/// replaced, and a file already there is overwritten — the same rules a
+/// download into a local folder follows.
+///
+/// Dropping an item on the folder it already lives in is not an error; those
+/// files are counted as skipped, because copying a path onto itself would
+/// truncate it.
+pub fn copy_into(
+    source: &str,
+    destination: &str,
+    progress: &Channel<TransferProgress>,
+) -> Result<LocalCopySummary> {
+    let source = PathBuf::from(source);
+    let destination = PathBuf::from(destination);
+    let name = source
+        .file_name()
+        .and_then(|name| name.to_str())
+        .ok_or_else(|| AppError::new(format!("{} has no name to copy under", source.display())))?
+        .to_owned();
+    let target = safe_local_child(&destination, &name)?;
+
+    // A destination inside the source would have the walk descend into the
+    // copy it is making.
+    if let (Ok(from), Ok(into)) = (
+        std::fs::canonicalize(&source),
+        std::fs::canonicalize(&destination),
+    ) {
+        if into.starts_with(&from) {
+            return Err(AppError::new(format!(
+                "cannot copy {} into itself",
+                source.display()
+            )));
+        }
+    }
+
+    run_copy(plan_copy(&source, &target)?, progress)
+}
+
+/// Walks `source` and maps every regular file and sub-folder onto `target`.
+/// Symlinked files are copied as the file they point at; symlinked
+/// directories are skipped, so a link back to an ancestor can never turn the
+/// walk into an endless loop. Sockets, FIFOs and devices have nothing to copy.
+fn plan_copy(source: &Path, target: &Path) -> Result<CopyPlan> {
+    // Follows the link, so dropping a symlink copies what it points at.
+    let root = std::fs::metadata(source)?;
+    if root.is_file() {
+        return Ok(CopyPlan {
+            directories: Vec::new(),
+            total: root.len(),
+            files: vec![CopyJob {
+                source: source.to_path_buf(),
+                target: target.to_path_buf(),
+                size: root.len(),
+            }],
+        });
+    }
+    if !root.is_dir() {
+        return Err(AppError::new(format!(
+            "{} is neither a file nor a folder",
+            source.display()
+        )));
+    }
+
+    let mut plan = CopyPlan {
+        directories: vec![target.to_path_buf()],
+        files: Vec::new(),
+        total: 0,
+    };
+    let mut pending = vec![(source.to_path_buf(), target.to_path_buf())];
+    while let Some((dir, target_dir)) = pending.pop() {
+        let mut children: Vec<_> = std::fs::read_dir(&dir)?.collect::<io::Result<_>>()?;
+        children.sort_by_key(|child| child.file_name());
+
+        for child in children {
+            let target_child = target_dir.join(child.file_name());
+            // `DirEntry::metadata` does not follow links; `fs::metadata` does.
+            let link = child.metadata()?;
+            let is_symlink = link.file_type().is_symlink();
+            let metadata = if is_symlink {
+                match std::fs::metadata(child.path()) {
+                    Ok(metadata) => metadata,
+                    Err(error) if error.kind() == io::ErrorKind::NotFound => continue,
+                    Err(error) => return Err(error.into()),
+                }
+            } else {
+                link
+            };
+
+            if metadata.is_dir() {
+                if is_symlink {
+                    continue;
+                }
+                plan.directories.push(target_child.clone());
+                pending.push((child.path(), target_child));
+            } else if metadata.is_file() {
+                plan.total = plan
+                    .total
+                    .checked_add(metadata.len())
+                    .ok_or_else(|| AppError::new("folder is too large to report copy progress"))?;
+                plan.files.push(CopyJob {
+                    source: child.path(),
+                    target: target_child,
+                    size: metadata.len(),
+                });
+            }
+        }
+    }
+    Ok(plan)
+}
+
+fn run_copy(plan: CopyPlan, progress: &Channel<TransferProgress>) -> Result<LocalCopySummary> {
+    let mut reporter = ProgressReporter::begin(progress, plan.total);
+    for directory in &plan.directories {
+        ensure_local_directory(directory)?;
+    }
+
+    let mut summary = LocalCopySummary::default();
+    let mut copied = 0u64;
+    for job in &plan.files {
+        if same_path(&job.source, &job.target) {
+            summary.skipped += 1;
+        } else {
+            validate_local_file_target(&job.target)?;
+            // `fs::copy` streams through the OS (a clone on APFS, a reflink
+            // on Btrfs) and carries the permission bits over, so nothing here
+            // holds a file in memory. Progress is per file, which is as fine
+            // as a local copy needs.
+            std::fs::copy(&job.source, &job.target)?;
+            summary.files += 1;
+        }
+        copied += job.size;
+        reporter.update(copied);
+    }
+    reporter.finish(copied);
+    Ok(summary)
+}
+
+/// Whether two paths name the same existing file. A target that does not
+/// exist yet cannot be canonicalized, and is by definition not the source.
+fn same_path(a: &Path, b: &Path) -> bool {
+    match (std::fs::canonicalize(a), std::fs::canonicalize(b)) {
+        (Ok(a), Ok(b)) => a == b,
+        _ => false,
+    }
+}
+
+/// Root of the copies staged for a drag out of the Filer; one folder per
+/// drag, mirroring `remote_edit`'s layout under the same `EdgeTerm` temp
+/// directory.
+fn drag_root() -> PathBuf {
+    std::env::temp_dir().join("EdgeTerm").join("drag")
+}
+
+/// Removes what earlier runs staged. A drop target copies the file itself and
+/// may still be reading it when the drag session ends, so a staged copy is
+/// never deleted while the application runs; the next launch clears them all.
+pub fn clean_drag_staging() {
+    if let Err(error) = std::fs::remove_dir_all(drag_root()) {
+        if error.kind() != io::ErrorKind::NotFound {
+            eprintln!("EdgeTerm: could not clear the drag staging folder: {error}");
+        }
+    }
+}
+
+/// Where a remote entry is downloaded to before it is handed to the system
+/// drag. Its own folder per drag, so equal names from different sessions or
+/// directories cannot collide and the dropped copy keeps the remote name.
+pub fn drag_staging_path(name: &str) -> Result<PathBuf> {
+    let dir = drag_root().join(uuid::Uuid::new_v4().to_string());
+    std::fs::create_dir_all(&dir)?;
+    safe_local_child(&dir, name)
 }
 
 fn modified_secs(meta: &std::fs::Metadata) -> Option<i64> {
