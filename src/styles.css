@@ -189,6 +189,16 @@ textarea {
   outline: none;
 }
 
+/* The chrome is unselectable (see `body`), but the text a field holds is the
+   user's own: `user-select` inherits into form controls, so without this a
+   drag inside any input selects nothing at all. It belongs here rather than
+   on the handful of fields that used to carry it one by one. */
+input,
+textarea {
+  user-select: text;
+  -webkit-user-select: text;
+}
+
 input:focus,
 select:focus,
 textarea:focus {
@@ -778,7 +788,6 @@ textarea:focus {
   border-color: transparent;
   border-radius: 8px;
   background: var(--bg-field);
-  user-select: text;
 }
 
 .panel-filter input:hover {
@@ -2224,7 +2233,6 @@ textarea:focus {
   border-radius: 8px;
   background: var(--bg-field);
   font-family: var(--font-mono);
-  user-select: text;
 }
 
 .sender-command input:hover,
@@ -2294,7 +2302,6 @@ textarea:focus {
   border-color: transparent;
   border-radius: 8px;
   background: var(--bg-field);
-  user-select: text;
 }
 
 .sender-save-btn {
