@@ -75,7 +75,7 @@ export interface HostKeyPrompt {
 export type PanelName = "filer" | "sessions" | "sender";
 
 export const PANEL_FONT_SIZE = { min: 9, max: 18, default: 12 } as const;
-export const BUFFER_FONT_SIZE = { min: 8, max: 32, default: 13 } as const;
+export const BUFFER_FONT_SIZE = { min: 8, max: 32, default: 14 } as const;
 export const TERMINAL_SCROLLBACK = {
   min: 0,
   max: 1_000_000,
@@ -91,6 +91,8 @@ const DEFAULT_PANELS: Record<PanelName, boolean> = {
 
 const PANEL_FONT_SIZE_KEY = "edgeterm.panelFontSize";
 const BUFFER_FONT_SIZE_KEY = "edgeterm.bufferFontSize";
+const PANEL_FONT_FAMILY_KEY = "edgeterm.panelFontFamily";
+const BUFFER_FONT_FAMILY_KEY = "edgeterm.bufferFontFamily";
 const TERMINAL_SCROLLBACK_KEY = "edgeterm.terminalScrollback";
 const GUTTER_MODE_KEY = "edgeterm.gutterMode";
 const PANELS_KEY = "edgeterm.panels";
@@ -201,6 +203,31 @@ const saveFontSize = (key: string, value: number) => {
   }
 };
 
+/**
+ * A font family is stored as the bare family name, empty meaning "whatever
+ * the platform default stack picks". Only the name is kept: the fallbacks
+ * come from `fonts.ts`, which is the single place that knows them.
+ */
+const normalizeFontFamily = (value: unknown): string =>
+  typeof value === "string" ? value.trim().slice(0, 100) : "";
+
+const loadFontFamily = (key: string): string => {
+  try {
+    return normalizeFontFamily(localStorage.getItem(key));
+  } catch {
+    return "";
+  }
+};
+
+const saveFontFamily = (key: string, value: string) => {
+  try {
+    if (value) localStorage.setItem(key, value);
+    else localStorage.removeItem(key);
+  } catch {
+    // Font settings still work for this run when storage is unavailable.
+  }
+};
+
 const normalizeScrollback = (value: number) => {
   if (!Number.isFinite(value)) return TERMINAL_SCROLLBACK.default;
   return Math.min(
@@ -239,6 +266,10 @@ export interface AppSettings {
   theme: ThemeMode;
   panelFontSize: number;
   bufferFontSize: number;
+  /** Interface font family; empty means the platform default stack. */
+  panelFontFamily: string;
+  /** Terminal font family; empty means the platform default stack. */
+  bufferFontFamily: string;
   terminalScrollback: number;
   suggestionsEnabled: boolean;
 }
@@ -253,6 +284,8 @@ interface AppStore {
   theme: ThemeMode;
   panelFontSize: number;
   bufferFontSize: number;
+  panelFontFamily: string;
+  bufferFontFamily: string;
   terminalScrollback: number;
   /** Command history recording + fish-style inline suggestions. */
   suggestionsEnabled: boolean;
@@ -339,6 +372,8 @@ interface AppStore {
   setTheme: (theme: ThemeMode) => void;
   setPanelFontSize: (size: number) => void;
   setBufferFontSize: (size: number) => void;
+  setPanelFontFamily: (family: string) => void;
+  setBufferFontFamily: (family: string) => void;
   setTerminalScrollback: (rows: number) => void;
   setSuggestionsEnabled: (enabled: boolean) => void;
   resetSettings: () => void;
@@ -382,6 +417,8 @@ export const useStore = create<AppStore>((set, get) => ({
   theme: loadTheme(),
   panelFontSize: loadFontSize(PANEL_FONT_SIZE_KEY, PANEL_FONT_SIZE),
   bufferFontSize: loadFontSize(BUFFER_FONT_SIZE_KEY, BUFFER_FONT_SIZE),
+  panelFontFamily: loadFontFamily(PANEL_FONT_FAMILY_KEY),
+  bufferFontFamily: loadFontFamily(BUFFER_FONT_FAMILY_KEY),
   terminalScrollback: loadScrollback(),
   suggestionsEnabled: loadSuggestionsEnabled(),
   panels: loadPanels(),
@@ -646,6 +683,18 @@ export const useStore = create<AppStore>((set, get) => ({
     saveFontSize(BUFFER_FONT_SIZE_KEY, bufferFontSize);
   },
 
+  setPanelFontFamily(family) {
+    const panelFontFamily = normalizeFontFamily(family);
+    set({ panelFontFamily });
+    saveFontFamily(PANEL_FONT_FAMILY_KEY, panelFontFamily);
+  },
+
+  setBufferFontFamily(family) {
+    const bufferFontFamily = normalizeFontFamily(family);
+    set({ bufferFontFamily });
+    saveFontFamily(BUFFER_FONT_FAMILY_KEY, bufferFontFamily);
+  },
+
   setTerminalScrollback(rows) {
     const terminalScrollback = normalizeScrollback(rows);
     set({ terminalScrollback });
@@ -671,6 +720,8 @@ export const useStore = create<AppStore>((set, get) => ({
       theme: "dark",
       panelFontSize: PANEL_FONT_SIZE.default,
       bufferFontSize: BUFFER_FONT_SIZE.default,
+      panelFontFamily: "",
+      bufferFontFamily: "",
       terminalScrollback: TERMINAL_SCROLLBACK.default,
       suggestionsEnabled: false,
     });
@@ -680,6 +731,8 @@ export const useStore = create<AppStore>((set, get) => ({
       localStorage.removeItem(THEME_KEY);
       localStorage.removeItem(PANEL_FONT_SIZE_KEY);
       localStorage.removeItem(BUFFER_FONT_SIZE_KEY);
+      localStorage.removeItem(PANEL_FONT_FAMILY_KEY);
+      localStorage.removeItem(BUFFER_FONT_FAMILY_KEY);
       localStorage.removeItem(TERMINAL_SCROLLBACK_KEY);
       localStorage.removeItem(SUGGESTIONS_KEY);
     } catch {
@@ -695,6 +748,8 @@ export const useStore = create<AppStore>((set, get) => ({
       theme: state.theme,
       panelFontSize: state.panelFontSize,
       bufferFontSize: state.bufferFontSize,
+      panelFontFamily: state.panelFontFamily,
+      bufferFontFamily: state.bufferFontFamily,
       terminalScrollback: state.terminalScrollback,
       suggestionsEnabled: state.suggestionsEnabled,
     };
@@ -720,6 +775,12 @@ export const useStore = create<AppStore>((set, get) => ({
     }
     if (typeof values.bufferFontSize === "number") {
       state.setBufferFontSize(values.bufferFontSize);
+    }
+    if (typeof values.panelFontFamily === "string") {
+      state.setPanelFontFamily(values.panelFontFamily);
+    }
+    if (typeof values.bufferFontFamily === "string") {
+      state.setBufferFontFamily(values.bufferFontFamily);
     }
     if (typeof values.terminalScrollback === "number") {
       state.setTerminalScrollback(values.terminalScrollback);

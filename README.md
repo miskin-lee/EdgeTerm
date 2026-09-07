@@ -43,6 +43,10 @@ Terminal sessions are UTF-8 unless the session dialog's **Encoding** says otherw
 - **Filer** (right): a file browser that automatically switches to SFTP for SSH sessions, with file and folder upload (including drag & drop), file and folder download, create-directory, and delete operations. Other terminal sessions browse the local filesystem. `⌘J` / `Ctrl+Shift+J` (also in the terminal's context menu and the Filer's locate button) jumps the Filer to the directory the shell is in: a local shell is asked through the OS, an SSH shell through the server (Linux hosts), and a shell that reports its directory with OSC 7 — fish does by default; bash and zsh with a one-line prompt hook — is answered everywhere, `sudo` and nested shells included.
 - **Sender** (bottom): send text or hexadecimal input with a chosen line ending (none / LF / CRLF) to the current session or to all open sessions at once. Saved commands are scoped — to one session, a Session panel group, a session kind (serial / SSH / shell) or everywhere — and the Sender lists the ones that apply to the active tab, most specific first.
 
+**Display settings**
+
+**View → Display Settings…** sets the interface and terminal font sizes, the family each uses, and how many lines of scrollback a session keeps. No fonts are bundled: leaving a family blank uses the platform's own stack, and the field suggests the families this machine actually has while accepting any name you type, so a private Nerd Font build works too.
+
 **Command suggestions**
 
 With **Edit → Command Suggestions** enabled, EdgeTerm remembers the commands you run in the terminal and shows matching history in a popup as you type. `↓` steps into the list, `Enter` / `Tab` accepts, `Esc` dismisses; while nothing in the popup is selected, every other key still reaches the shell. **Edit → Clear Command History…** clears the recorded history.

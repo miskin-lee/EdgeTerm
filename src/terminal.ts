@@ -378,6 +378,7 @@ export class TerminalController {
     fontSize: number,
     scrollback: number,
     theme: ThemeMode = "dark",
+    fontFamily: string = MONO_FONT_FAMILY,
   ) {
     this.scrollback = scrollback;
     this.themeMode = theme;
@@ -385,7 +386,7 @@ export class TerminalController {
       allowProposedApi: true,
       cursorBlink: true,
       cursorStyle: "block",
-      fontFamily: MONO_FONT_FAMILY,
+      fontFamily,
       fontSize,
       lineHeight: 1.25,
       letterSpacing: 0,
@@ -1072,6 +1073,18 @@ export class TerminalController {
   setFontSize(fontSize: number) {
     if (this.term.options.fontSize === fontSize) return;
     this.term.options.fontSize = fontSize;
+    this.refreshFontMetrics();
+  }
+
+  /** The family is a full CSS stack; see `fontStack` in `fonts.ts`. */
+  setFontFamily(fontFamily: string) {
+    if (this.term.options.fontFamily === fontFamily) return;
+    this.term.options.fontFamily = fontFamily;
+    this.refreshFontMetrics();
+  }
+
+  /** Cell size and the pixel-sized decorations both follow the font. */
+  private refreshFontMetrics() {
     this.cellHeight = 0;
     // Underline elements are sized in pixels at creation time.
     this.disposeAllSemanticColors();

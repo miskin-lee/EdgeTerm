@@ -10,6 +10,7 @@ import {
 
 import appIcon from "../../src-tauri/icons/128x128@2x.png";
 import { ensureController, revealCwdInFiler } from "../actions";
+import { fontStack } from "../fonts";
 import { IS_MAC, shortcutLabel as sc } from "../platform";
 import { useStore, type Tab } from "../store";
 import type { TerminalController } from "../terminal";
@@ -88,6 +89,7 @@ function TerminalHost({ tab, active }: { tab: Tab; active: boolean }) {
   const ref = useRef<HTMLDivElement>(null);
   const gutterMode = useStore((s) => s.gutterMode);
   const bufferFontSize = useStore((s) => s.bufferFontSize);
+  const bufferFontFamily = useStore((s) => s.bufferFontFamily);
   const terminalScrollback = useStore((s) => s.terminalScrollback);
   const suggestionsEnabled = useStore((s) => s.suggestionsEnabled);
   const [menu, setMenu] = useState<TerminalMenu | null>(null);
@@ -211,6 +213,10 @@ function TerminalHost({ tab, active }: { tab: Tab; active: boolean }) {
   useEffect(() => {
     terminal?.setFontSize(bufferFontSize);
   }, [bufferFontSize, terminal]);
+
+  useEffect(() => {
+    terminal?.setFontFamily(fontStack("mono", bufferFontFamily));
+  }, [bufferFontFamily, terminal]);
 
   useEffect(() => {
     terminal?.setScrollback(terminalScrollback);

@@ -1,4 +1,5 @@
 import * as api from "./api";
+import { fontStack } from "./fonts";
 import { commandHistory } from "./history";
 import { IS_WINDOWS } from "./platform";
 import { tabTitle, useStore, type HostKeyPrompt, type Tab } from "./store";
@@ -113,6 +114,7 @@ export async function ensureController(id: string): Promise<TerminalController> 
     useStore.getState().bufferFontSize,
     useStore.getState().terminalScrollback,
     useStore.getState().theme,
+    fontStack("mono", useStore.getState().bufferFontFamily),
   );
   controller.setSuggestions(useStore.getState().suggestionsEnabled);
   setController(id, controller);

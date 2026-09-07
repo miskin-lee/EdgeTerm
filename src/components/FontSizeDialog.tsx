@@ -1,20 +1,23 @@
 import { useEffect, useState } from "react";
 
+import { fontStack, installedFonts } from "../fonts";
 import {
   BUFFER_FONT_SIZE,
   PANEL_FONT_SIZE,
   TERMINAL_SCROLLBACK,
 } from "../store";
 
-interface Props {
+/** Everything the dialog hands back when Apply is pressed. */
+export interface DisplaySettings {
   panelFontSize: number;
   bufferFontSize: number;
+  panelFontFamily: string;
+  bufferFontFamily: string;
   terminalScrollback: number;
-  onApply: (
-    panelFontSize: number,
-    bufferFontSize: number,
-    terminalScrollback: number,
-  ) => void;
+}
+
+interface Props extends DisplaySettings {
+  onApply: (settings: DisplaySettings) => void;
   onClose: () => void;
 }
 
@@ -24,13 +27,24 @@ const clamp = (value: number, min: number, max: number) =>
 export function FontSizeDialog({
   panelFontSize,
   bufferFontSize,
+  panelFontFamily,
+  bufferFontFamily,
   terminalScrollback,
   onApply,
   onClose,
 }: Props) {
   const [panelSize, setPanelSize] = useState(panelFontSize);
   const [bufferSize, setBufferSize] = useState(bufferFontSize);
+  const [panelFamily, setPanelFamily] = useState(panelFontFamily);
+  const [bufferFamily, setBufferFamily] = useState(bufferFontFamily);
   const [scrollback, setScrollback] = useState(terminalScrollback);
+
+  // Probing the machine for installed families measures text on a canvas, so
+  // it happens once when the dialog opens rather than on every keystroke.
+  // The saved family is kept in its list even where it is not installed, so a
+  // setting brought in from another machine stays visible.
+  const [uiFonts] = useState(() => installedFonts("ui", panelFontFamily));
+  const [monoFonts] = useState(() => installedFonts("mono", bufferFontFamily));
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -56,7 +70,13 @@ export function FontSizeDialog({
         onMouseDown={(event) => event.stopPropagation()}
         onSubmit={(event) => {
           event.preventDefault();
-          onApply(panelSize, bufferSize, scrollback);
+          onApply({
+            panelFontSize: panelSize,
+            bufferFontSize: bufferSize,
+            panelFontFamily: panelFamily.trim(),
+            bufferFontFamily: bufferFamily.trim(),
+            terminalScrollback: scrollback,
+          });
         }}
       >
         <div className="dialog-header">Display Settings</div>
@@ -92,6 +112,16 @@ export function FontSizeDialog({
             <span className="font-size-unit">px</span>
           </label>
 
+          <FontFamilyField
+            id="panel-font-family"
+            label="Interface font"
+            hint="Menus, tabs, panels and dialogs"
+            role="ui"
+            value={panelFamily}
+            fonts={uiFonts}
+            onChange={setPanelFamily}
+          />
+
           <label className="font-size-setting">
             <span>
               <strong>Buffer</strong>
@@ -122,6 +152,16 @@ export function FontSizeDialog({
             />
             <span className="font-size-unit">px</span>
           </label>
+
+          <FontFamilyField
+            id="buffer-font-family"
+            label="Buffer font"
+            hint="Terminal typeface; pick a monospaced one"
+            role="mono"
+            value={bufferFamily}
+            fonts={monoFonts}
+            onChange={setBufferFamily}
+          />
 
           <label className="font-size-setting scrollback-setting">
             <span>
@@ -155,6 +195,8 @@ export function FontSizeDialog({
             onClick={() => {
               setPanelSize(PANEL_FONT_SIZE.default);
               setBufferSize(BUFFER_FONT_SIZE.default);
+              setPanelFamily("");
+              setBufferFamily("");
               setScrollback(TERMINAL_SCROLLBACK.default);
             }}
           >
@@ -169,5 +211,57 @@ export function FontSizeDialog({
         </div>
       </form>
     </div>
+  );
+}
+
+/**
+ * A family name with the installed fonts as suggestions. Deliberately a text
+ * field rather than a closed list: `fonts.ts` can only offer the families it
+ * knows to probe for, and a terminal user's face of choice is as likely to be
+ * a private Nerd Font build as one of them. Empty means the platform default,
+ * and the field shows its own value in the font it names.
+ */
+function FontFamilyField({
+  id,
+  label,
+  hint,
+  role,
+  value,
+  fonts,
+  onChange,
+}: {
+  id: string;
+  label: string;
+  hint: string;
+  role: "mono" | "ui";
+  value: string;
+  fonts: string[];
+  onChange: (family: string) => void;
+}) {
+  const listId = `${id}-list`;
+  return (
+    <label className="font-size-setting">
+      <span>
+        <strong>{label}</strong>
+        <small>{hint}</small>
+      </span>
+      <input
+        aria-label={label}
+        className="font-family-input"
+        type="text"
+        list={listId}
+        spellCheck={false}
+        autoComplete="off"
+        placeholder="System default"
+        value={value}
+        style={{ fontFamily: fontStack(role, value) }}
+        onChange={(event) => onChange(event.target.value)}
+      />
+      <datalist id={listId}>
+        {fonts.map((font) => (
+          <option key={font} value={font} />
+        ))}
+      </datalist>
+    </label>
   );
 }

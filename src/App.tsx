@@ -35,6 +35,7 @@ import { UpdateDialog } from "./components/UpdateDialog";
 import { FilerPanel } from "./components/panels/FilerPanel";
 import { SenderPanel } from "./components/panels/SenderPanel";
 import { SessionPanel } from "./components/panels/SessionPanel";
+import { applyFonts } from "./fonts";
 import { commandHistory } from "./history";
 import { setSemanticColorTheme } from "./semanticColors";
 import { matchAppShortcut } from "./shortcuts";
@@ -70,8 +71,12 @@ export default function App() {
   const panelFontSize = useStore((s) => s.panelFontSize);
   const bufferFontSize = useStore((s) => s.bufferFontSize);
   const terminalScrollback = useStore((s) => s.terminalScrollback);
+  const panelFontFamily = useStore((s) => s.panelFontFamily);
+  const bufferFontFamily = useStore((s) => s.bufferFontFamily);
   const setPanelFontSize = useStore((s) => s.setPanelFontSize);
   const setBufferFontSize = useStore((s) => s.setBufferFontSize);
+  const setPanelFontFamily = useStore((s) => s.setPanelFontFamily);
+  const setBufferFontFamily = useStore((s) => s.setBufferFontFamily);
   const setTerminalScrollback = useStore((s) => s.setTerminalScrollback);
   const setActive = useStore((s) => s.setActive);
   const activateAdjacentTab = useStore((s) => s.activateAdjacentTab);
@@ -143,6 +148,13 @@ export default function App() {
     for (const controller of allControllers()) controller.setTheme(theme);
     void api.setStartupTheme(theme).catch(() => {});
   }, [theme]);
+
+  // main.tsx published the stored families before the first paint; keep the
+  // two CSS variables in step with later changes. Live terminals get theirs
+  // from TerminalPane, which owns the xterm instance.
+  useEffect(() => {
+    applyFonts(bufferFontFamily, panelFontFamily);
+  }, [bufferFontFamily, panelFontFamily]);
 
   useEffect(() => {
     const unlisten = api.onSessionOutput(({ id, data }) => {
@@ -458,15 +470,15 @@ export default function App() {
         <FontSizeDialog
           panelFontSize={panelFontSize}
           bufferFontSize={bufferFontSize}
+          panelFontFamily={panelFontFamily}
+          bufferFontFamily={bufferFontFamily}
           terminalScrollback={terminalScrollback}
-          onApply={(
-            nextPanelFontSize,
-            nextBufferFontSize,
-            nextTerminalScrollback,
-          ) => {
-            setPanelFontSize(nextPanelFontSize);
-            setBufferFontSize(nextBufferFontSize);
-            setTerminalScrollback(nextTerminalScrollback);
+          onApply={(settings) => {
+            setPanelFontSize(settings.panelFontSize);
+            setBufferFontSize(settings.bufferFontSize);
+            setPanelFontFamily(settings.panelFontFamily);
+            setBufferFontFamily(settings.bufferFontFamily);
+            setTerminalScrollback(settings.terminalScrollback);
             setFontSettingsOpen(false);
           }}
           onClose={() => setFontSettingsOpen(false)}
