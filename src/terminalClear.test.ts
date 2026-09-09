@@ -10,7 +10,7 @@ import { TerminalController } from "./terminal";
 
 const controllers: TerminalController[] = [];
 
-function createController() {
+function createController(scrollback = 100) {
   const controller = new TerminalController(
     "clear-test",
     {
@@ -22,7 +22,7 @@ function createController() {
       suggest: () => [],
     },
     13,
-    100,
+    scrollback,
   );
   controllers.push(controller);
   return controller;
@@ -70,11 +70,11 @@ describe("clearing the screen in the normal buffer", () => {
     await write(controller, `\x1b[H\x1b[2J${lines(SUMMARY)}${lines(ROWS)}`);
 
     const buf = controller.term.buffer.active;
+    const top = buf.viewportY;
     expect(buf.type).toBe("normal");
-    expect(buf.baseY).toBe(0);
-    expect(row(controller, 0)).toBe(SUMMARY[0]);
-    expect(row(controller, 3)).toBe(ROWS[0]);
-    expect(row(controller, 5)).toBe(ROWS[2]);
+    expect(row(controller, top)).toBe(SUMMARY[0]);
+    expect(row(controller, top + 3)).toBe(ROWS[0]);
+    expect(row(controller, top + 5)).toBe(ROWS[2]);
   });
 
   it("keeps a frame whose rows arrive in a later chunk", async () => {
@@ -84,31 +84,83 @@ describe("clearing the screen in the normal buffer", () => {
     await write(controller, `\x1b[H\x1b[2J${lines(SUMMARY)}${lines(ROWS.slice(0, 1))}`);
     await write(controller, lines(ROWS.slice(1)));
 
-    expect(row(controller, 0)).toBe(SUMMARY[0]);
-    expect(row(controller, 3)).toBe(ROWS[0]);
-    expect(row(controller, 4)).toBe(ROWS[1]);
-    expect(row(controller, 5)).toBe(ROWS[2]);
+    const top = controller.term.buffer.active.viewportY;
+    expect(row(controller, top)).toBe(SUMMARY[0]);
+    expect(row(controller, top + 3)).toBe(ROWS[0]);
+    expect(row(controller, top + 4)).toBe(ROWS[1]);
+    expect(row(controller, top + 5)).toBe(ROWS[2]);
   });
 
-  it("restarts the numbering and drops the scrollback on the shell's clear", async () => {
+  it("keeps the history when top clears the screen (issue #43)", async () => {
     const controller = createController();
     const rows = controller.term.rows;
-    for (let i = 1; i <= rows + 10; i += 1) {
+    for (let i = 1; i <= rows + 16; i += 1) {
       await write(controller, `line ${i}\r\n`);
     }
-    expect(controller.term.buffer.active.baseY).toBeGreaterThan(0);
-    expect(lineMetadata(controller).first).toBe(1);
 
-    // ncurses `clear`: home, ED 2, ED 3; then the shell's next prompt.
-    await write(controller, "\x1b[H\x1b[2J\x1b[3J");
-    await write(controller, "alice@server:~$ ");
+    await write(controller, `\x1b[H\x1b[2J${lines(SUMMARY)}${lines(ROWS)}`);
 
     const buf = controller.term.buffer.active;
-    expect(buf.baseY).toBe(0);
-    expect(buf.length).toBe(rows);
-    expect(row(controller, 0)).toBe("alice@server:~$ ");
-    expect(row(controller, 1)).toBe("");
-    expect(lineMetadata(controller)).toEqual({ first: 1, count: 1 });
+    // The whole session is still there: what scrolled off long ago, and the
+    // screenful top erased, which the erase pushed into the scrollback.
+    expect(row(controller, 0)).toBe("line 1");
+    expect(row(controller, rows + 15)).toBe(`line ${rows + 16}`);
+    expect(buf.viewportY).toBeGreaterThan(rows);
+    expect(row(controller, buf.viewportY)).toBe(SUMMARY[0]);
+  });
+
+  // `clear` sends both erases in one chunk, in either order depending on the
+  // ncurses it was built against.
+  for (const [platform, sequence] of [
+    ["Linux", "\x1b[H\x1b[2J\x1b[3J"],
+    ["macOS", "\x1b[3J\x1b[H\x1b[2J"],
+  ] as const) {
+    it(`restarts the numbering and drops the scrollback on ${platform}'s clear`, async () => {
+      const controller = createController();
+      const rows = controller.term.rows;
+      for (let i = 1; i <= rows + 10; i += 1) {
+        await write(controller, `line ${i}\r\n`);
+      }
+      expect(controller.term.buffer.active.baseY).toBeGreaterThan(0);
+      expect(lineMetadata(controller).first).toBe(1);
+
+      await write(controller, sequence);
+      await write(controller, "alice@server:~$ ");
+
+      const buf = controller.term.buffer.active;
+      expect(buf.baseY).toBe(0);
+      expect(buf.length).toBe(rows);
+      expect(row(controller, 0)).toBe("alice@server:~$ ");
+      expect(row(controller, 1)).toBe("");
+      expect(lineMetadata(controller)).toEqual({ first: 1, count: 1 });
+    });
+  }
+
+  it("keeps a line's number steady when the erase trims the buffer", async () => {
+    const controller = createController(5);
+    const rows = controller.term.rows;
+    const last = `line ${rows + 20}`;
+    for (let i = 1; i <= rows + 20; i += 1) {
+      await write(controller, `line ${i}\r\n`);
+    }
+    /** The gutter's number for the row holding `text`. */
+    const numberOf = (text: string) => {
+      const { first } = lineMetadata(controller);
+      for (let i = 0; i < controller.term.buffer.active.length; i += 1) {
+        if (row(controller, i) === text) return first + i;
+      }
+      return 0;
+    };
+    const before = numberOf(last);
+    expect(before).toBeGreaterThan(0);
+
+    await write(controller, "\x1b[H\x1b[2J");
+
+    // The erase pushed a screenful into a scrollback that was already full,
+    // so xterm dropped as many lines off the top and every buffer index moved
+    // down with them. The line keeps the number it was given.
+    expect(controller.term.buffer.active.baseY).toBeGreaterThan(0);
+    expect(numberOf(last)).toBe(before);
   });
 
   it("keeps the screen when only the scrollback is erased (ED 3)", async () => {

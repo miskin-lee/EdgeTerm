@@ -301,6 +301,8 @@ export class TerminalController {
   private lineTimes: number[] = [];
   /** Absolute line number of buffer line 0; grows as scrollback is trimmed. */
   private firstLineNumber = 1;
+  /** Set by an ED 3 until its write chunk ends; see the CSI J handler. */
+  private shellClearing = false;
 
   private gutterMode: GutterMode = "both";
   private themeMode: ThemeMode;
@@ -464,19 +466,33 @@ export class TerminalController {
       else if (marker === "D" || marker === "A") this.finishCommand();
       return marker === "A" || marker === "B" || marker === "C" || marker === "D";
     });
-    // A shell's `clear` (ED 2, then ED 3 from ncurses 6) restarts the line
-    // numbering and drops the scrollback, the way WindTerm does. Both run
-    // right here, while the sequence is being parsed and before xterm's own
-    // erase: a full-screen program that paints in the normal buffer (Linux
-    // top, anything under a TERM without smcup) clears the screen and draws
-    // its frame in the same chunk, and clearing after the chunk had parsed
-    // wiped that frame, so top showed nothing until its next refresh
-    // (issue #32). The handler falls through so xterm still erases.
+    // A shell's `clear` restarts the line numbering and drops the scrollback,
+    // the way WindTerm does. It is ED 2 paired with ncurses 6's ED 3 — after
+    // it on Linux (`\e[H\e[2J\e[3J`), before it on macOS (`\e[3J\e[H\e[2J`) —
+    // and that pairing is the whole signal: a bare ED 2 belongs to a
+    // full-screen program painting in the normal buffer (Linux top, anything
+    // under a TERM without smcup), and wiping the buffer for it threw away
+    // the session's history the moment top started (issue #43). Those erases
+    // push the screen into the scrollback instead, as PuTTY does, so nothing
+    // that was on screen is ever lost.
+    //
+    // Both run right here, while the sequence is being parsed and before
+    // xterm's own erase: top clears the screen and draws its frame in the
+    // same chunk, and clearing after the chunk had parsed wiped that frame,
+    // so top showed nothing until its next refresh (issue #32). The handler
+    // falls through so xterm still erases.
     this.term.parser.registerCsiHandler({ final: "J" }, (params) => {
-      if (this.term.buffer.active.type !== "normal") return false;
+      const normal = this.term.buffer.active.type === "normal";
       const mode = params[0];
-      if (mode === 2) this.screenCleared();
-      else if (mode === 3) this.scrollbackErased();
+      if (mode === 2) {
+        // The alternate screen has no scrollback to push to, and a program
+        // erasing inside a scroll region there expects the plain erase.
+        this.term.options.scrollOnEraseInDisplay = normal && !this.shellClearing;
+        if (normal) this.screenCleared();
+      } else if (mode === 3 && normal) {
+        this.shellClearing = true;
+        this.scrollbackErased();
+      }
       return false;
     });
     this.term.buffer.onBufferChange((buffer) => {
@@ -504,6 +520,9 @@ export class TerminalController {
       // The shell's echo of a keystroke lands here; recompute the suggestions
       // from the buffer only while the user is composing a command.
       if (this.inputAnchor) this.schedulePopupSync();
+      // `clear` sends its two erases in one chunk; a later ED 2 is somebody
+      // else's redraw and keeps the scrollback.
+      this.shellClearing = false;
     });
 
     this.term.onResize(({ cols, rows }) => {
@@ -1017,10 +1036,48 @@ export class TerminalController {
     this.clearBufferAndMetadata();
   }
 
-  /** ED 2 in the normal buffer: the screen is about to be erased. */
+  /**
+   * ED 2 in the normal buffer: the screen is about to be erased. `clear`'s own
+   * erase drops the buffer; every other one keeps it, because xterm is about
+   * to push the screen into the scrollback rather than wipe it.
+   */
   private screenCleared() {
     if (this.commandRunning) this.commandOutputAdvanced = true;
-    this.clearBufferAndMetadata();
+    if (this.shellClearing) {
+      this.clearBufferAndMetadata();
+      return;
+    }
+    // The typed input is about to leave the screen with everything else.
+    this.dropAnchor();
+    this.followScrollTrim();
+  }
+
+  /**
+   * The rows xterm is about to push into the scrollback keep their place in
+   * the buffer, so the gutter's parallel metadata needs no shifting — unless
+   * the buffer is already full, where the same push trims lines off the top
+   * and moves every buffer index down. That trim happens without a line feed,
+   * which is what `recordLine` would otherwise account for, so the count is
+   * worked out here from the rows xterm will scroll (its own rule: everything
+   * down to the last row that holds a character).
+   */
+  private followScrollTrim() {
+    const buf = this.term.buffer.active;
+    // A screen's worth of headroom left: nothing can be trimmed.
+    if (buf.length <= this.scrollback) return;
+    const work = (this.workCell ??= buf.getNullCell());
+    let scrolled = 0;
+    for (let row = this.term.rows - 1; row >= 0 && scrolled === 0; row -= 1) {
+      const line = buf.getLine(buf.baseY + row);
+      if (!line) continue;
+      for (let col = line.length - 1; col >= 0; col -= 1) {
+        if (line.getCell(col, work)?.getCode()) {
+          scrolled = row + 1;
+          break;
+        }
+      }
+    }
+    this.dropLeadingLines(buf.length + scrolled - (this.term.rows + this.scrollback));
   }
 
   /**
@@ -1033,6 +1090,9 @@ export class TerminalController {
     if (dropped <= 0) return;
     this.lineTimes.splice(0, dropped);
     this.firstLineNumber = 1;
+    // `clear` on Linux erases the screen first, so its rows are among the
+    // ones just dropped; the prompt that follows lands on line 1.
+    if (this.lineTimes.length === 0) this.lineTimes.push(Date.now());
     this.invalidateGutter();
   }
 
@@ -1736,12 +1796,15 @@ export class TerminalController {
 
   private trimLineMetadata() {
     const max = this.term.rows + this.scrollback;
-    if (this.lineTimes.length > max) {
-      const dropped = this.lineTimes.length - max;
-      this.lineTimes.splice(0, dropped);
-      this.firstLineNumber += dropped;
-      this.invalidateGutter();
-    }
+    this.dropLeadingLines(this.lineTimes.length - max);
+  }
+
+  /** xterm dropped `count` lines off the top; carry them into the numbering. */
+  private dropLeadingLines(count: number) {
+    if (count <= 0) return;
+    this.lineTimes.splice(0, count);
+    this.firstLineNumber += count;
+    this.invalidateGutter();
   }
 
   /**
