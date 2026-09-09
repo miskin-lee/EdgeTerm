@@ -91,7 +91,8 @@ interface TerminalMenu {
 
 /**
  * Mouse copy / paste, the way terminals conventionally do it: right click
- * opens a context menu (the same on every platform) and middle click
+ * follows the `rightClickAction` setting (a context menu, or the Windows
+ * console's copy-or-paste on Windows / Linux) and middle click always
  * pastes. Clicks are left alone while a program has enabled mouse
  * reporting, except with Shift held on Windows / Linux, which xterm itself
  * treats as "bypass the program" (macOS has no such key: Option is Meta
@@ -104,6 +105,7 @@ function TerminalHost({ tab, active }: { tab: Tab; active: boolean }) {
   const bufferFontFamily = useStore((s) => s.bufferFontFamily);
   const terminalScrollback = useStore((s) => s.terminalScrollback);
   const suggestionsEnabled = useStore((s) => s.suggestionsEnabled);
+  const rightClickAction = useStore((s) => s.rightClickAction);
   const [menu, setMenu] = useState<TerminalMenu | null>(null);
   const closeMenu = useCallback(() => setMenu(null), []);
   const id = tab.info.id;
@@ -130,6 +132,12 @@ function TerminalHost({ tab, active }: { tab: Tab; active: boolean }) {
     const controller = ownsClick(event);
     if (!controller) return;
     event.preventDefault();
+    if (rightClickAction === "copyPaste") {
+      // conhost / Windows Terminal: the selection is consumed by the copy.
+      if (controller.copySelection()) controller.clearSelection();
+      else controller.pasteFromClipboard();
+      return;
+    }
     setMenu({
       x: event.clientX,
       y: event.clientY,
@@ -239,6 +247,10 @@ function TerminalHost({ tab, active }: { tab: Tab; active: boolean }) {
   useEffect(() => {
     terminal?.setSuggestions(suggestionsEnabled);
   }, [terminal, suggestionsEnabled]);
+
+  useEffect(() => {
+    terminal?.setRightClickAction(rightClickAction);
+  }, [terminal, rightClickAction]);
 
   useEffect(() => {
     if (!terminal) return;

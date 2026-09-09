@@ -2,6 +2,7 @@ import { create } from "zustand";
 
 import * as api from "./api";
 import { commandHistory } from "./history";
+import { IS_MAC } from "./platform";
 import {
   DEFAULT_SHORTCUTS,
   defaultShortcuts,
@@ -10,7 +11,7 @@ import {
   shortcutOverrides,
   type ShortcutBindings,
 } from "./shortcuts";
-import type { GutterMode } from "./terminal";
+import type { GutterMode, RightClickAction } from "./terminal";
 import { disposeController, getController } from "./terminalRegistry";
 import type {
   AuthPrompt,
@@ -106,6 +107,7 @@ const GUTTER_MODE_KEY = "edgeterm.gutterMode";
 const PANELS_KEY = "edgeterm.panels";
 const THEME_KEY = "edgeterm.theme";
 const SUGGESTIONS_KEY = "edgeterm.suggestions";
+const RIGHT_CLICK_KEY = "edgeterm.rightClick";
 const SHORTCUTS_KEY = "edgeterm.shortcuts";
 
 // Opt-in: command capture and the completion popup stay off until the user
@@ -127,6 +129,27 @@ const parseGutterMode = (value: unknown): GutterMode | null =>
   value === "both" || value === "line" || value === "time" || value === "off"
     ? value
     : null;
+
+const parseRightClickAction = (value: unknown): RightClickAction | null =>
+  value === "menu" || value === "copyPaste" ? value : null;
+
+/**
+ * The context menu is the behavior everywhere unless a Windows / Linux user
+ * asks for the console convention in Edit → Right Click. macOS terminals
+ * have no such convention, so the value is pinned there: a stored or
+ * imported `copyPaste` never applies and the menu doesn't offer it.
+ */
+const loadRightClickAction = (): RightClickAction => {
+  if (IS_MAC) return "menu";
+  try {
+    return (
+      parseRightClickAction(localStorage.getItem(RIGHT_CLICK_KEY)) ?? "menu"
+    );
+  } catch {
+    // Use the default when storage is unavailable.
+    return "menu";
+  }
+};
 
 /** Fills fields missing from `value` with `base`; null if it is no object. */
 const parsePanels = (
@@ -312,6 +335,8 @@ export interface AppSettings {
   bufferFontFamily: string;
   terminalScrollback: number;
   suggestionsEnabled: boolean;
+  /** Windows / Linux only; macOS always opens the menu. */
+  rightClickAction: RightClickAction;
   /** Only the key bindings that differ from the platform defaults. */
   shortcuts: Partial<ShortcutBindings>;
 }
@@ -331,6 +356,8 @@ interface AppStore {
   terminalScrollback: number;
   /** Command history recording + fish-style inline suggestions. */
   suggestionsEnabled: boolean;
+  /** What a right click in the terminal does; see `RightClickAction`. */
+  rightClickAction: RightClickAction;
   /** The chord each app command answers; see `shortcuts.ts`. */
   shortcuts: ShortcutBindings;
   panels: Record<PanelName, boolean>;
@@ -420,6 +447,7 @@ interface AppStore {
   setBufferFontFamily: (family: string) => void;
   setTerminalScrollback: (rows: number) => void;
   setSuggestionsEnabled: (enabled: boolean) => void;
+  setRightClickAction: (action: RightClickAction) => void;
   setShortcuts: (bindings: ShortcutBindings) => void;
   resetSettings: () => void;
   /** The preferences a data export carries; see `applySettings`. */
@@ -471,6 +499,7 @@ export const useStore = create<AppStore>((set, get) => ({
   bufferFontFamily: loadFontFamily(BUFFER_FONT_FAMILY_KEY),
   terminalScrollback: loadScrollback(),
   suggestionsEnabled: loadSuggestionsEnabled(),
+  rightClickAction: loadRightClickAction(),
   shortcuts: initialShortcuts,
   panels: loadPanels(),
   status: "Ready",
@@ -764,6 +793,17 @@ export const useStore = create<AppStore>((set, get) => ({
     }
   },
 
+  setRightClickAction(action) {
+    // Nothing to choose on macOS; see loadRightClickAction.
+    if (IS_MAC) return;
+    set({ rightClickAction: action });
+    try {
+      localStorage.setItem(RIGHT_CLICK_KEY, action);
+    } catch {
+      // The setting still applies for this run when storage is unavailable.
+    }
+  },
+
   setShortcuts(bindings) {
     const shortcuts = { ...bindings };
     set({ shortcuts });
@@ -785,6 +825,7 @@ export const useStore = create<AppStore>((set, get) => ({
       bufferFontFamily: "",
       terminalScrollback: TERMINAL_SCROLLBACK.default,
       suggestionsEnabled: false,
+      rightClickAction: "menu",
     });
     try {
       localStorage.removeItem(PANELS_KEY);
@@ -796,6 +837,7 @@ export const useStore = create<AppStore>((set, get) => ({
       localStorage.removeItem(BUFFER_FONT_FAMILY_KEY);
       localStorage.removeItem(TERMINAL_SCROLLBACK_KEY);
       localStorage.removeItem(SUGGESTIONS_KEY);
+      localStorage.removeItem(RIGHT_CLICK_KEY);
       localStorage.removeItem(SHORTCUTS_KEY);
     } catch {
       // The defaults still apply for this run when storage is unavailable.
@@ -814,6 +856,7 @@ export const useStore = create<AppStore>((set, get) => ({
       bufferFontFamily: state.bufferFontFamily,
       terminalScrollback: state.terminalScrollback,
       suggestionsEnabled: state.suggestionsEnabled,
+      rightClickAction: state.rightClickAction,
       shortcuts: shortcutOverrides(state.shortcuts),
     };
   },
@@ -851,6 +894,8 @@ export const useStore = create<AppStore>((set, get) => ({
     if (typeof values.suggestionsEnabled === "boolean") {
       state.setSuggestionsEnabled(values.suggestionsEnabled);
     }
+    const rightClickAction = parseRightClickAction(values.rightClickAction);
+    if (rightClickAction) state.setRightClickAction(rightClickAction);
     const shortcuts = parseShortcuts(values.shortcuts, state.shortcuts);
     if (shortcuts) state.setShortcuts(shortcuts);
   },

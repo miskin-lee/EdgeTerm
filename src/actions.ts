@@ -117,6 +117,7 @@ export async function ensureController(id: string): Promise<TerminalController> 
     fontStack("mono", useStore.getState().bufferFontFamily),
   );
   controller.setSuggestions(useStore.getState().suggestionsEnabled);
+  controller.setRightClickAction(useStore.getState().rightClickAction);
   setController(id, controller);
   return controller;
 }

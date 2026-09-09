@@ -20,7 +20,11 @@ import { commandHistory } from "../history";
 import { IS_MAC, shortcutLabel as sc } from "../platform";
 import { chordLabel, type ShortcutCommand } from "../shortcuts";
 import { tabTitle, useActiveTab, useStore } from "../store";
-import type { GutterMode, TerminalController } from "../terminal";
+import type {
+  GutterMode,
+  RightClickAction,
+  TerminalController,
+} from "../terminal";
 import { getController } from "../terminalRegistry";
 import type { ThemeMode } from "../types";
 import { MenuCheck, menuRole, type MenuMark } from "./ContextMenu";
@@ -250,6 +254,8 @@ export function MenuBar(props: Props) {
   const setTheme = useStore((s) => s.setTheme);
   const suggestionsEnabled = useStore((s) => s.suggestionsEnabled);
   const setSuggestionsEnabled = useStore((s) => s.setSuggestionsEnabled);
+  const rightClickAction = useStore((s) => s.rightClickAction);
+  const setRightClickAction = useStore((s) => s.setRightClickAction);
   const resetSettings = useStore((s) => s.resetSettings);
   // The accelerators the user can rebind; the rest are fixed per platform
   // (see shortcuts.ts) and stay written out with `sc`.
@@ -298,6 +304,13 @@ export function MenuBar(props: Props) {
     checked: theme === mode,
     mark: "radio",
     action: () => setTheme(mode),
+  });
+
+  const rightClickEntry = (label: string, action: RightClickAction): Entry => ({
+    label,
+    checked: rightClickAction === action,
+    mark: "radio",
+    action: () => setRightClickAction(action),
   });
 
   const menus: Menu[] = [
@@ -395,6 +408,20 @@ export function MenuBar(props: Props) {
           shortcut: sc("⌘A", "Ctrl+Shift+A"),
           action: withActive((id) => getController(id)?.selectAll()),
         },
+        // Mouse copy / paste is a Windows / Linux choice; macOS terminals
+        // always open the menu, so the submenu is left out there.
+        ...(IS_MAC
+          ? []
+          : [
+              "separator" as const,
+              {
+                label: "Right Click",
+                children: [
+                  rightClickEntry("Show Menu", "menu"),
+                  rightClickEntry("Copy or Paste", "copyPaste"),
+                ],
+              },
+            ]),
         "separator",
         {
           label: "Clear Buffer",

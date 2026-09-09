@@ -61,6 +61,10 @@
 
 XMODEM 没有可供检测的握手，需要从 **Session → File Transfer** 菜单手动发起。先在终端里启动对端（`rx <文件>`、`sx <文件>`、Bootloader 的 `loadx` 等），再选择 **Send via XMODEM…** 或 **Send via XMODEM-1K…** 并挑选要发送的文件，或选择 **Receive via XMODEM…** 并指定保存位置。接收支持 CRC 与校验和两种校验以及 128 字节 / 1 KiB 两种块长；发送在对端请求 CRC 时使用 CRC，否则退回 128 字节校验和块。XMODEM 不传文件长度，接收到的文件末块会保留发送方填充的 `^Z`。同一菜单的 **Cancel Transfer** 可中止任一协议的传输。
 
+**鼠标复制 / 粘贴**
+
+在终端里点击右键会弹出上下文菜单——Copy / Paste / Select All / Clear Buffer / Reveal Working Directory in Filer，并先选中指针所在的单词；中键粘贴。Windows 和 Linux 下可在 **Edit → Right Click** 改为 *Copy or Paste*，即控制台惯例：右键有选区时复制、没有选区时粘贴，不再弹菜单。macOS 始终使用菜单。vim、tmux（开启鼠标）、htop 等接管了鼠标的程序会收到这些点击；Windows / Linux 下按住 `Shift` 可绕过它们。
+
 **快捷键**
 
 | macOS | Windows / Linux | 动作 |

@@ -65,6 +65,10 @@ Local shell, SSH, and serial terminals automatically detect ZMODEM sessions. Run
 
 XMODEM has no handshake to detect, so it is started from **Session → File Transfer**. Start the other end in the terminal first (`rx <file>`, `sx <file>`, a bootloader's `loadx`, …), then choose **Send via XMODEM…** or **Send via XMODEM-1K…** and pick the file, or **Receive via XMODEM…** and pick where to save it. Receiving accepts CRC and checksum blocks of 128 bytes or 1 KiB; sending uses CRC when the receiver asks for it and falls back to plain 128-byte checksum blocks otherwise. XMODEM carries no file size, so a received file keeps the sender's `^Z` padding at the end of its last block. **Cancel Transfer** in the same menu aborts either protocol.
 
+**Mouse copy / paste**
+
+A right click in the terminal opens a context menu — Copy, Paste, Select All, Clear Buffer and Reveal Working Directory in Filer — with the word under the pointer selected first; middle-click pastes. On Windows and Linux, **Edit → Right Click** switches that to *Copy or Paste*, the console convention: a right click copies the selection if there is one and pastes otherwise, and no menu appears. macOS always uses the menu. Programs that take over the mouse (vim, tmux with mouse support, htop) receive the clicks instead; on Windows / Linux hold `Shift` to bypass them.
+
 **Keyboard shortcuts**
 
 | macOS | Windows / Linux | Action |

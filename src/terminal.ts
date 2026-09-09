@@ -34,6 +34,15 @@ import { ZmodemController } from "./zmodem";
 
 export type GutterMode = "off" | "line" | "time" | "both";
 
+/**
+ * What a right click in the terminal does, when no program has taken over
+ * the mouse. `menu` opens the app's context menu (the word under the
+ * pointer is selected first, as in VS Code); `copyPaste` is the Windows
+ * console convention — copy the selection if there is one, otherwise paste.
+ * macOS is always `menu`; the setting is Windows / Linux only.
+ */
+export type RightClickAction = "menu" | "copyPaste";
+
 /** The xterm-owned inputs to a gutter paint; see `gutterPainted`. */
 type GutterView = {
   viewportY: number;
@@ -420,9 +429,8 @@ export class TerminalController {
       minimumContrastRatio: 4.5,
       drawBoldTextInBrightColors: true,
       macOptionIsMeta: true,
-      // A right click opens the terminal's context menu (TerminalHost), so
-      // the word under the pointer is selected first and the menu's Copy
-      // has something to copy, as in VS Code.
+      // Kept in step with the right-click setting by setRightClickAction:
+      // only the menu mode wants the word under the pointer selected first.
       rightClickSelectsWord: true,
     });
 
@@ -1034,6 +1042,20 @@ export class TerminalController {
 
   selectAll() {
     this.term.selectAll();
+  }
+
+  clearSelection() {
+    this.term.clearSelection();
+  }
+
+  /**
+   * `rightClickSelectsWord` follows the right-click mode: in "menu" mode a
+   * right click selects the word under the pointer so the menu's Copy has
+   * something to copy (VS Code); in "copyPaste" mode it must stay off, or a
+   * right click meant to paste would select a word and copy it instead.
+   */
+  setRightClickAction(action: RightClickAction) {
+    this.term.options.rightClickSelectsWord = action === "menu";
   }
 
   /**
