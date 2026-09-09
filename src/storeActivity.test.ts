@@ -1,4 +1,12 @@
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+
+// The store reaches platform.ts through the shortcut table, and IS_MAC is a
+// build-time constant vitest does not define.
+vi.mock("./platform", () => ({
+  IS_MAC: true,
+  IS_WINDOWS: false,
+  shortcutLabel: (mac: string) => mac,
+}));
 
 import { useStore, type Tab } from "./store";
 

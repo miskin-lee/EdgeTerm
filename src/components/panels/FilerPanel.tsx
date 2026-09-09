@@ -12,7 +12,8 @@ import {
 
 import { revealCwdInFiler } from "../../actions";
 import * as api from "../../api";
-import { IS_MAC, IS_WINDOWS, shortcutLabel as sc } from "../../platform";
+import { IS_MAC, IS_WINDOWS } from "../../platform";
+import { chordLabel } from "../../shortcuts";
 import { tabTitle, useActiveTab, useStore } from "../../store";
 import { ContextMenu, type MenuItem } from "../ContextMenu";
 import { DeleteEntryDialog } from "../DeleteEntryDialog";
@@ -100,6 +101,7 @@ export function FilerPanel() {
   // count as a source change and reset where the user was browsing.
   const remoteId = remote ? (tab?.info.id ?? null) : null;
   const filerTarget = useStore((s) => s.filerTarget);
+  const revealKey = useStore((s) => chordLabel(s.shortcuts.revealCwd));
   /** The last `filerTarget.token` this panel navigated to. */
   const consumedTarget = useRef(0);
   // Shell and SSH sessions have a working directory to reveal (⌘J); file
@@ -1067,7 +1069,7 @@ export function FilerPanel() {
         <button
           className="panel-action filer-action"
           onClick={() => tab && void revealCwdInFiler(tab.info.id)}
-          title={`Terminal folder (${sc("⌘J", "Ctrl+Shift+J")})`}
+          title={revealKey ? `Terminal folder (${revealKey})` : "Terminal folder"}
           aria-label="Terminal folder"
           disabled={busy || !canReveal}
         >

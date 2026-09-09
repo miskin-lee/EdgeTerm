@@ -3149,6 +3149,144 @@ textarea:focus {
   }
 }
 
+/* --- keyboard shortcuts --------------------------------------------------- */
+
+.shortcuts-dialog {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  width: min(520px, calc(100vw - 32px));
+  max-height: min(720px, calc(100vh - 32px));
+}
+
+.shortcuts-dialog-body {
+  min-height: 0;
+  gap: 12px;
+}
+
+.shortcuts-list {
+  display: flex;
+  min-height: 0;
+  flex-direction: column;
+  overflow-y: auto;
+}
+
+.shortcut-row {
+  display: grid;
+  grid-template-columns: 1fr minmax(120px, auto) 22px;
+  align-items: center;
+  gap: 10px;
+  padding: 4px 0;
+}
+
+.shortcut-command {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.shortcut-command strong {
+  color: var(--fg);
+  font-weight: 500;
+}
+
+.shortcut-command small {
+  color: var(--fg-faint);
+  font-size: 10px;
+}
+
+/* The binding reads as the key it stands for, so it is set in the terminal
+   face and centred like a keycap. */
+.shortcut-key {
+  min-width: 120px;
+  height: 26px;
+  padding: 0 10px;
+  border: 1px solid var(--border-strong);
+  border-radius: 5px;
+  background: var(--bg-panel-alt);
+  font-family: var(--font-mono);
+  text-align: center;
+}
+
+.shortcut-key:hover {
+  background: var(--bg-hover);
+}
+
+.shortcut-key:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.shortcut-key.is-unset {
+  color: var(--fg-faint);
+  font-family: inherit;
+  font-style: italic;
+}
+
+.shortcut-key.is-recording {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent);
+  color: var(--accent);
+  font-family: inherit;
+}
+
+.shortcut-clear {
+  display: grid;
+  width: 22px;
+  height: 22px;
+  border-radius: 4px;
+  color: var(--fg-faint);
+  place-items: center;
+}
+
+.shortcut-clear:hover:not(:disabled) {
+  background: var(--bg-hover);
+  color: var(--fg);
+}
+
+.shortcut-clear:disabled {
+  cursor: default;
+  opacity: 0.3;
+}
+
+/* Reserves its line so assigning a key never shifts the rows underneath. */
+.shortcuts-notice {
+  min-height: 15px;
+  margin: 0;
+  color: var(--fg-dim);
+  font-size: 11px;
+}
+
+.shortcuts-fixed {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  padding-top: 10px;
+  border-top: 1px solid var(--border);
+  color: var(--fg-faint);
+  font-size: 11px;
+  gap: 6px 12px;
+}
+
+.shortcuts-fixed strong {
+  color: var(--fg-dim);
+  font-weight: 500;
+}
+
+.shortcuts-fixed kbd {
+  padding: 1px 5px;
+  border: 1px solid var(--border-strong);
+  border-radius: 3px;
+  background: var(--bg-panel-alt);
+  font-family: var(--font-mono);
+  font-size: 10px;
+}
+
+.shortcuts-dialog-footer .shortcuts-reset {
+  margin-right: auto;
+}
+
 .confirm-dialog {
   width: min(420px, calc(100vw - 40px));
 }

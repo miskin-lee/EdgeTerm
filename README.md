@@ -80,6 +80,8 @@ XMODEM has no handshake to detect, so it is started from **Session → File Tran
 | `⌘C` / `⌘V` | `Ctrl+Shift+C` / `Ctrl+Shift+V` | Copy / paste inside the terminal |
 | `⌘A` | `Ctrl+Shift+A` | Select the whole terminal buffer |
 
+Every shortcut above can be rebound in **View → Keyboard Shortcuts…** — click a command's keys and press the combination you want, or clear it to leave the command unassigned — except the tab-number keys and the terminal's own copy / paste / select all, which the terminal answers before the application ever sees them. **Help → Restore Default Settings…** puts the whole table back.
+
 ## Releases
 
 | Platform | Package |

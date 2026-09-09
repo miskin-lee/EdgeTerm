@@ -27,6 +27,7 @@ import {
   SearchOverlay,
   type SearchOverlayHandle,
 } from "./components/SearchOverlay";
+import { ShortcutsDialog } from "./components/ShortcutsDialog";
 import { Splitter } from "./components/Splitter";
 import { StatusBar } from "./components/StatusBar";
 import { TabStrip } from "./components/TabStrip";
@@ -78,6 +79,8 @@ export default function App() {
   const setPanelFontFamily = useStore((s) => s.setPanelFontFamily);
   const setBufferFontFamily = useStore((s) => s.setBufferFontFamily);
   const setTerminalScrollback = useStore((s) => s.setTerminalScrollback);
+  const shortcuts = useStore((s) => s.shortcuts);
+  const setShortcuts = useStore((s) => s.setShortcuts);
   const setActive = useStore((s) => s.setActive);
   const activateAdjacentTab = useStore((s) => s.activateAdjacentTab);
   const closeTab = useStore((s) => s.closeTab);
@@ -106,6 +109,7 @@ export default function App() {
   const searchRef = useRef<SearchOverlayHandle>(null);
   const [aboutOpen, setAboutOpen] = useState(false);
   const [fontSettingsOpen, setFontSettingsOpen] = useState(false);
+  const [shortcutsOpen, setShortcutsOpen] = useState(false);
   const [quitPromptOpen, setQuitPromptOpen] = useState(false);
 
   const [leftWidth, setLeftWidth] = useState(220);
@@ -339,6 +343,7 @@ export default function App() {
         onFind={openSearch}
         onFindNext={findNext}
         onFontSettings={() => setFontSettingsOpen(true)}
+        onKeyboardShortcuts={() => setShortcutsOpen(true)}
         onCheckForUpdates={() => void updater.checkForUpdates()}
         onAbout={() => setAboutOpen(true)}
       />
@@ -482,6 +487,17 @@ export default function App() {
             setFontSettingsOpen(false);
           }}
           onClose={() => setFontSettingsOpen(false)}
+        />
+      )}
+
+      {shortcutsOpen && (
+        <ShortcutsDialog
+          bindings={shortcuts}
+          onApply={(bindings) => {
+            setShortcuts(bindings);
+            setShortcutsOpen(false);
+          }}
+          onClose={() => setShortcutsOpen(false)}
         />
       )}
 

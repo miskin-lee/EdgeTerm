@@ -75,6 +75,8 @@ XMODEM 没有可供检测的握手，需要从 **Session → File Transfer** 菜
 | `⌘C` / `⌘V` | `Ctrl+Shift+C` / `Ctrl+Shift+V` | 复制 / 粘贴（终端内） |
 | `⌘A` | `Ctrl+Shift+A` | 全选终端缓冲区 |
 
+上表中的快捷键都可以在 **View → Keyboard Shortcuts…** 里重新绑定：点击某个命令的按键，再按下想要的组合即可，也可以清空让该命令不绑定任何按键；只有标签数字键和终端自己的复制 / 粘贴 / 全选例外，它们在应用看到之前就已由终端处理。**Help → Restore Default Settings…** 会把整张表恢复为缺省值。
+
 ## 发布
 
 | 平台 | 安装包 |

@@ -2,6 +2,14 @@ import { create } from "zustand";
 
 import * as api from "./api";
 import { commandHistory } from "./history";
+import {
+  DEFAULT_SHORTCUTS,
+  defaultShortcuts,
+  parseShortcuts,
+  setActiveShortcuts,
+  shortcutOverrides,
+  type ShortcutBindings,
+} from "./shortcuts";
 import type { GutterMode } from "./terminal";
 import { disposeController, getController } from "./terminalRegistry";
 import type {
@@ -98,6 +106,7 @@ const GUTTER_MODE_KEY = "edgeterm.gutterMode";
 const PANELS_KEY = "edgeterm.panels";
 const THEME_KEY = "edgeterm.theme";
 const SUGGESTIONS_KEY = "edgeterm.suggestions";
+const SHORTCUTS_KEY = "edgeterm.shortcuts";
 
 // Opt-in: command capture and the completion popup stay off until the user
 // enables them in the Edit menu.
@@ -256,6 +265,37 @@ const saveScrollback = (value: number) => {
 };
 
 /**
+ * Keyboard bindings are stored as the difference from this platform's
+ * defaults, so a command the user never touched follows a later release's
+ * default instead of being pinned to the one it shipped with.
+ */
+const loadShortcuts = (): ShortcutBindings => {
+  try {
+    const stored = localStorage.getItem(SHORTCUTS_KEY);
+    if (stored) {
+      const bindings = parseShortcuts(JSON.parse(stored), DEFAULT_SHORTCUTS);
+      if (bindings) return bindings;
+    }
+  } catch {
+    // Use the defaults when storage is unavailable or malformed.
+  }
+  return defaultShortcuts();
+};
+
+const saveShortcuts = (bindings: ShortcutBindings) => {
+  try {
+    const overrides = shortcutOverrides(bindings);
+    if (Object.keys(overrides).length === 0) {
+      localStorage.removeItem(SHORTCUTS_KEY);
+    } else {
+      localStorage.setItem(SHORTCUTS_KEY, JSON.stringify(overrides));
+    }
+  } catch {
+    // The bindings still apply for this run when storage is unavailable.
+  }
+};
+
+/**
  * The preferences a data export carries (Session → Export Data…). Everything
  * here lives in localStorage; saved sessions and Sender tags come from the
  * backend instead.
@@ -272,6 +312,8 @@ export interface AppSettings {
   bufferFontFamily: string;
   terminalScrollback: number;
   suggestionsEnabled: boolean;
+  /** Only the key bindings that differ from the platform defaults. */
+  shortcuts: Partial<ShortcutBindings>;
 }
 
 interface AppStore {
@@ -289,6 +331,8 @@ interface AppStore {
   terminalScrollback: number;
   /** Command history recording + fish-style inline suggestions. */
   suggestionsEnabled: boolean;
+  /** The chord each app command answers; see `shortcuts.ts`. */
+  shortcuts: ShortcutBindings;
   panels: Record<PanelName, boolean>;
   status: string;
   error: string | null;
@@ -376,6 +420,7 @@ interface AppStore {
   setBufferFontFamily: (family: string) => void;
   setTerminalScrollback: (rows: number) => void;
   setSuggestionsEnabled: (enabled: boolean) => void;
+  setShortcuts: (bindings: ShortcutBindings) => void;
   resetSettings: () => void;
   /** The preferences a data export carries; see `applySettings`. */
   exportSettings: () => AppSettings;
@@ -408,6 +453,11 @@ const acknowledgeTab = (tabs: Tab[], id: string | null): Tab[] =>
           : tab,
       );
 
+// The key matchers are not React and cannot subscribe, so the table in force
+// is pushed into `shortcuts.ts` here and again from `setShortcuts`.
+const initialShortcuts = loadShortcuts();
+setActiveShortcuts(initialShortcuts);
+
 export const useStore = create<AppStore>((set, get) => ({
   profiles: [],
   groups: [],
@@ -421,6 +471,7 @@ export const useStore = create<AppStore>((set, get) => ({
   bufferFontFamily: loadFontFamily(BUFFER_FONT_FAMILY_KEY),
   terminalScrollback: loadScrollback(),
   suggestionsEnabled: loadSuggestionsEnabled(),
+  shortcuts: initialShortcuts,
   panels: loadPanels(),
   status: "Ready",
   error: null,
@@ -713,8 +764,18 @@ export const useStore = create<AppStore>((set, get) => ({
     }
   },
 
+  setShortcuts(bindings) {
+    const shortcuts = { ...bindings };
+    set({ shortcuts });
+    setActiveShortcuts(shortcuts);
+    saveShortcuts(shortcuts);
+  },
+
   resetSettings() {
+    const shortcuts = defaultShortcuts();
+    setActiveShortcuts(shortcuts);
     set({
+      shortcuts,
       panels: { ...DEFAULT_PANELS },
       gutterMode: "both",
       theme: "dark",
@@ -735,6 +796,7 @@ export const useStore = create<AppStore>((set, get) => ({
       localStorage.removeItem(BUFFER_FONT_FAMILY_KEY);
       localStorage.removeItem(TERMINAL_SCROLLBACK_KEY);
       localStorage.removeItem(SUGGESTIONS_KEY);
+      localStorage.removeItem(SHORTCUTS_KEY);
     } catch {
       // The defaults still apply for this run when storage is unavailable.
     }
@@ -752,6 +814,7 @@ export const useStore = create<AppStore>((set, get) => ({
       bufferFontFamily: state.bufferFontFamily,
       terminalScrollback: state.terminalScrollback,
       suggestionsEnabled: state.suggestionsEnabled,
+      shortcuts: shortcutOverrides(state.shortcuts),
     };
   },
 
@@ -788,6 +851,8 @@ export const useStore = create<AppStore>((set, get) => ({
     if (typeof values.suggestionsEnabled === "boolean") {
       state.setSuggestionsEnabled(values.suggestionsEnabled);
     }
+    const shortcuts = parseShortcuts(values.shortcuts, state.shortcuts);
+    if (shortcuts) state.setShortcuts(shortcuts);
   },
 
   bumpSenderLibrary() {

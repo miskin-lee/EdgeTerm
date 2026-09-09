@@ -18,6 +18,7 @@ import { windowControl } from "../api";
 import { exportAppData, importAppData } from "../dataTransfer";
 import { commandHistory } from "../history";
 import { IS_MAC, shortcutLabel as sc } from "../platform";
+import { chordLabel, type ShortcutCommand } from "../shortcuts";
 import { tabTitle, useActiveTab, useStore } from "../store";
 import type { GutterMode, TerminalController } from "../terminal";
 import { getController } from "../terminalRegistry";
@@ -216,6 +217,7 @@ interface Props {
   onFind: () => void;
   onFindNext: () => void;
   onFontSettings: () => void;
+  onKeyboardShortcuts: () => void;
   onCheckForUpdates: () => void;
   onAbout: () => void;
 }
@@ -249,6 +251,10 @@ export function MenuBar(props: Props) {
   const suggestionsEnabled = useStore((s) => s.suggestionsEnabled);
   const setSuggestionsEnabled = useStore((s) => s.setSuggestionsEnabled);
   const resetSettings = useStore((s) => s.resetSettings);
+  // The accelerators the user can rebind; the rest are fixed per platform
+  // (see shortcuts.ts) and stay written out with `sc`.
+  const shortcuts = useStore((s) => s.shortcuts);
+  const accel = (command: ShortcutCommand) => chordLabel(shortcuts[command]);
   const setStatus = useStore((s) => s.setStatus);
   const requestCloseTab = useStore((s) => s.requestCloseTab);
   const activateAdjacentTab = useStore((s) => s.activateAdjacentTab);
@@ -300,18 +306,18 @@ export function MenuBar(props: Props) {
       entries: [
         {
           label: "New Session…",
-          shortcut: sc("⌘N", "Alt+N"),
+          shortcut: accel("newSession"),
           action: props.onNewSession,
         },
         "separator",
         {
           label: "Previous Session",
-          shortcut: sc("⌘[", "Alt+["),
+          shortcut: accel("prevTab"),
           action: () => activateAdjacentTab(-1),
         },
         {
           label: "Next Session",
-          shortcut: sc("⌘]", "Alt+]"),
+          shortcut: accel("nextTab"),
           action: () => activateAdjacentTab(1),
         },
         "separator",
@@ -326,7 +332,7 @@ export function MenuBar(props: Props) {
         },
         {
           label: "Close Session",
-          shortcut: sc("⌘W", "Ctrl+Shift+W"),
+          shortcut: accel("closeSession"),
           action: withActive(requestCloseTab),
         },
         {
@@ -392,7 +398,7 @@ export function MenuBar(props: Props) {
         "separator",
         {
           label: "Clear Buffer",
-          shortcut: sc("⌘K", "Alt+K"),
+          shortcut: accel("clear"),
           action: withActive((id) => getController(id)?.clear()),
         },
         "separator",
@@ -431,12 +437,12 @@ export function MenuBar(props: Props) {
       entries: [
         {
           label: "Find…",
-          shortcut: sc("⌘F", "Ctrl+Shift+F"),
+          shortcut: accel("find"),
           action: props.onFind,
         },
         {
           label: "Find Next",
-          shortcut: sc("⌘G", "Ctrl+Shift+G"),
+          shortcut: accel("findNext"),
           action: props.onFindNext,
         },
       ],
@@ -446,26 +452,26 @@ export function MenuBar(props: Props) {
       entries: [
         {
           label: "Session",
-          shortcut: sc("⌘⌥←", "Ctrl+Alt+←"),
+          shortcut: accel("panelSessions"),
           checked: panels.sessions,
           action: () => togglePanel("sessions"),
         },
         {
           label: "Filer",
-          shortcut: sc("⌘⌥→", "Ctrl+Alt+→"),
+          shortcut: accel("panelFiler"),
           checked: panels.filer,
           action: () => togglePanel("filer"),
         },
         {
           label: "Sender",
-          shortcut: sc("⌘⌥↓", "Ctrl+Alt+↓"),
+          shortcut: accel("panelSender"),
           checked: panels.sender,
           action: () => togglePanel("sender"),
         },
         "separator",
         {
           label: "Reveal Working Directory in Filer",
-          shortcut: sc("⌘J", "Ctrl+Shift+J"),
+          shortcut: accel("revealCwd"),
           action: withActive((id) => void revealCwdInFiler(id)),
         },
         "separator",
@@ -475,6 +481,10 @@ export function MenuBar(props: Props) {
         },
         "separator",
         { label: "Display Settings…", action: props.onFontSettings },
+        {
+          label: "Keyboard Shortcuts…",
+          action: props.onKeyboardShortcuts,
+        },
       ],
     },
     {
@@ -495,7 +505,7 @@ export function MenuBar(props: Props) {
           action: () => {
             void (async () => {
               const confirmed = await ask(
-                "Restore panel visibility, timestamp and line display, theme, font sizes, scrollback, command suggestions, and mouse copy / paste to their defaults?",
+                "Restore panel visibility, timestamp and line display, theme, font sizes, scrollback, command suggestions, keyboard shortcuts, and mouse copy / paste to their defaults?",
                 {
                   title: "Restore Default Settings",
                   kind: "warning",

@@ -12,6 +12,7 @@ import appIcon from "../../src-tauri/icons/128x128@2x.png";
 import { ensureController, revealCwdInFiler } from "../actions";
 import { fontStack } from "../fonts";
 import { IS_MAC, shortcutLabel as sc } from "../platform";
+import { chordLabel, type ShortcutCommand } from "../shortcuts";
 import { useStore, type Tab } from "../store";
 import type { TerminalController } from "../terminal";
 import { getController } from "../terminalRegistry";
@@ -28,9 +29,14 @@ interface Props {
   onNewSession: () => void;
 }
 
+/** The user-configurable accelerator for `command`, as a menu writes it. */
+const useAccelerator = (command: ShortcutCommand): string =>
+  useStore((s) => chordLabel(s.shortcuts[command]));
+
 export function TerminalPane({ onNewSession }: Props) {
   const tabs = useStore((s) => s.tabs);
   const activeId = useStore((s) => s.activeId);
+  const newSessionKey = useAccelerator("newSession");
 
   return (
     <div className="term-stack">
@@ -58,8 +64,14 @@ export function TerminalPane({ onNewSession }: Props) {
           />
           <h1>EdgeTerm</h1>
           <p className="term-empty-hint">
-            Press <kbd>{sc("⌘N", "Alt+N")}</kbd> for a new session, or pick one
-            from the Session panel.
+            {newSessionKey ? (
+              <>
+                Press <kbd>{newSessionKey}</kbd> for a new session, or pick one
+                from the Session panel.
+              </>
+            ) : (
+              "Open a new session, or pick one from the Session panel."
+            )}
           </p>
           <button className="btn is-primary" onClick={onNewSession}>
             New Session
@@ -102,6 +114,8 @@ function TerminalHost({ tab, active }: { tab: Tab; active: boolean }) {
   // the semantic colors that ride on it. Keeping it in state re-runs them the
   // moment it exists.
   const [terminal, setTerminal] = useState<TerminalController | null>(null);
+  const clearKey = useAccelerator("clear");
+  const revealCwdKey = useAccelerator("revealCwd");
 
   const ownsClick = (event: ReactMouseEvent) => {
     const controller = getController(id);
@@ -171,14 +185,14 @@ function TerminalHost({ tab, active }: { tab: Tab; active: boolean }) {
     {
       label: "Clear Buffer",
       icon: "clear-all",
-      shortcut: sc("⌘K", "Alt+K"),
+      shortcut: clearKey,
       action: withTerminal((controller) => controller.clear()),
     },
     "separator",
     {
       label: "Reveal Working Directory in Filer",
       icon: "folder-opened",
-      shortcut: sc("⌘J", "Ctrl+Shift+J"),
+      shortcut: revealCwdKey,
       action: withTerminal(() => void revealCwdInFiler(id)),
     },
   ];
