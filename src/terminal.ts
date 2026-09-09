@@ -78,6 +78,15 @@ const webglTerminals: TerminalController[] = [];
 const AI_QUIET_MS = 2000;
 
 /**
+ * How many trimmed line times may sit in front of the live ones before the
+ * array is copied down (see `lineTimesStart`). The copy moves the live
+ * entries once every `LINE_TIME_SLACK` dropped lines, which on a full
+ * 20 000-line scrollback works out at about five moves per line of output —
+ * against 20 000 for splicing the front off on every one of them.
+ */
+const LINE_TIME_SLACK = 4096;
+
+/**
  * Data xterm sends back on the terminal's own behalf rather than the user's:
  * answers to what a program asked it (device attributes, cursor position,
  * colors, mode state), focus notifications, and mouse tracking. They travel
@@ -299,8 +308,19 @@ export class TerminalController {
 
   /** Wall-clock time each buffer line was produced, parallel to buffer lines. */
   private lineTimes: number[] = [];
+  /**
+   * Where buffer line 0 sits in `lineTimes`. Lines xterm has trimmed are
+   * skipped rather than spliced off the front, which on a full 20 000-line
+   * scrollback would move the whole array once per line of output; the slack
+   * is compacted away in batches instead.
+   */
+  private lineTimesStart = 0;
   /** Absolute line number of buffer line 0; grows as scrollback is trimmed. */
   private firstLineNumber = 1;
+  /** Parked in the buffer to measure the trimming; see `followTrimmedLines`. */
+  private trimMarker: IMarker | null = null;
+  /** The line `trimMarker` was last seen on. */
+  private trimMarkerLine = 0;
   /** Set by an ED 3 until its write chunk ends; see the CSI J handler. */
   private shellClearing = false;
 
@@ -530,6 +550,9 @@ export class TerminalController {
       // Line bands span the column count they were created with; drop
       // everything so the next render rebuilds decorations at the new width.
       this.disposeAllSemanticColors();
+      // Reflow moves lines between rows; the parked marker's count means
+      // nothing across it, so the next pass starts from a fresh one.
+      this.resetTrimMarker();
       this.trimLineMetadata();
       this.measureCell();
       this.invalidateGutter();
@@ -1065,6 +1088,7 @@ export class TerminalController {
     const buf = this.term.buffer.active;
     // A screen's worth of headroom left: nothing can be trimmed.
     if (buf.length <= this.scrollback) return;
+    this.followTrimmedLines();
     const work = (this.workCell ??= buf.getNullCell());
     let scrolled = 0;
     for (let row = this.term.rows - 1; row >= 0 && scrolled === 0; row -= 1) {
@@ -1078,6 +1102,7 @@ export class TerminalController {
       }
     }
     this.dropLeadingLines(buf.length + scrolled - (this.term.rows + this.scrollback));
+    this.resetTrimMarker();
   }
 
   /**
@@ -1088,11 +1113,13 @@ export class TerminalController {
   private scrollbackErased() {
     const dropped = this.term.buffer.active.length - this.term.rows;
     if (dropped <= 0) return;
-    this.lineTimes.splice(0, dropped);
+    this.followTrimmedLines();
+    this.dropLeadingLines(dropped);
+    this.resetTrimMarker();
     this.firstLineNumber = 1;
     // `clear` on Linux erases the screen first, so its rows are among the
     // ones just dropped; the prompt that follows lands on line 1.
-    if (this.lineTimes.length === 0) this.lineTimes.push(Date.now());
+    if (this.lineCount === 0) this.setLineTimes([Date.now()]);
     this.invalidateGutter();
   }
 
@@ -1108,8 +1135,9 @@ export class TerminalController {
   }
 
   private resetLineMetadata() {
-    this.lineTimes = [Date.now()];
+    this.setLineTimes([Date.now()]);
     this.firstLineNumber = 1;
+    this.resetTrimMarker();
     this.invalidateGutter();
     this.syncGutter();
   }
@@ -1166,6 +1194,8 @@ export class TerminalController {
     if (this.scrollback === scrollback) return;
     this.scrollback = scrollback;
     this.term.options.scrollback = scrollback;
+    // A smaller scrollback makes xterm drop the excess right away.
+    this.resetTrimMarker();
     this.trimLineMetadata();
     this.syncGutter();
   }
@@ -1210,12 +1240,14 @@ export class TerminalController {
   }
 
   scrollToLine(absoluteLine: number) {
+    this.followTrimmedLines();
     this.term.scrollToLine(Math.max(0, absoluteLine - this.firstLineNumber));
   }
 
   dispose() {
     this.disposed = true;
     this.dropAnchor();
+    this.resetTrimMarker();
     this.resetCommandTracking();
     if (this.transferNoticeTimer !== null) {
       window.clearTimeout(this.transferNoticeTimer);
@@ -1782,29 +1814,80 @@ export class TerminalController {
   }
 
   private recordLine() {
+    // The line feed that produced this row may have been the one that dropped
+    // the oldest, which moves every index the times are keyed by.
+    this.followTrimmedLines();
     const buf = this.term.buffer.active;
-    const index = buf.baseY + buf.cursorY;
+    const at = this.lineTimesStart + buf.baseY + buf.cursorY;
     const now = Date.now();
-    while (this.lineTimes.length <= index) this.lineTimes.push(now);
-    this.lineTimes[index] = now;
+    while (this.lineTimes.length <= at) this.lineTimes.push(now);
+    this.lineTimes[at] = now;
     this.invalidateGutter();
-
-    // xterm drops the oldest lines once scrollback is full; keep the parallel
-    // array aligned and carry the discarded count into the line numbering.
     this.trimLineMetadata();
+  }
+
+  /** Line times held, i.e. how many buffer lines from the top have one. */
+  private get lineCount(): number {
+    return this.lineTimes.length - this.lineTimesStart;
+  }
+
+  private setLineTimes(times: number[]) {
+    this.lineTimes = times;
+    this.lineTimesStart = 0;
   }
 
   private trimLineMetadata() {
     const max = this.term.rows + this.scrollback;
-    this.dropLeadingLines(this.lineTimes.length - max);
+    this.dropLeadingLines(this.lineCount - max);
   }
 
   /** xterm dropped `count` lines off the top; carry them into the numbering. */
   private dropLeadingLines(count: number) {
     if (count <= 0) return;
-    this.lineTimes.splice(0, count);
+    this.lineTimesStart = Math.min(this.lineTimes.length, this.lineTimesStart + count);
     this.firstLineNumber += count;
+    // Compact in batches so the copy costs a few elements per dropped line.
+    if (this.lineTimesStart >= LINE_TIME_SLACK) {
+      this.setLineTimes(this.lineTimes.slice(this.lineTimesStart));
+    }
     this.invalidateGutter();
+  }
+
+  /**
+   * Once the buffer is full every line xterm appends drops the oldest one,
+   * and nothing reports it: a line feed at the bottom recycles the top line
+   * instead of growing the buffer, so `recordLine` keeps landing on the same
+   * index and the numbering would freeze at the line the scrollback filled up
+   * on. A marker parked in the buffer measures the drop exactly — markers
+   * ride down with the trim — so everything that reads or writes the line
+   * metadata starts here. It is re-parked as the trim catches up with it,
+   * and dropped by the erases and resizes that account for their own.
+   */
+  private followTrimmedLines() {
+    const buf = this.term.buffer.active;
+    if (buf.type !== "normal") return;
+    const marker = this.trimMarker;
+    if (marker && !marker.isDisposed) {
+      this.dropLeadingLines(this.trimMarkerLine - marker.line);
+      this.trimMarkerLine = marker.line;
+      // Still above the trim; the next line it drops keeps it valid.
+      if (marker.line > 0) return;
+      marker.dispose();
+    }
+    // Nothing can be trimmed while a screenful still fits: no marker needed
+    // yet, and parking one per line would cost more than it measures.
+    if (buf.length <= this.scrollback) {
+      this.trimMarker = null;
+      return;
+    }
+    this.trimMarker = this.term.registerMarker(0);
+    this.trimMarkerLine = this.trimMarker?.line ?? 0;
+  }
+
+  /** Park a fresh marker: the caller has accounted for the trim itself. */
+  private resetTrimMarker() {
+    this.trimMarker?.dispose();
+    this.trimMarker = null;
   }
 
   /**
@@ -2058,6 +2141,9 @@ export class TerminalController {
   }
 
   private syncGutter() {
+    // Output that scrolled without a line feed (a full-screen program's erase)
+    // may have trimmed the buffer since the last pass.
+    this.followTrimmedLines();
     if (!this.gutter || !this.host || this.gutterMode === "off") return;
     if (this.cellHeight <= 0) this.measureCell();
     if (this.cellHeight <= 0) return;
@@ -2103,14 +2189,14 @@ export class TerminalController {
       // `buf.length` always spans the whole viewport, so it cannot tell a
       // written line from blank padding below the last one. A recorded
       // timestamp can: only produced lines have one.
-      const written = !alternate && index < this.lineTimes.length;
+      const written = !alternate && index < this.lineCount;
       row.classList.toggle("is-empty", !written);
       row.classList.toggle("is-cursor", written && index === cursorIndex);
 
       const time = row.children[0] as HTMLElement;
       const line = row.children[1] as HTMLElement;
       if (written) {
-        time.textContent = formatTime(this.lineTimes[index]);
+        time.textContent = formatTime(this.lineTimes[this.lineTimesStart + index]);
         line.textContent = String(this.firstLineNumber + index);
       } else {
         time.textContent = "";

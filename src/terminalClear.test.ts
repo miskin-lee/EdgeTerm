@@ -41,8 +41,12 @@ function lineMetadata(controller: TerminalController) {
   const internals = controller as unknown as {
     firstLineNumber: number;
     lineTimes: number[];
+    lineTimesStart: number;
   };
-  return { first: internals.firstLineNumber, count: internals.lineTimes.length };
+  return {
+    first: internals.firstLineNumber,
+    count: internals.lineTimes.length - internals.lineTimesStart,
+  };
 }
 
 afterEach(() => {
