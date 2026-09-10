@@ -473,6 +473,13 @@ export const setStartupTheme = (theme: ThemeMode): Promise<void> =>
  */
 export const showMainWindow = (): Promise<void> => invoke("show_main_window");
 
+/**
+ * The clipboard's text read by the process, for a paste WebView2 refuses the
+ * page (Windows only; see `read_clipboard_text`).
+ */
+export const readClipboardText = (): Promise<string> =>
+  invoke("read_clipboard_text");
+
 // --- portable mode ----------------------------------------------------------
 
 /**

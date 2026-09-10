@@ -14,11 +14,12 @@ import {
 } from "@xterm/xterm";
 
 import { isAiSessionCommand } from "./aiTools";
+import { readClipboardText } from "./api";
 import { createOutputDecoder } from "./encodings";
 import { MONO_FONT_FAMILY } from "./fonts";
 import type { CommandSuggestion } from "./history";
 import { patchImeInput } from "./imePatch";
-import { IS_MAC } from "./platform";
+import { IS_MAC, IS_WINDOWS } from "./platform";
 import { matchAppShortcut } from "./shortcuts";
 import { SEARCH_HIGHLIGHT_LIMIT } from "./terminalSearch";
 import {
@@ -27,7 +28,7 @@ import {
   shellPromptEnd,
   type SemanticRange,
 } from "./semanticColors";
-import type { TransferNoticeKind } from "./terminalTransfer";
+import { errorMessage, type TransferNoticeKind } from "./terminalTransfer";
 import type { ThemeMode } from "./types";
 import { XmodemController, type XmodemBlockSize } from "./xmodem";
 import { ZmodemController } from "./zmodem";
@@ -1060,12 +1061,35 @@ export class TerminalController {
 
   /**
    * Pastes the clipboard as typed input. xterm applies bracketed paste and
-   * drops it while the terminal is locked (`disableStdin`).
+   * drops it while the terminal is locked (`disableStdin`). A read that
+   * fails is reported in the pane rather than swallowed, which is how #45
+   * looked: a paste that did nothing at all.
    */
   pasteFromClipboard() {
-    void navigator.clipboard.readText().then((text) => {
-      if (text) this.term.paste(text);
-    });
+    void this.readClipboard().then(
+      (text) => {
+        if (text) this.term.paste(text);
+      },
+      (error: unknown) => {
+        this.showTransferNotice(`Paste failed: ${errorMessage(error)}`, "error");
+      },
+    );
+  }
+
+  /**
+   * The clipboard's text. The page reads it itself, which WebView2 gates
+   * behind the clipboard-read permission (granted through
+   * `enable_clipboard_access` in lib.rs). A profile that refused the prompt
+   * before the app granted it keeps refusing, and the prompt is not raised
+   * again, so on Windows the process reads it instead (`read_clipboard_text`).
+   */
+  private async readClipboard(): Promise<string> {
+    try {
+      return await navigator.clipboard.readText();
+    } catch (error) {
+      if (!IS_WINDOWS) throw error;
+      return readClipboardText();
+    }
   }
 
   /**

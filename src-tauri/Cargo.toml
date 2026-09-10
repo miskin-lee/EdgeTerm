@@ -75,6 +75,11 @@ core-foundation-sys = "0.8"
 [target."cfg(windows)".dependencies]
 windows-sys = { version = "0.59", features = ["Win32_Storage_FileSystem", "Win32_System_WindowsProgramming", "Win32_System_Registry", "Win32_UI_WindowsAndMessaging"] }
 
+# Reads the clipboard for a paste that WebView2 refuses the page: a profile
+# that once blocked its clipboard-read prompt keeps refusing (see
+# `read_clipboard_text`).
+clipboard-win = "5.4"
+
 [profile.release]
 codegen-units = 1
 lto = true

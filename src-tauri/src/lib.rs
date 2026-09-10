@@ -52,7 +52,15 @@ fn create_main_window(app: &tauri::App) -> tauri::Result<()> {
         .expect("tauri.conf.json defines the main window");
     // `mut` is for the decorations below, which only Windows and Linux drop.
     #[allow(unused_mut)]
+    // A paste reads the clipboard from the page (`navigator.clipboard.readText`),
+    // which Windows and Linux gate behind a permission. With this, wry answers
+    // WebView2's PermissionRequested with "allow" and turns on WebKitGTK's
+    // javascript-can-access-clipboard; without it WebView2 shows its own
+    // prompt, remembers a refusal, and every paste fails silently (#45).
+    // macOS needs nothing. `read_clipboard_text` covers a profile that already
+    // refused.
     let mut builder = tauri::WebviewWindowBuilder::from_config(app.handle(), &config)?
+        .enable_clipboard_access()
         .background_color(match store::startup_theme() {
             Theme::Dark => DARK_BACKGROUND,
             Theme::Light => LIGHT_BACKGROUND,
@@ -269,6 +277,7 @@ pub fn run() {
             commands::portable_mode,
             commands::set_startup_theme,
             commands::show_main_window,
+            commands::read_clipboard_text,
             window_control,
         ])
         .build(tauri::generate_context!())

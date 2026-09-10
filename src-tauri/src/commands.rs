@@ -650,6 +650,28 @@ pub fn show_main_window(window: tauri::WebviewWindow) -> Result<()> {
     Ok(())
 }
 
+/// The clipboard's text, read by the process rather than the page. The page
+/// reads its own clipboard (`navigator.clipboard.readText`), and the window is
+/// created with `enable_clipboard_access` so WebView2 grants that; but a
+/// WebView2 profile that refused the permission prompt before the app granted
+/// it keeps refusing (the refusal is stored per origin and the prompt is not
+/// raised again), so on Windows the front end falls back to this (#45). Empty
+/// when the clipboard holds no text, as the page's read is.
+#[tauri::command]
+pub fn read_clipboard_text() -> Result<String> {
+    #[cfg(windows)]
+    {
+        if !clipboard_win::is_format_avail(clipboard_win::formats::CF_UNICODETEXT) {
+            return Ok(String::new());
+        }
+        clipboard_win::get_clipboard_string().map_err(err)
+    }
+    #[cfg(not(windows))]
+    {
+        Err("the page reads the clipboard on this platform".into())
+    }
+}
+
 /// Whether this copy runs in portable mode (a `data` directory next to the
 /// executable holds all configuration). The updater must not run the NSIS
 /// installer then; the front end opens the release page instead.
