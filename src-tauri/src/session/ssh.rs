@@ -20,7 +20,7 @@ use tokio::sync::mpsc::UnboundedReceiver;
 use super::auth::{AuthPrompter, Challenge};
 use super::transfer::{
     ensure_local_directory, plan_local_upload, safe_local_child, validate_local_file_target,
-    ProgressReporter,
+    CancelFlag, ProgressReporter,
 };
 use super::{
     emit_state, join_remote, locale, sort_entries, OutputPump, SessionCommand, SftpRequest,
@@ -1042,32 +1042,36 @@ async fn run_sftp(sftp: Arc<SftpSession>, request: SftpRequest) -> Result<SftpRe
             remote,
             local,
             progress,
+            cancel,
         } => {
-            download_file(&sftp, &remote, &local, &progress).await?;
+            download_file(&sftp, &remote, &local, &progress, &cancel).await?;
             Ok(SftpResponse::Done)
         }
         SftpRequest::DownloadDirectory {
             remote,
             local,
             progress,
+            cancel,
         } => {
-            download_directory(&sftp, &remote, &local, &progress).await?;
+            download_directory(&sftp, &remote, &local, &progress, &cancel).await?;
             Ok(SftpResponse::Done)
         }
         SftpRequest::Upload {
             local,
             remote,
             progress,
+            cancel,
         } => {
-            upload_file(&sftp, &local, &remote, &progress).await?;
+            upload_file(&sftp, &local, &remote, &progress, &cancel).await?;
             Ok(SftpResponse::Done)
         }
         SftpRequest::UploadDirectory {
             local,
             remote,
             progress,
+            cancel,
         } => {
-            upload_directory(&sftp, &local, &remote, &progress).await?;
+            upload_directory(&sftp, &local, &remote, &progress, &cancel).await?;
             Ok(SftpResponse::Done)
         }
     }
@@ -1078,12 +1082,13 @@ async fn download_file(
     remote: &str,
     local: &str,
     progress: &tauri::ipc::Channel<TransferProgress>,
+    cancel: &CancelFlag,
 ) -> Result<()> {
     let total = sftp.metadata(remote).await?.size.unwrap_or(0);
     let mut last_report = Instant::now();
 
     report_transfer_progress(progress, 0, total);
-    let transferred = copy_remote_file(sftp, remote, Path::new(local), |transferred| {
+    let transferred = copy_remote_file(sftp, remote, Path::new(local), cancel, |transferred| {
         if last_report.elapsed() >= TRANSFER_PROGRESS_INTERVAL {
             report_transfer_progress(progress, transferred, total);
             last_report = Instant::now();
@@ -1104,6 +1109,7 @@ async fn download_directory(
     remote: &str,
     local: &str,
     progress: &tauri::ipc::Channel<TransferProgress>,
+    cancel: &CancelFlag,
 ) -> Result<()> {
     let local_root = PathBuf::from(local);
     let mut pending = vec![(remote.to_string(), local_root.clone())];
@@ -1114,6 +1120,7 @@ async fn download_directory(
     // Metadata-only plan first so progress covers the whole tree. Contents
     // are still copied one file at a time through the fixed 1 MiB buffer.
     while let Some((remote_dir, local_dir)) = pending.pop() {
+        cancel.check()?;
         for entry in sftp.read_dir(remote_dir.clone()).await? {
             let name = entry.file_name();
             if matches!(name.as_str(), "." | "..") {
@@ -1174,9 +1181,15 @@ async fn download_directory(
     let mut transferred = 0_u64;
     for file in files {
         let completed_before_file = transferred;
-        let copied = copy_remote_file(sftp, &file.remote, &file.local, |file_transferred| {
-            reporter.update(completed_before_file.saturating_add(file_transferred));
-        })
+        let copied = copy_remote_file(
+            sftp,
+            &file.remote,
+            &file.local,
+            cancel,
+            |file_transferred| {
+                reporter.update(completed_before_file.saturating_add(file_transferred));
+            },
+        )
         .await?;
         transferred = transferred.saturating_add(copied);
     }
@@ -1188,6 +1201,7 @@ async fn copy_remote_file<F>(
     sftp: &SftpSession,
     remote: &str,
     local: &Path,
+    cancel: &CancelFlag,
     on_chunk: F,
 ) -> Result<u64>
 where
@@ -1195,7 +1209,20 @@ where
 {
     let mut source = sftp.open(remote).await?;
     let mut target = tokio::fs::File::create(local).await?;
-    let transferred = copy_in_chunks(&mut source, &mut target, on_chunk).await?;
+    let copied = copy_in_chunks(&mut source, &mut target, cancel, on_chunk).await;
+    let transferred = match copied {
+        Ok(transferred) => transferred,
+        Err(error) => {
+            // A cancelled copy leaves nothing behind: the truncated file
+            // would pass for the real one.
+            if cancel.is_cancelled() {
+                let _ = source.close().await;
+                drop(target);
+                let _ = tokio::fs::remove_file(local).await;
+            }
+            return Err(error.into());
+        }
+    };
     target.flush().await?;
     source.close().await?;
     Ok(transferred)
@@ -1206,6 +1233,7 @@ async fn upload_file(
     local: &str,
     remote: &str,
     progress: &tauri::ipc::Channel<TransferProgress>,
+    cancel: &CancelFlag,
 ) -> Result<()> {
     let metadata = tokio::fs::metadata(local).await?;
     if !metadata.is_file() {
@@ -1215,7 +1243,7 @@ async fn upload_file(
     let mut last_report = Instant::now();
 
     report_transfer_progress(progress, 0, total);
-    let transferred = copy_local_file(sftp, Path::new(local), remote, |transferred| {
+    let transferred = copy_local_file(sftp, Path::new(local), remote, cancel, |transferred| {
         if last_report.elapsed() >= TRANSFER_PROGRESS_INTERVAL {
             report_transfer_progress(progress, transferred, total);
             last_report = Instant::now();
@@ -1231,6 +1259,7 @@ async fn upload_directory(
     local: &str,
     remote: &str,
     progress: &tauri::ipc::Channel<TransferProgress>,
+    cancel: &CancelFlag,
 ) -> Result<()> {
     let local_root = PathBuf::from(local);
     let remote_root = remote.to_string();
@@ -1239,6 +1268,7 @@ async fn upload_directory(
         .map_err(|error| AppError::new(format!("local folder scan failed: {error}")))??;
 
     for directory in &plan.directories {
+        cancel.check()?;
         ensure_remote_directory(sftp, directory).await?;
     }
 
@@ -1246,9 +1276,15 @@ async fn upload_directory(
     let mut transferred = 0_u64;
     for file in plan.files {
         let completed_before_file = transferred;
-        let copied = copy_local_file(sftp, &file.local, &file.remote, |file_transferred| {
-            reporter.update(completed_before_file.saturating_add(file_transferred));
-        })
+        let copied = copy_local_file(
+            sftp,
+            &file.local,
+            &file.remote,
+            cancel,
+            |file_transferred| {
+                reporter.update(completed_before_file.saturating_add(file_transferred));
+            },
+        )
         .await?;
         transferred = transferred.saturating_add(copied);
     }
@@ -1276,6 +1312,7 @@ async fn copy_local_file<F>(
     sftp: &SftpSession,
     local: &Path,
     remote: &str,
+    cancel: &CancelFlag,
     on_chunk: F,
 ) -> Result<u64>
 where
@@ -1283,16 +1320,30 @@ where
 {
     let mut source = tokio::fs::File::open(local).await?;
     let mut target = sftp.create(remote).await?;
-    let transferred = copy_in_chunks(&mut source, &mut target, on_chunk).await?;
+    let copied = copy_in_chunks(&mut source, &mut target, cancel, on_chunk).await;
+    let transferred = match copied {
+        Ok(transferred) => transferred,
+        Err(error) => {
+            // A cancelled upload takes its half-written file off the server
+            // too, once the handle is closed.
+            if cancel.is_cancelled() {
+                let _ = target.shutdown().await;
+                let _ = sftp.remove_file(remote).await;
+            }
+            return Err(error.into());
+        }
+    };
     target.shutdown().await?;
     Ok(transferred)
 }
 
 /// Streams bytes through a fixed-size buffer so transfer memory usage is
-/// independent of the file size.
+/// independent of the file size. Stops between chunks once `cancel` is
+/// raised, with the `Interrupted` error `CancelFlag::check_io` describes.
 async fn copy_in_chunks<R, W, F>(
     source: &mut R,
     target: &mut W,
+    cancel: &CancelFlag,
     mut on_chunk: F,
 ) -> std::io::Result<u64>
 where
@@ -1304,6 +1355,7 @@ where
     let mut transferred = 0;
 
     loop {
+        cancel.check_io()?;
         let count = source.read(&mut buffer).await?;
         if count == 0 {
             return Ok(transferred);
@@ -1340,9 +1392,9 @@ mod tests {
 
     use super::{
         auth_failure, authenticate, connect, connect_sftp, copy_in_chunks, ensure_sftp,
-        replace_host_key, run_sftp, saved_answer, verify_host_key, AuthPrompter, ConnectOutcome,
-        Handle, HandshakeError, Prompt, SftpConnectOutcome, SftpRequest, SftpResponse,
-        TRANSFER_CHUNK_SIZE,
+        replace_host_key, run_sftp, saved_answer, verify_host_key, AuthPrompter, CancelFlag,
+        ConnectOutcome, Handle, HandshakeError, Prompt, SftpConnectOutcome, SftpRequest,
+        SftpResponse, TRANSFER_CHUNK_SIZE,
     };
     use crate::model::{AuthKind, AuthPromptField, SessionKind, SessionProfile};
     use crate::session::auth::CannedAnswers;
@@ -1528,6 +1580,75 @@ mod tests {
         assert!(error.to_string().contains("jump host"), "{error}");
     }
 
+    /// End-to-end check of a cancelled download against a real server, so
+    /// it is ignored by default. Run it with
+    /// `EDGETERM_TEST_TARGET=user@host:port EDGETERM_TEST_KEY=/path/to/key
+    /// EDGETERM_TEST_REMOTE_FILE=/path/on/server cargo test -- --ignored
+    /// cancelled_download`. The remote file must take longer than a
+    /// progress interval to copy: a few hundred MB on a local server.
+    #[tokio::test]
+    #[ignore]
+    async fn a_cancelled_download_removes_its_partial_copy() {
+        let target = profile_from_env("EDGETERM_TEST_TARGET");
+        let remote = std::env::var("EDGETERM_TEST_REMOTE_FILE")
+            .expect("EDGETERM_TEST_REMOTE_FILE names a large remote file");
+        let scratch = KnownHosts::new();
+        let home = scratch.path().parent().expect("scratch dir").to_path_buf();
+        std::fs::create_dir_all(home.join(".ssh")).expect("create .ssh");
+        std::env::set_var("HOME", &home);
+        let user = Mutex::new(CannedAnswers::default());
+        let prompter = AuthPrompter::canned(&user);
+
+        let sftp = match connect_sftp(&target, &[], &prompter)
+            .await
+            .expect("sftp connection")
+        {
+            SftpConnectOutcome::Ready(conn) => conn,
+            SftpConnectOutcome::HostKeyChanged(change) => panic!("{}", change.message),
+        };
+        let mut slot = None;
+        let session = ensure_sftp(&sftp.handle, &mut slot)
+            .await
+            .expect("sftp subsystem");
+
+        // The first report is the 0-byte start; the second arrives once a
+        // progress interval of copying has landed, and cancels the rest.
+        let local = home.join("partial.bin");
+        let cancel = CancelFlag::default();
+        let reports = Arc::new(Mutex::new(0_u32));
+        let progress = {
+            let cancel = cancel.clone();
+            let reports = reports.clone();
+            tauri::ipc::Channel::new(move |_| {
+                let mut reports = reports.lock();
+                *reports += 1;
+                if *reports == 2 {
+                    cancel.cancel();
+                }
+                Ok(())
+            })
+        };
+        let outcome = run_sftp(
+            session,
+            SftpRequest::Download {
+                remote,
+                local: local.to_string_lossy().into_owned(),
+                progress,
+                cancel,
+            },
+        )
+        .await;
+        sftp.hops.disconnect().await;
+
+        let error = outcome.expect_err("the download stops").to_string();
+        assert!(error.contains("transfer cancelled"), "{error}");
+        assert!(
+            *reports.lock() >= 2,
+            "the copy ran long enough to be cancelled"
+        );
+        assert!(!local.exists(), "the partial copy is removed");
+    }
+
     #[test]
     fn unknown_host_is_learned_and_then_recognised() {
         let file = KnownHosts::new();
@@ -1616,11 +1737,12 @@ mod tests {
         let mut target = Vec::new();
         let mut checkpoints = Vec::new();
 
-        let transferred = copy_in_chunks(&mut source, &mut target, |total| {
-            checkpoints.push(total);
-        })
-        .await
-        .expect("copy succeeds");
+        let transferred =
+            copy_in_chunks(&mut source, &mut target, &CancelFlag::default(), |total| {
+                checkpoints.push(total);
+            })
+            .await
+            .expect("copy succeeds");
 
         assert_eq!(transferred, payload.len() as u64);
         assert_eq!(target, payload);
@@ -1630,6 +1752,25 @@ mod tests {
                 .windows(2)
                 .all(|pair| pair[1] - pair[0] <= TRANSFER_CHUNK_SIZE as u64),
             "no transfer step may exceed the fixed-size buffer"
+        );
+    }
+
+    #[tokio::test]
+    async fn a_cancelled_copy_stops_at_the_next_chunk() {
+        let payload = vec![0x5a; TRANSFER_CHUNK_SIZE * 3];
+        let mut source = payload.as_slice();
+        let mut target = Vec::new();
+        let cancel = CancelFlag::default();
+
+        let error = copy_in_chunks(&mut source, &mut target, &cancel, |_| cancel.cancel())
+            .await
+            .expect_err("the copy stops once the flag is raised");
+
+        assert_eq!(error.kind(), std::io::ErrorKind::Interrupted);
+        assert_eq!(
+            target.len(),
+            TRANSFER_CHUNK_SIZE,
+            "the chunk in flight still completes"
         );
     }
 

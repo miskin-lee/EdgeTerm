@@ -17,6 +17,7 @@ use serde::Serialize;
 use tauri::{ipc::Channel, AppHandle, Emitter};
 use tokio::sync::{mpsc, oneshot};
 
+use self::transfer::CancelFlag;
 use crate::error::{AppError, Result};
 use crate::model::{DirListing, FileEntry, SessionInfo, SessionKind, SessionProfile};
 
@@ -50,21 +51,27 @@ pub enum SftpRequest {
         remote: String,
         local: String,
         progress: Channel<TransferProgress>,
+        /// Raised by `cancel_transfer` and polled between chunks; a copy
+        /// that stops on it leaves no half-written file behind.
+        cancel: CancelFlag,
     },
     DownloadDirectory {
         remote: String,
         local: String,
         progress: Channel<TransferProgress>,
+        cancel: CancelFlag,
     },
     Upload {
         local: String,
         remote: String,
         progress: Channel<TransferProgress>,
+        cancel: CancelFlag,
     },
     UploadDirectory {
         local: String,
         remote: String,
         progress: Channel<TransferProgress>,
+        cancel: CancelFlag,
     },
 }
 

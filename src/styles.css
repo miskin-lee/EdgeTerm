@@ -3853,6 +3853,23 @@ textarea:focus {
   background: var(--red);
 }
 
+.filer-transfer.is-cancelled .filer-transfer-name,
+.filer-transfer.is-cancelled .filer-transfer-value {
+  color: var(--fg-faint);
+}
+
+.filer-transfer.is-cancelled .filer-transfer-bar {
+  background: var(--fg-faint);
+}
+
+/* Sits in the label row without making it taller than the text. */
+.filer-transfer-cancel {
+  flex: 0 0 20px;
+  width: 20px;
+  height: 20px;
+  margin: -3px -4px -3px 0;
+}
+
 .filer-transfer-track.is-indeterminate .filer-transfer-bar {
   width: 35%;
   animation: filer-transfer-indeterminate 1s ease-in-out infinite;

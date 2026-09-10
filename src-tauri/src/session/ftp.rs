@@ -14,7 +14,7 @@ use tokio::sync::mpsc::UnboundedReceiver;
 
 use super::transfer::{
     ensure_local_directory, plan_local_upload, safe_local_child, validate_local_file_target,
-    ProgressReporter,
+    CancelFlag, ProgressReporter,
 };
 use super::{
     emit_state, join_remote, sort_entries, SessionCommand, SftpRequest, SftpResponse,
@@ -397,32 +397,36 @@ fn run_ftp(connection: &mut FtpConnection, request: SftpRequest) -> Result<SftpR
             remote,
             local,
             progress,
+            cancel,
         } => {
-            download_file(&mut connection.stream, &remote, &local, &progress)?;
+            download_file(&mut connection.stream, &remote, &local, &progress, &cancel)?;
             Ok(SftpResponse::Done)
         }
         SftpRequest::DownloadDirectory {
             remote,
             local,
             progress,
+            cancel,
         } => {
-            download_directory(connection, &remote, &local, &progress)?;
+            download_directory(connection, &remote, &local, &progress, &cancel)?;
             Ok(SftpResponse::Done)
         }
         SftpRequest::Upload {
             local,
             remote,
             progress,
+            cancel,
         } => {
-            upload_file(&mut connection.stream, &local, &remote, &progress)?;
+            upload_file(&mut connection.stream, &local, &remote, &progress, &cancel)?;
             Ok(SftpResponse::Done)
         }
         SftpRequest::UploadDirectory {
             local,
             remote,
             progress,
+            cancel,
         } => {
-            upload_directory(connection, &local, &remote, &progress)?;
+            upload_directory(connection, &local, &remote, &progress, &cancel)?;
             Ok(SftpResponse::Done)
         }
     }
@@ -597,12 +601,13 @@ fn download_file(
     remote: &str,
     local: &str,
     progress: &tauri::ipc::Channel<TransferProgress>,
+    cancel: &CancelFlag,
 ) -> Result<()> {
     let total = ftp.size(remote).unwrap_or(0) as u64;
     let mut last_report = Instant::now();
 
     report_transfer_progress(progress, 0, total);
-    let transferred = copy_remote_file(ftp, remote, Path::new(local), |transferred| {
+    let transferred = copy_remote_file(ftp, remote, Path::new(local), cancel, |transferred| {
         if last_report.elapsed() >= TRANSFER_PROGRESS_INTERVAL {
             report_transfer_progress(progress, transferred, total);
             last_report = Instant::now();
@@ -622,6 +627,7 @@ fn download_directory(
     remote: &str,
     local: &str,
     progress: &tauri::ipc::Channel<TransferProgress>,
+    cancel: &CancelFlag,
 ) -> Result<()> {
     let local_root = PathBuf::from(local);
     let mut pending = vec![(remote.to_string(), local_root.clone())];
@@ -632,6 +638,7 @@ fn download_directory(
     // Build a metadata-only plan first so progress covers the whole tree. File
     // contents are still copied one at a time through the fixed 1 MiB buffer.
     while let Some((remote_dir, local_dir)) = pending.pop() {
+        cancel.check()?;
         let listing = list_directory(connection, &remote_dir)?;
         for entry in listing.entries {
             let local_child = safe_local_child(&local_dir, &entry.name)?;
@@ -672,6 +679,7 @@ fn download_directory(
             &mut connection.stream,
             &file.remote,
             &file.local,
+            cancel,
             |file_transferred| {
                 reporter.update(completed_before_file.saturating_add(file_transferred));
             },
@@ -693,17 +701,36 @@ fn is_remote_directory(ftp: &mut FtpStream, path: &str) -> bool {
     true
 }
 
-fn copy_remote_file<F>(ftp: &mut FtpStream, remote: &str, local: &Path, on_chunk: F) -> Result<u64>
+fn copy_remote_file<F>(
+    ftp: &mut FtpStream,
+    remote: &str,
+    local: &Path,
+    cancel: &CancelFlag,
+    on_chunk: F,
+) -> Result<u64>
 where
     F: FnMut(u64),
 {
     validate_local_file_target(local)?;
     let mut source = ftp.retr_as_stream(remote)?;
     let mut target = std::fs::File::create(local)?;
-    let copied = copy_in_chunks(&mut source, &mut target, on_chunk);
+    let copied = copy_in_chunks(&mut source, &mut target, cancel, on_chunk);
+    // Closing a half-read data connection makes the server report an
+    // aborted transfer here; a cancelled copy has no use for that reply.
     let finalized = ftp.finalize_retr_stream(source);
 
-    let transferred = copied?;
+    let transferred = match copied {
+        Ok(transferred) => transferred,
+        Err(error) => {
+            // A cancelled copy leaves nothing behind: the truncated file
+            // would pass for the real one.
+            if cancel.is_cancelled() {
+                drop(target);
+                let _ = std::fs::remove_file(local);
+            }
+            return Err(error.into());
+        }
+    };
     finalized?;
     target.flush()?;
     Ok(transferred)
@@ -714,6 +741,7 @@ fn upload_file(
     local: &str,
     remote: &str,
     progress: &tauri::ipc::Channel<TransferProgress>,
+    cancel: &CancelFlag,
 ) -> Result<()> {
     let metadata = std::fs::metadata(local)?;
     if !metadata.is_file() {
@@ -723,7 +751,7 @@ fn upload_file(
     let mut last_report = Instant::now();
 
     report_transfer_progress(progress, 0, total);
-    let transferred = copy_local_file(ftp, Path::new(local), remote, |transferred| {
+    let transferred = copy_local_file(ftp, Path::new(local), remote, cancel, |transferred| {
         if last_report.elapsed() >= TRANSFER_PROGRESS_INTERVAL {
             report_transfer_progress(progress, transferred, total);
             last_report = Instant::now();
@@ -738,11 +766,13 @@ fn upload_directory(
     local: &str,
     remote: &str,
     progress: &tauri::ipc::Channel<TransferProgress>,
+    cancel: &CancelFlag,
 ) -> Result<()> {
     // Same shape as the download: a metadata-only plan first so progress
     // covers the whole tree, then one file at a time through the fixed buffer.
     let plan = plan_local_upload(Path::new(local), remote)?;
     for directory in &plan.directories {
+        cancel.check()?;
         ensure_remote_directory(&mut connection.stream, directory)?;
     }
 
@@ -754,6 +784,7 @@ fn upload_directory(
             &mut connection.stream,
             &file.local,
             &file.remote,
+            cancel,
             |file_transferred| {
                 reporter.update(completed_before_file.saturating_add(file_transferred));
             },
@@ -776,23 +807,47 @@ fn ensure_remote_directory(ftp: &mut FtpStream, path: &str) -> Result<()> {
     }
 }
 
-fn copy_local_file<F>(ftp: &mut FtpStream, local: &Path, remote: &str, on_chunk: F) -> Result<u64>
+fn copy_local_file<F>(
+    ftp: &mut FtpStream,
+    local: &Path,
+    remote: &str,
+    cancel: &CancelFlag,
+    on_chunk: F,
+) -> Result<u64>
 where
     F: FnMut(u64),
 {
     let mut source = std::fs::File::open(local)?;
     let mut target = ftp.put_with_stream(remote)?;
-    let copied = copy_in_chunks(&mut source, &mut target, on_chunk);
+    let copied = copy_in_chunks(&mut source, &mut target, cancel, on_chunk);
     let flushed = target.flush();
     let finalized = ftp.finalize_put_stream(target);
 
-    let transferred = copied?;
+    let transferred = match copied {
+        Ok(transferred) => transferred,
+        Err(error) => {
+            // A cancelled upload takes its half-written file off the server
+            // too, now that the data connection is closed.
+            if cancel.is_cancelled() {
+                let _ = ftp.rm(remote);
+            }
+            return Err(error.into());
+        }
+    };
     flushed?;
     finalized?;
     Ok(transferred)
 }
 
-fn copy_in_chunks<R, W, F>(source: &mut R, target: &mut W, mut on_chunk: F) -> std::io::Result<u64>
+/// Streams bytes through a fixed-size buffer; stops between chunks once
+/// `cancel` is raised, with the `Interrupted` error `CancelFlag::check_io`
+/// describes.
+fn copy_in_chunks<R, W, F>(
+    source: &mut R,
+    target: &mut W,
+    cancel: &CancelFlag,
+    mut on_chunk: F,
+) -> std::io::Result<u64>
 where
     R: Read,
     W: Write,
@@ -801,6 +856,7 @@ where
     let mut buffer = vec![0; TRANSFER_CHUNK_SIZE];
     let mut transferred = 0;
     loop {
+        cancel.check_io()?;
         let count = source.read(&mut buffer)?;
         if count == 0 {
             return Ok(transferred);
@@ -823,8 +879,8 @@ fn report_transfer_progress(
 mod tests {
     use super::{
         control_encoding_proxy, copy_in_chunks, decode_protocol_bytes, encode_control_bytes,
-        entry_from_file, mlsd_unsupported, parse_listing, passive_data_address, ENCODING_GBK,
-        ENCODING_UNKNOWN, TRANSFER_CHUNK_SIZE,
+        entry_from_file, mlsd_unsupported, parse_listing, passive_data_address, CancelFlag,
+        ENCODING_GBK, ENCODING_UNKNOWN, TRANSFER_CHUNK_SIZE,
     };
     use std::sync::atomic::{AtomicU8, Ordering};
     use std::sync::Arc;
@@ -933,10 +989,11 @@ mod tests {
         let mut target = Vec::new();
         let mut checkpoints = Vec::new();
 
-        let transferred = copy_in_chunks(&mut source, &mut target, |total| {
-            checkpoints.push(total);
-        })
-        .expect("copy succeeds");
+        let transferred =
+            copy_in_chunks(&mut source, &mut target, &CancelFlag::default(), |total| {
+                checkpoints.push(total);
+            })
+            .expect("copy succeeds");
 
         assert_eq!(transferred, payload.len() as u64);
         assert_eq!(target, payload);

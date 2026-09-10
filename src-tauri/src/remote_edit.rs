@@ -20,7 +20,7 @@ use tokio::time::timeout;
 
 use crate::commands::AppState;
 use crate::error::{err, AppError, Result};
-use crate::session::transfer::safe_local_child;
+use crate::session::transfer::{safe_local_child, CancelFlag};
 use crate::session::{SftpRequest, TransferProgress};
 
 pub const EVENT_REMOTE_EDIT: &str = "remote-edit:state";
@@ -318,6 +318,8 @@ async fn watch_loop(
                     local: local.to_string_lossy().into_owned(),
                     remote: remote.clone(),
                     progress: Channel::<TransferProgress>::new(|_| Ok(())),
+                    // A sync runs until it is done; nobody can cancel it.
+                    cancel: CancelFlag::default(),
                 },
             )
             .await;

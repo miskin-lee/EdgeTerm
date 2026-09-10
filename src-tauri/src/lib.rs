@@ -214,6 +214,7 @@ pub fn run() {
             store: store::Store::load(),
             remote_edits: Default::default(),
             auth_prompts: Default::default(),
+            transfers: Default::default(),
         })
         .invoke_handler(tauri::generate_handler![
             commands::list_profiles,
@@ -255,6 +256,7 @@ pub fn run() {
             commands::sftp_download_directory,
             commands::sftp_upload,
             commands::sftp_upload_directory,
+            commands::cancel_transfer,
             commands::local_home,
             commands::session_cwd,
             commands::local_hostname,

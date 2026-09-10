@@ -200,11 +200,17 @@ export const sftpRemove = (id: string, path: string, isDir: boolean) =>
 export const sftpRename = (id: string, from: string, to: string) =>
   invoke<void>("sftp_rename", { id, from, to });
 
+/**
+ * `transfer`, on the four transfers below, is an id from `newTransferId`
+ * that `cancelTransfer` can name while the copy runs; a transfer without
+ * one cannot be cancelled.
+ */
 export const sftpDownload = (
   id: string,
   remote: string,
   local: string,
   onProgress: (progress: TransferProgress) => void,
+  transfer?: string,
 ) => {
   const progress = new Channel<TransferProgress>();
   progress.onmessage = onProgress;
@@ -213,6 +219,7 @@ export const sftpDownload = (
     remote,
     local,
     onProgress: progress,
+    transfer,
   });
 };
 
@@ -221,6 +228,7 @@ export const sftpDownloadDirectory = (
   remote: string,
   local: string,
   onProgress: (progress: TransferProgress) => void,
+  transfer?: string,
 ) => {
   const progress = new Channel<TransferProgress>();
   progress.onmessage = onProgress;
@@ -229,6 +237,7 @@ export const sftpDownloadDirectory = (
     remote,
     local,
     onProgress: progress,
+    transfer,
   });
 };
 
@@ -237,6 +246,7 @@ export const sftpUpload = (
   local: string,
   remote: string,
   onProgress: (progress: TransferProgress) => void,
+  transfer?: string,
 ) => {
   const progress = new Channel<TransferProgress>();
   progress.onmessage = onProgress;
@@ -245,6 +255,7 @@ export const sftpUpload = (
     local,
     remote,
     onProgress: progress,
+    transfer,
   });
 };
 
@@ -253,6 +264,7 @@ export const sftpUploadDirectory = (
   local: string,
   remote: string,
   onProgress: (progress: TransferProgress) => void,
+  transfer?: string,
 ) => {
   const progress = new Channel<TransferProgress>();
   progress.onmessage = onProgress;
@@ -261,8 +273,24 @@ export const sftpUploadDirectory = (
     local,
     remote,
     onProgress: progress,
+    transfer,
   });
 };
+
+let transferSerial = 0;
+
+/** A fresh id for a cancellable transfer; see `sftpDownload`. */
+export const newTransferId = (): string =>
+  `transfer-${Date.now().toString(36)}-${++transferSerial}`;
+
+/**
+ * Stops the transfer registered as `transfer`, if it is still running: the
+ * copy ends within a chunk, its half-written file is removed, and the
+ * transfer's promise rejects. Only for a transfer whose promise is still
+ * pending; a cancel after it settled would linger in the backend's list.
+ */
+export const cancelTransfer = (transfer: string) =>
+  invoke<void>("cancel_transfer", { transfer });
 
 // --- local filesystem -------------------------------------------------------
 

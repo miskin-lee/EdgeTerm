@@ -15,6 +15,7 @@ use crate::model::{
 use crate::remote_edit::RemoteEdits;
 use crate::session::auth::{AuthPrompter, AuthPrompts};
 use crate::session::ssh::{ConnectOutcome, SftpConnectOutcome};
+use crate::session::transfer::Transfers;
 use crate::session::{
     self, SessionCommand, SessionHandle, SessionManager, SftpRequest, SftpResponse,
     TransferProgress,
@@ -28,6 +29,8 @@ pub struct AppState {
     /// Authentication challenges a connecting session is waiting on; see
     /// `answer_auth_prompt`.
     pub auth_prompts: AuthPrompts,
+    /// Transfers in flight, so `cancel_transfer` can reach one.
+    pub transfers: Transfers,
 }
 
 // --- profiles ---------------------------------------------------------------
@@ -485,6 +488,9 @@ pub async fn sftp_rename(
     Ok(())
 }
 
+/// `transfer`, on this and the three transfers below, is the id
+/// `cancel_transfer` can name while the copy runs; without one the transfer
+/// cannot be cancelled.
 #[tauri::command]
 pub async fn sftp_download(
     state: State<'_, AppState>,
@@ -492,7 +498,9 @@ pub async fn sftp_download(
     remote: String,
     local: String,
     on_progress: Channel<TransferProgress>,
+    transfer: Option<String>,
 ) -> Result<()> {
+    let active = state.transfers.begin(transfer);
     state
         .sessions
         .sftp(
@@ -501,6 +509,7 @@ pub async fn sftp_download(
                 remote,
                 local,
                 progress: on_progress,
+                cancel: active.flag(),
             },
         )
         .await?;
@@ -514,7 +523,9 @@ pub async fn sftp_download_directory(
     remote: String,
     local: String,
     on_progress: Channel<TransferProgress>,
+    transfer: Option<String>,
 ) -> Result<()> {
+    let active = state.transfers.begin(transfer);
     state
         .sessions
         .sftp(
@@ -523,6 +534,7 @@ pub async fn sftp_download_directory(
                 remote,
                 local,
                 progress: on_progress,
+                cancel: active.flag(),
             },
         )
         .await?;
@@ -536,7 +548,9 @@ pub async fn sftp_upload(
     local: String,
     remote: String,
     on_progress: Channel<TransferProgress>,
+    transfer: Option<String>,
 ) -> Result<()> {
+    let active = state.transfers.begin(transfer);
     state
         .sessions
         .sftp(
@@ -545,6 +559,7 @@ pub async fn sftp_upload(
                 local,
                 remote,
                 progress: on_progress,
+                cancel: active.flag(),
             },
         )
         .await?;
@@ -558,7 +573,9 @@ pub async fn sftp_upload_directory(
     local: String,
     remote: String,
     on_progress: Channel<TransferProgress>,
+    transfer: Option<String>,
 ) -> Result<()> {
+    let active = state.transfers.begin(transfer);
     state
         .sessions
         .sftp(
@@ -567,10 +584,19 @@ pub async fn sftp_upload_directory(
                 local,
                 remote,
                 progress: on_progress,
+                cancel: active.flag(),
             },
         )
         .await?;
     Ok(())
+}
+
+/// Stops the transfer the front end registered as `transfer`, if it is still
+/// running: the copy ends within a chunk and takes its half-written file
+/// with it (see `CancelFlag`).
+#[tauri::command]
+pub fn cancel_transfer(state: State<'_, AppState>, transfer: String) {
+    state.transfers.cancel(&transfer);
 }
 
 // --- local filesystem -------------------------------------------------------

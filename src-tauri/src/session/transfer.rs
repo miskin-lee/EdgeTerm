@@ -1,14 +1,18 @@
 //! Helpers shared by the SFTP and FTP folder transfers: local path safety
-//! checks, the metadata-only plan for uploading a local tree, and the
-//! throttled progress reporter.
+//! checks, the metadata-only plan for uploading a local tree, the throttled
+//! progress reporter, and the cancel flag a transfer polls between chunks.
 //!
 //! Neither backend loads file contents here. Both keep copying bytes through
 //! their own fixed 1 MiB buffer one file at a time; this module only decides
 //! *which* files and folders take part and where they land.
 
+use std::collections::HashMap;
 use std::path::{Component, Path, PathBuf};
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
 use std::time::{Duration, Instant};
 
+use parking_lot::Mutex;
 use tauri::ipc::Channel;
 
 use super::{join_remote, TransferProgress};
@@ -215,10 +219,111 @@ impl<'a> ProgressReporter<'a> {
     }
 }
 
+/// What a cancelled transfer ends with, in the error the command returns.
+pub const TRANSFER_CANCELLED: &str = "transfer cancelled";
+
+/// A transfer's cancel flag: cloned into its request and polled between
+/// chunks, so a cancel takes effect within one 1 MiB read. Raised through
+/// `Transfers::cancel`; a request nobody can cancel gets a fresh one that
+/// is never raised.
+#[derive(Clone, Default)]
+pub struct CancelFlag(Arc<AtomicBool>);
+
+impl CancelFlag {
+    pub fn cancel(&self) {
+        self.0.store(true, Ordering::Relaxed);
+    }
+
+    pub fn is_cancelled(&self) -> bool {
+        self.0.load(Ordering::Relaxed)
+    }
+
+    /// Ok while the transfer may go on, otherwise the error it ends with.
+    pub fn check(&self) -> Result<()> {
+        if self.is_cancelled() {
+            Err(AppError::new(TRANSFER_CANCELLED))
+        } else {
+            Ok(())
+        }
+    }
+
+    /// `check` for the byte-copy loops, which speak `io::Error`.
+    pub fn check_io(&self) -> std::io::Result<()> {
+        if self.is_cancelled() {
+            Err(std::io::Error::new(
+                std::io::ErrorKind::Interrupted,
+                TRANSFER_CANCELLED,
+            ))
+        } else {
+            Ok(())
+        }
+    }
+}
+
+/// The transfers in flight, by the id the front end gave them, so that a
+/// `cancel_transfer` command can reach the one the user gave up on.
+#[derive(Default)]
+pub struct Transfers {
+    flags: Mutex<HashMap<String, CancelFlag>>,
+}
+
+impl Transfers {
+    /// Registers transfer `id` for as long as the returned guard lives; with
+    /// no id the guard just carries a flag nothing can raise. A cancel that
+    /// arrived first is honoured: its flag comes back already raised.
+    pub fn begin(&self, id: Option<String>) -> ActiveTransfer<'_> {
+        let flag = match &id {
+            Some(id) => self.flags.lock().entry(id.clone()).or_default().clone(),
+            None => CancelFlag::default(),
+        };
+        ActiveTransfer {
+            transfers: self,
+            id,
+            flag,
+        }
+    }
+
+    /// Raises transfer `id`'s flag. The cancel is a separate invoke from the
+    /// transfer and can overtake it, so an unknown id gets a raised flag
+    /// waiting for `begin`. One that arrives after the transfer finished
+    /// leaves a stray entry behind; the front end only cancels a transfer
+    /// whose promise is still pending, which keeps that to a race of one
+    /// round trip.
+    pub fn cancel(&self, id: &str) {
+        self.flags
+            .lock()
+            .entry(id.to_string())
+            .or_default()
+            .cancel();
+    }
+}
+
+/// A registered transfer; dropping it forgets the id (see `Transfers`).
+pub struct ActiveTransfer<'a> {
+    transfers: &'a Transfers,
+    id: Option<String>,
+    flag: CancelFlag,
+}
+
+impl ActiveTransfer<'_> {
+    pub fn flag(&self) -> CancelFlag {
+        self.flag.clone()
+    }
+}
+
+impl Drop for ActiveTransfer<'_> {
+    fn drop(&mut self) {
+        if let Some(id) = &self.id {
+            self.transfers.flags.lock().remove(id);
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::{
         ensure_local_directory, plan_local_upload, safe_local_child, validate_local_file_target,
+        Transfers,
     };
     use std::path::{Path, PathBuf};
 
@@ -350,5 +455,41 @@ mod tests {
         assert_eq!(plan.total, 20);
 
         std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn a_cancel_that_overtakes_its_transfer_is_kept_for_it() {
+        let transfers = Transfers::default();
+        transfers.cancel("t1");
+
+        let active = transfers.begin(Some("t1".into()));
+        assert!(active.flag().is_cancelled());
+        assert!(active.flag().check().is_err());
+
+        drop(active);
+        assert!(
+            transfers.flags.lock().is_empty(),
+            "a finished transfer is forgotten"
+        );
+    }
+
+    #[test]
+    fn a_running_transfer_is_cancelled_by_id_and_an_anonymous_one_never() {
+        let transfers = Transfers::default();
+        let active = transfers.begin(Some("t2".into()));
+        let flag = active.flag();
+        assert!(flag.check().is_ok() && flag.check_io().is_ok());
+
+        transfers.cancel("t2");
+        assert!(flag.is_cancelled());
+        assert_eq!(
+            flag.check_io().unwrap_err().kind(),
+            std::io::ErrorKind::Interrupted
+        );
+
+        let anonymous = transfers.begin(None);
+        transfers.cancel("t2");
+        assert!(!anonymous.flag().is_cancelled());
+        assert_eq!(transfers.flags.lock().len(), 1);
     }
 }
