@@ -24,8 +24,9 @@ import type { FileEntry, ThemeMode } from "../../types";
 interface TransferState {
   /**
    * `sync` is a remote file edited locally being sent back after a save;
-   * `stage` is the copy a drag out of the window needs before the system
-   * can take it; `copy` is a drop landing in a local folder.
+   * `stage` is the copy a drag out of the window needs on Windows / Linux
+   * before the system can take it (macOS downloads on the drop instead,
+   * shown as a `download`); `copy` is a drop landing in a local folder.
    */
   kind: "upload" | "download" | "sync" | "stage" | "copy";
   name: string;
@@ -59,6 +60,10 @@ interface MenuState {
 interface DragOutState {
   path: string;
   name: string;
+  /**
+   * True while the copy a Windows / Linux drag needs is still downloading,
+   * before the system has the drag; a release then cancels it.
+   */
   staging: boolean;
 }
 
@@ -551,16 +556,108 @@ export function FilerPanel() {
   };
 
   /**
+   * macOS: hands the system a promise of `entry` rather than a copy of it.
+   * Nothing is downloaded while the drag is in flight; a target that takes
+   * the drop (Finder, the desktop, another application) names the path it
+   * wants, and `deliverPromised` downloads straight there. A drag that is
+   * cancelled or let go inside the window costs nothing.
+   */
+  const promiseToSystem = async (sessionId: string, entry: FileEntry) => {
+    updateDragOut({ path: entry.path, name: entry.name, staging: false });
+    try {
+      await api.startPromisedFileDrag(entry.name, entry.isDir, (event) => {
+        switch (event.kind) {
+          case "write":
+            void deliverPromised(
+              sessionId,
+              entry,
+              event.token,
+              event.destination,
+            );
+            break;
+          case "ended":
+            updateDragOut(null);
+            break;
+          case "failed":
+            updateDragOut(null);
+            setError(`Could not drag ${entry.name}: ${event.error}`);
+            break;
+        }
+      });
+    } catch (e) {
+      updateDragOut(null);
+      setError(String(e));
+    }
+  };
+
+  /**
+   * Downloads a promised entry to where the drop target asked for it, then
+   * settles the promise so the target shows the file (or the reason there
+   * is none). The transfer is the ordinary cancellable download; a cancel
+   * is reported to the target like any other failure.
+   */
+  const deliverPromised = async (
+    sessionId: string,
+    entry: FileEntry,
+    token: string,
+    destination: string,
+  ) => {
+    busyRef.current = true;
+    setBusy(true);
+    setError(null);
+    const transfer = beginTransfer("download", entry.name, true);
+    let failure: string | null = null;
+    try {
+      if (entry.isDir) {
+        await api.sftpDownloadDirectory(
+          sessionId,
+          entry.path,
+          destination,
+          updateTransferProgress,
+          transfer,
+        );
+      } else {
+        await api.sftpDownload(
+          sessionId,
+          entry.path,
+          destination,
+          updateTransferProgress,
+          transfer,
+        );
+      }
+      finishTransfer("complete");
+    } catch (e) {
+      failure = activeTransfer.current?.cancelled
+        ? `${entry.name}: download cancelled`
+        : String(e);
+      failTransfer(e);
+    } finally {
+      busyRef.current = false;
+      setBusy(false);
+    }
+    try {
+      await api.finishPromisedFile(token, failure);
+    } catch (e) {
+      setError(String(e));
+    }
+  };
+
+  /**
    * Drags `entry` out of the window. A local entry is already a file the
-   * system can take; a remote one is downloaded into the staging folder
-   * first — there is no way to promise a file the drop target fetches later,
-   * so a large one has to finish while the button is still held.
+   * system can take. A remote one is promised on macOS (see
+   * `promiseToSystem`); Windows and Linux have no way to promise a file the
+   * drop target fetches later, so there it is downloaded into the staging
+   * folder first, and a large one has to finish while the button is held.
    */
   const beginDragOut = async (entry: FileEntry) => {
     if (busyRef.current || dragOutRef.current || atDrivesRoot) return;
     const sessionId = remoteIdRef.current;
     if (!sessionId) {
       await handToSystem(entry, [entry.path]);
+      return;
+    }
+    if (IS_MAC) {
+      await promiseToSystem(sessionId, entry);
       return;
     }
 

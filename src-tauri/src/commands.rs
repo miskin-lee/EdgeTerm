@@ -6,6 +6,7 @@ use tokio::io::{AsyncReadExt, AsyncSeekExt, AsyncWriteExt};
 use tokio::sync::mpsc;
 
 use crate::error::{err, AppError, Result};
+use crate::file_promise::{self, PromisedDragEvent};
 use crate::fs_local;
 use crate::model::{
     AppData, CommandHistoryEntry, DataSummary, DirListing, LocalCopySummary, OpenSessionOutcome,
@@ -794,8 +795,10 @@ const DRAG_PREVIEW_ICON: &[u8] = include_bytes!("../icons/32x32.png");
 
 /// Starts a system drag carrying `paths`, so an entry shown in the Filer can
 /// be dropped on the desktop or in a file manager (a remote one after it has
-/// been staged locally). The pointer must still be down: the drag session
-/// attaches to the gesture the user is already making.
+/// been staged locally — on Windows and Linux only; macOS promises remote
+/// entries instead, see `start_promised_file_drag`). The pointer must still
+/// be down: the drag session attaches to the gesture the user is already
+/// making.
 ///
 /// The drag is handed to the main thread rather than started here, because
 /// that is the only thread AppKit and GTK accept one from, and a command is
@@ -854,6 +857,30 @@ pub fn start_file_drag(
             }
         })
         .map_err(err)
+}
+
+/// macOS: drags a remote entry out as a promise of a file, so nothing is
+/// downloaded until a drop target names the path it wants; see
+/// `file_promise`. The pointer must still be down, as for `start_file_drag`.
+#[tauri::command]
+pub fn start_promised_file_drag(
+    window: tauri::WebviewWindow,
+    name: String,
+    is_dir: bool,
+    on_event: Channel<PromisedDragEvent>,
+) -> Result<()> {
+    file_promise::start(&window, name, is_dir, DRAG_PREVIEW_ICON, on_event)
+}
+
+/// Settles the download a promise drag's `write` event asked for: the
+/// receiver gets its file, or `error` as the reason it is not coming.
+#[tauri::command]
+pub fn finish_promised_file(
+    window: tauri::WebviewWindow,
+    token: String,
+    error: Option<String>,
+) -> Result<()> {
+    file_promise::finish(&window, token, error)
 }
 
 /// Copies a dropped file or folder into the folder the Filer is showing, for

@@ -1,5 +1,6 @@
 mod commands;
 mod error;
+mod file_promise;
 mod fs_local;
 mod model;
 mod remote_edit;
@@ -270,6 +271,8 @@ pub fn run() {
             commands::local_remove,
             commands::drag_staging_path,
             commands::start_file_drag,
+            commands::start_promised_file_drag,
+            commands::finish_promised_file,
             commands::open_local_path,
             commands::open_with_dialog,
             commands::remote_edit_path,

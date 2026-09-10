@@ -1323,6 +1323,7 @@ name = "edgeterm"
 version = "0.7.4"
 dependencies = [
  "base64 0.22.1",
+ "block2",
  "clipboard-win",
  "core-foundation 0.10.1",
  "core-foundation-sys",
@@ -1331,6 +1332,9 @@ dependencies = [
  "encoding_rs",
  "libc",
  "notify",
+ "objc2",
+ "objc2-app-kit",
+ "objc2-foundation",
  "parking_lot",
  "portable-pty",
  "ring",

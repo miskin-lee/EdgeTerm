@@ -372,9 +372,10 @@ export const openWithDialog = (path: string) =>
 
 /**
  * Where a remote entry is downloaded to before it is handed to the system
- * drag. Each call returns a fresh path; the staging folder is cleared on the
- * next launch, not when the drag ends, because the drop target does the copy
- * itself and may still be reading.
+ * drag on Windows and Linux (macOS promises the file instead; see
+ * `startPromisedFileDrag`). Each call returns a fresh path; the staging
+ * folder is cleared on the next launch, not when the drag ends, because the
+ * drop target does the copy itself and may still be reading.
  */
 export const dragStagingPath = (name: string) =>
   invoke<string>("drag_staging_path", { name });
@@ -404,6 +405,50 @@ export const startFileDrag = (
   events.onmessage = onFinished;
   return invoke<void>("start_file_drag", { paths, onEvent: events });
 };
+
+/**
+ * What a promised drag reports; see `startPromisedFileDrag`. `write` comes
+ * when a drop target takes the promise, once per drop in practice, and may
+ * arrive after `ended`. `failed` replaces both when the drag never started.
+ */
+export type PromisedDragEvent =
+  | {
+      kind: "write";
+      /** Goes back through `finishPromisedFile` once the file is settled. */
+      token: string;
+      /** The full local path the target wants, name included. */
+      destination: string;
+    }
+  | { kind: "ended"; dropped: boolean }
+  | { kind: "failed"; error: string };
+
+/**
+ * macOS only: drags a *promise* of the entry called `name` out of the window
+ * instead of a copy. Nothing is downloaded while the drag is in flight; a
+ * target that takes the drop names the path it wants, and that is when the
+ * Filer downloads straight there. As with `startFileDrag`, the pointer has
+ * to still be down.
+ */
+export const startPromisedFileDrag = (
+  name: string,
+  isDir: boolean,
+  onEvent: (event: PromisedDragEvent) => void,
+) => {
+  const events = new Channel<PromisedDragEvent>();
+  events.onmessage = onEvent;
+  return invoke<void>("start_promised_file_drag", {
+    name,
+    isDir,
+    onEvent: events,
+  });
+};
+
+/**
+ * Settles a promised drag's `write`: the target waiting on `token` gets its
+ * file, or `error` as the reason it is not coming.
+ */
+export const finishPromisedFile = (token: string, error: string | null) =>
+  invoke<void>("finish_promised_file", { token, error });
 
 // --- remote files edited locally -------------------------------------------
 
