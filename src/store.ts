@@ -11,7 +11,7 @@ import {
   shortcutOverrides,
   type ShortcutBindings,
 } from "./shortcuts";
-import type { GutterMode, RightClickAction } from "./terminal";
+import type { CursorStyle, GutterMode, RightClickAction } from "./terminal";
 import { disposeController, getController } from "./terminalRegistry";
 import type {
   AuthPrompt,
@@ -109,6 +109,8 @@ const THEME_KEY = "edgeterm.theme";
 const SUGGESTIONS_KEY = "edgeterm.suggestions";
 const RIGHT_CLICK_KEY = "edgeterm.rightClick";
 const SHORTCUTS_KEY = "edgeterm.shortcuts";
+const CURSOR_STYLE_KEY = "edgeterm.cursorStyle";
+const CURSOR_BLINK_KEY = "edgeterm.cursorBlink";
 
 // Opt-in: command capture and the completion popup stay off until the user
 // enables them in the Edit menu.
@@ -287,6 +289,35 @@ const saveScrollback = (value: number) => {
   }
 };
 
+const parseCursorStyle = (value: unknown): CursorStyle | null =>
+  value === "block" || value === "underline" || value === "bar" ? value : null;
+
+const loadCursorStyle = (): CursorStyle => {
+  try {
+    return parseCursorStyle(localStorage.getItem(CURSOR_STYLE_KEY)) ?? "block";
+  } catch {
+    return "block";
+  }
+};
+
+// Stored as "on" / "off" like the other switches; absent means blinking, the
+// default every session had before the setting existed.
+const loadCursorBlink = (): boolean => {
+  try {
+    return localStorage.getItem(CURSOR_BLINK_KEY) !== "off";
+  } catch {
+    return true;
+  }
+};
+
+const saveSetting = (key: string, value: string) => {
+  try {
+    localStorage.setItem(key, value);
+  } catch {
+    // The setting still applies for this run when storage is unavailable.
+  }
+};
+
 /**
  * Keyboard bindings are stored as the difference from this platform's
  * defaults, so a command the user never touched follows a later release's
@@ -334,6 +365,8 @@ export interface AppSettings {
   /** Terminal font family; empty means the platform default stack. */
   bufferFontFamily: string;
   terminalScrollback: number;
+  cursorStyle: CursorStyle;
+  cursorBlink: boolean;
   suggestionsEnabled: boolean;
   /** Windows / Linux only; macOS always opens the menu. */
   rightClickAction: RightClickAction;
@@ -354,6 +387,9 @@ interface AppStore {
   panelFontFamily: string;
   bufferFontFamily: string;
   terminalScrollback: number;
+  /** The terminal cursor's shape and whether it blinks. */
+  cursorStyle: CursorStyle;
+  cursorBlink: boolean;
   /** Command history recording + fish-style inline suggestions. */
   suggestionsEnabled: boolean;
   /** What a right click in the terminal does; see `RightClickAction`. */
@@ -446,6 +482,8 @@ interface AppStore {
   setPanelFontFamily: (family: string) => void;
   setBufferFontFamily: (family: string) => void;
   setTerminalScrollback: (rows: number) => void;
+  setCursorStyle: (style: CursorStyle) => void;
+  setCursorBlink: (blink: boolean) => void;
   setSuggestionsEnabled: (enabled: boolean) => void;
   setRightClickAction: (action: RightClickAction) => void;
   setShortcuts: (bindings: ShortcutBindings) => void;
@@ -498,6 +536,8 @@ export const useStore = create<AppStore>((set, get) => ({
   panelFontFamily: loadFontFamily(PANEL_FONT_FAMILY_KEY),
   bufferFontFamily: loadFontFamily(BUFFER_FONT_FAMILY_KEY),
   terminalScrollback: loadScrollback(),
+  cursorStyle: loadCursorStyle(),
+  cursorBlink: loadCursorBlink(),
   suggestionsEnabled: loadSuggestionsEnabled(),
   rightClickAction: loadRightClickAction(),
   shortcuts: initialShortcuts,
@@ -781,6 +821,17 @@ export const useStore = create<AppStore>((set, get) => ({
     saveScrollback(terminalScrollback);
   },
 
+  setCursorStyle(style) {
+    const cursorStyle = parseCursorStyle(style) ?? "block";
+    set({ cursorStyle });
+    saveSetting(CURSOR_STYLE_KEY, cursorStyle);
+  },
+
+  setCursorBlink(blink) {
+    set({ cursorBlink: blink });
+    saveSetting(CURSOR_BLINK_KEY, blink ? "on" : "off");
+  },
+
   setSuggestionsEnabled(enabled) {
     set({ suggestionsEnabled: enabled });
     // The history is only fetched once someone opts in (load() is a no-op on
@@ -824,6 +875,8 @@ export const useStore = create<AppStore>((set, get) => ({
       panelFontFamily: "",
       bufferFontFamily: "",
       terminalScrollback: TERMINAL_SCROLLBACK.default,
+      cursorStyle: "block",
+      cursorBlink: true,
       suggestionsEnabled: false,
       rightClickAction: "menu",
     });
@@ -836,6 +889,8 @@ export const useStore = create<AppStore>((set, get) => ({
       localStorage.removeItem(PANEL_FONT_FAMILY_KEY);
       localStorage.removeItem(BUFFER_FONT_FAMILY_KEY);
       localStorage.removeItem(TERMINAL_SCROLLBACK_KEY);
+      localStorage.removeItem(CURSOR_STYLE_KEY);
+      localStorage.removeItem(CURSOR_BLINK_KEY);
       localStorage.removeItem(SUGGESTIONS_KEY);
       localStorage.removeItem(RIGHT_CLICK_KEY);
       localStorage.removeItem(SHORTCUTS_KEY);
@@ -855,6 +910,8 @@ export const useStore = create<AppStore>((set, get) => ({
       panelFontFamily: state.panelFontFamily,
       bufferFontFamily: state.bufferFontFamily,
       terminalScrollback: state.terminalScrollback,
+      cursorStyle: state.cursorStyle,
+      cursorBlink: state.cursorBlink,
       suggestionsEnabled: state.suggestionsEnabled,
       rightClickAction: state.rightClickAction,
       shortcuts: shortcutOverrides(state.shortcuts),
@@ -890,6 +947,11 @@ export const useStore = create<AppStore>((set, get) => ({
     }
     if (typeof values.terminalScrollback === "number") {
       state.setTerminalScrollback(values.terminalScrollback);
+    }
+    const cursorStyle = parseCursorStyle(values.cursorStyle);
+    if (cursorStyle) state.setCursorStyle(cursorStyle);
+    if (typeof values.cursorBlink === "boolean") {
+      state.setCursorBlink(values.cursorBlink);
     }
     if (typeof values.suggestionsEnabled === "boolean") {
       state.setSuggestionsEnabled(values.suggestionsEnabled);

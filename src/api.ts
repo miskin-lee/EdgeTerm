@@ -139,6 +139,16 @@ export const closeSession = (id: string) => invoke<void>("close_session", { id }
 
 export const listSessions = () => invoke<SessionInfo[]>("list_sessions");
 
+/** One installed font family, as `list_system_fonts` reports it. */
+export interface FontFamily {
+  name: string;
+  /** True when any face of the family is fixed-pitch. */
+  monospaced: boolean;
+}
+
+/** Every family in the machine's font directories, sorted by name. */
+export const listSystemFonts = () => invoke<FontFamily[]>("list_system_fonts");
+
 export const writeSession = (id: string, data: string) =>
   invoke<void>("write_session", { id, data });
 

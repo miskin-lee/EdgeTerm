@@ -7,6 +7,7 @@ use tokio::sync::mpsc;
 
 use crate::error::{err, AppError, Result};
 use crate::file_promise::{self, PromisedDragEvent};
+use crate::fonts::{self, FontFamily};
 use crate::fs_local;
 use crate::model::{
     AppData, CommandHistoryEntry, DataSummary, DirListing, LocalCopySummary, OpenSessionOutcome,
@@ -304,6 +305,15 @@ pub fn close_session(state: State<'_, AppState>, id: String) -> Result<()> {
 #[tauri::command]
 pub fn list_sessions(state: State<'_, AppState>) -> Vec<SessionInfo> {
     state.sessions.list()
+}
+
+/// The font families installed on this machine; see `fonts`. Reading the
+/// font directories takes a moment, so it runs off the async runtime.
+#[tauri::command]
+pub async fn list_system_fonts() -> Vec<FontFamily> {
+    tauri::async_runtime::spawn_blocking(fonts::system_font_families)
+        .await
+        .unwrap_or_default()
 }
 
 /// Keyboard and paste input, which xterm.js hands us as a UTF-8 string; it

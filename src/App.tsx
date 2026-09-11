@@ -79,6 +79,10 @@ export default function App() {
   const setPanelFontFamily = useStore((s) => s.setPanelFontFamily);
   const setBufferFontFamily = useStore((s) => s.setBufferFontFamily);
   const setTerminalScrollback = useStore((s) => s.setTerminalScrollback);
+  const cursorStyle = useStore((s) => s.cursorStyle);
+  const cursorBlink = useStore((s) => s.cursorBlink);
+  const setCursorStyle = useStore((s) => s.setCursorStyle);
+  const setCursorBlink = useStore((s) => s.setCursorBlink);
   const shortcuts = useStore((s) => s.shortcuts);
   const setShortcuts = useStore((s) => s.setShortcuts);
   const setActive = useStore((s) => s.setActive);
@@ -478,12 +482,16 @@ export default function App() {
           panelFontFamily={panelFontFamily}
           bufferFontFamily={bufferFontFamily}
           terminalScrollback={terminalScrollback}
+          cursorStyle={cursorStyle}
+          cursorBlink={cursorBlink}
           onApply={(settings) => {
             setPanelFontSize(settings.panelFontSize);
             setBufferFontSize(settings.bufferFontSize);
             setPanelFontFamily(settings.panelFontFamily);
             setBufferFontFamily(settings.bufferFontFamily);
             setTerminalScrollback(settings.terminalScrollback);
+            setCursorStyle(settings.cursorStyle);
+            setCursorBlink(settings.cursorBlink);
             setFontSettingsOpen(false);
           }}
           onClose={() => setFontSettingsOpen(false)}

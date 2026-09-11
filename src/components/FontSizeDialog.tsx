@@ -1,11 +1,13 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
-import { fontStack, installedFonts } from "../fonts";
+import { listSystemFonts, type FontFamily } from "../api";
+import { fontChoices, fontStack, installedFonts } from "../fonts";
 import {
   BUFFER_FONT_SIZE,
   PANEL_FONT_SIZE,
   TERMINAL_SCROLLBACK,
 } from "../store";
+import type { CursorStyle } from "../terminal";
 
 /** Everything the dialog hands back when Apply is pressed. */
 export interface DisplaySettings {
@@ -14,6 +16,8 @@ export interface DisplaySettings {
   panelFontFamily: string;
   bufferFontFamily: string;
   terminalScrollback: number;
+  cursorStyle: CursorStyle;
+  cursorBlink: boolean;
 }
 
 interface Props extends DisplaySettings {
@@ -30,6 +34,8 @@ export function FontSizeDialog({
   panelFontFamily,
   bufferFontFamily,
   terminalScrollback,
+  cursorStyle,
+  cursorBlink,
   onApply,
   onClose,
 }: Props) {
@@ -38,13 +44,40 @@ export function FontSizeDialog({
   const [panelFamily, setPanelFamily] = useState(panelFontFamily);
   const [bufferFamily, setBufferFamily] = useState(bufferFontFamily);
   const [scrollback, setScrollback] = useState(terminalScrollback);
+  const [cursor, setCursor] = useState<CursorStyle>(cursorStyle);
+  const [blink, setBlink] = useState(cursorBlink);
 
   // Probing the machine for installed families measures text on a canvas, so
   // it happens once when the dialog opens rather than on every keystroke.
   // The saved family is kept in its list even where it is not installed, so a
   // setting brought in from another machine stays visible.
-  const [uiFonts] = useState(() => installedFonts("ui", panelFontFamily));
-  const [monoFonts] = useState(() => installedFonts("mono", bufferFontFamily));
+  const [probedUi] = useState(() => installedFonts("ui", panelFontFamily));
+  const [probedMono] = useState(() =>
+    installedFonts("mono", bufferFontFamily),
+  );
+  // The backend reads the font directories meanwhile: every family it finds
+  // joins the suggestions when it answers, and the probe stands on its own if
+  // it never does (see fontChoices).
+  const [systemFonts, setSystemFonts] = useState<FontFamily[]>([]);
+  useEffect(() => {
+    let live = true;
+    listSystemFonts()
+      .then((fonts) => {
+        if (live) setSystemFonts(fonts);
+      })
+      .catch(() => undefined);
+    return () => {
+      live = false;
+    };
+  }, []);
+  const uiFonts = useMemo(
+    () => fontChoices("ui", probedUi, systemFonts),
+    [probedUi, systemFonts],
+  );
+  const monoFonts = useMemo(
+    () => fontChoices("mono", probedMono, systemFonts),
+    [probedMono, systemFonts],
+  );
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -76,6 +109,8 @@ export function FontSizeDialog({
             panelFontFamily: panelFamily.trim(),
             bufferFontFamily: bufferFamily.trim(),
             terminalScrollback: scrollback,
+            cursorStyle: cursor,
+            cursorBlink: blink,
           });
         }}
       >
@@ -163,6 +198,32 @@ export function FontSizeDialog({
             onChange={setBufferFamily}
           />
 
+          {/* A div, not a label: the row holds two controls of its own. */}
+          <div className="font-size-setting cursor-setting">
+            <span>
+              <strong>Cursor</strong>
+              <small>Shape of the terminal cursor</small>
+            </span>
+            <select
+              aria-label="Cursor style"
+              className="cursor-style-select"
+              value={cursor}
+              onChange={(event) => setCursor(event.target.value as CursorStyle)}
+            >
+              <option value="block">Block</option>
+              <option value="underline">Underline</option>
+              <option value="bar">Bar</option>
+            </select>
+            <label className="cursor-blink">
+              <input
+                type="checkbox"
+                checked={blink}
+                onChange={(event) => setBlink(event.target.checked)}
+              />
+              Blink
+            </label>
+          </div>
+
           <label className="font-size-setting scrollback-setting">
             <span>
               <strong>Scrollback</strong>
@@ -198,6 +259,8 @@ export function FontSizeDialog({
               setPanelFamily("");
               setBufferFamily("");
               setScrollback(TERMINAL_SCROLLBACK.default);
+              setCursor("block");
+              setBlink(true);
             }}
           >
             Reset Defaults

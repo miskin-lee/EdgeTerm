@@ -104,6 +104,8 @@ function TerminalHost({ tab, active }: { tab: Tab; active: boolean }) {
   const bufferFontSize = useStore((s) => s.bufferFontSize);
   const bufferFontFamily = useStore((s) => s.bufferFontFamily);
   const terminalScrollback = useStore((s) => s.terminalScrollback);
+  const cursorStyle = useStore((s) => s.cursorStyle);
+  const cursorBlink = useStore((s) => s.cursorBlink);
   const suggestionsEnabled = useStore((s) => s.suggestionsEnabled);
   const rightClickAction = useStore((s) => s.rightClickAction);
   const [menu, setMenu] = useState<TerminalMenu | null>(null);
@@ -243,6 +245,10 @@ function TerminalHost({ tab, active }: { tab: Tab; active: boolean }) {
   useEffect(() => {
     terminal?.setScrollback(terminalScrollback);
   }, [terminal, terminalScrollback]);
+
+  useEffect(() => {
+    terminal?.setCursor(cursorStyle, cursorBlink);
+  }, [terminal, cursorStyle, cursorBlink]);
 
   useEffect(() => {
     terminal?.setSuggestions(suggestionsEnabled);

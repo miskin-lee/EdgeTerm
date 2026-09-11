@@ -1,3 +1,4 @@
+import type { FontFamily } from "./api";
 import { IS_MAC, IS_WINDOWS } from "./platform";
 
 /**
@@ -160,4 +161,23 @@ export function installedFonts(role: FontRole, keep = ""): string[] {
     return [...found, chosen].sort((a, b) => a.localeCompare(b));
   }
   return found;
+}
+
+/**
+ * What a family picker suggests: the probed candidates plus the families
+ * the backend read out of the font directories (see `list_system_fonts`),
+ * which is how a face nobody thought to probe for still shows up. The
+ * terminal's list keeps to fixed-pitch families; the interface takes any.
+ * Deduplicated and sorted, so the two sources can arrive in either order.
+ */
+export function fontChoices(
+  role: FontRole,
+  probed: readonly string[],
+  system: readonly FontFamily[],
+): string[] {
+  const names = new Set(probed);
+  for (const family of system) {
+    if (role === "ui" || family.monospaced) names.add(family.name);
+  }
+  return [...names].sort((a, b) => a.localeCompare(b));
 }

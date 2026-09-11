@@ -3127,6 +3127,32 @@ textarea:focus {
   color: var(--fg-faint);
 }
 
+/* The cursor row: its shape in the field column, the blink switch where the
+   other rows keep their unit. Zero vertical padding on the select for the
+   same reason as `.session-field select`. */
+.cursor-style-select {
+  grid-column: 2;
+  min-width: 0;
+  height: 26px;
+  padding-top: 0;
+  padding-bottom: 0;
+  color-scheme: inherit;
+}
+
+.cursor-blink {
+  grid-column: 3 / -1;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.cursor-blink input {
+  margin: 0;
+  accent-color: var(--accent);
+}
+
 .font-size-dialog-footer .font-size-reset {
   margin-right: auto;
 }
@@ -3146,6 +3172,14 @@ textarea:focus {
 
   .font-family-input {
     grid-column: 1 / -1;
+  }
+
+  .cursor-style-select {
+    grid-column: 1;
+  }
+
+  .cursor-blink {
+    grid-column: 2 / -1;
   }
 }
 

@@ -44,6 +44,9 @@ export type GutterMode = "off" | "line" | "time" | "both";
  */
 export type RightClickAction = "menu" | "copyPaste";
 
+/** The cursor's shape; `cursorBlink` in the store says whether it blinks. */
+export type CursorStyle = "block" | "underline" | "bar";
+
 /** The xterm-owned inputs to a gutter paint; see `gutterPainted`. */
 type GutterView = {
   viewportY: number;
@@ -1215,6 +1218,16 @@ export class TerminalController {
     if (this.term.options.fontFamily === fontFamily) return;
     this.term.options.fontFamily = fontFamily;
     this.refreshFontMetrics();
+  }
+
+  /** The cursor's shape and whether it blinks, from Display Settings. */
+  setCursor(style: CursorStyle, blink: boolean) {
+    if (this.term.options.cursorStyle !== style) {
+      this.term.options.cursorStyle = style;
+    }
+    if (this.term.options.cursorBlink !== blink) {
+      this.term.options.cursorBlink = blink;
+    }
   }
 
   /** Cell size and the pixel-sized decorations both follow the font. */

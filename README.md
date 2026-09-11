@@ -45,7 +45,7 @@ Terminal sessions are UTF-8 unless the session dialog's **Encoding** says otherw
 
 **Display settings**
 
-**View → Display Settings…** sets the interface and terminal font sizes, the family each uses, and how many lines of scrollback a session keeps. No fonts are bundled: leaving a family blank uses the platform's own stack, and the field suggests the families this machine actually has while accepting any name you type, so a private Nerd Font build works too.
+**View → Display Settings…** sets the interface and terminal font sizes, the family each uses, the cursor's shape (block, underline or bar) and whether it blinks, and how many lines of scrollback a session keeps. No fonts are bundled: leaving a family blank uses the platform's own stack, and each family field lists the fonts installed on this machine — fixed-pitch ones for the terminal, all of them for the interface — while accepting any name you type, so a private Nerd Font build works too.
 
 **Command suggestions**
 

@@ -38,6 +38,10 @@ encoding_rs = "0.8"
 
 portable-pty = "0.9"
 serialport = "4"
+# Lists the machine's font families for Display Settings; a WebView cannot.
+# ttf-parser is fontdb's own parser, used directly to measure advances.
+fontdb = "0.23"
+ttf-parser = { version = "0.25", default-features = false }
 
 # Starts a system drag out of the window so the Filer can hand a file to the
 # desktop or a file manager. macOS and Linux need nothing new (objc2 and gtk

@@ -1,6 +1,7 @@
 mod commands;
 mod error;
 mod file_promise;
+mod fonts;
 mod fs_local;
 mod model;
 mod remote_edit;
@@ -273,6 +274,7 @@ pub fn run() {
             commands::start_file_drag,
             commands::start_promised_file_drag,
             commands::finish_promised_file,
+            commands::list_system_fonts,
             commands::open_local_path,
             commands::open_with_dialog,
             commands::remote_edit_path,
