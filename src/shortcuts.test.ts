@@ -111,8 +111,11 @@ describe("custom bindings", () => {
   });
 
   it("matches an Option chord by its physical key", () => {
+    // ⌘⌥[ is Previous Pane by default; one chord runs one command, so the
+    // dialog would have cleared that binding when Find took the keys.
     setActiveShortcuts({
       ...defaultShortcuts(),
+      prevPane: null,
       find: chord("BracketLeft", { meta: true, alt: true }),
     });
     // ⌥[ types a typographic quote, so only the code identifies the key.

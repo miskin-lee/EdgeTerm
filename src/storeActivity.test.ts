@@ -31,11 +31,17 @@ const makeTab = (id: string): Tab => ({
   activityKind: "command",
   cols: 80,
   rows: 24,
+  paneId: initialState.activePaneId,
 });
 
 beforeEach(() => {
   useStore.setState(
-    { ...initialState, tabs: [makeTab("one"), makeTab("two")], activeId: "one" },
+    {
+      ...initialState,
+      tabs: [makeTab("one"), makeTab("two")],
+      activeId: "one",
+      panes: [{ id: initialState.activePaneId, activeTabId: "one" }],
+    },
     true,
   );
 });

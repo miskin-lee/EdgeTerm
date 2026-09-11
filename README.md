@@ -55,6 +55,10 @@ With **Edit → Command Suggestions** enabled, EdgeTerm remembers the commands y
 
 A background tab shows what is running in it and keeps a highlight afterwards until you visit it, so you can start something slow and switch away. Agentic CLIs — Claude Code, Codex, Gemini CLI, Aider and the like — are followed differently: their session lasts as long as you keep the tool open, so the tab reports the assistant's turns instead, running while it works and finished when it hands the terminal back.
 
+**Split panes**
+
+The terminal area splits the way VS Code's editor area does: every pane has its own tab strip, and the panes can be nested side by side and one above the other and resized on their dividers. **Split Right** / **Split Down** — on a tab's context menu, in **View**, on the buttons at the right end of the menu bar, or with `⌘\` / `Ctrl+Shift+\` — opens the session's profile again in a new pane beside it, the way a terminal split works, since one session cannot show in two places. To put an existing tab beside another, drag it: onto another pane's strip to file it there, onto the middle of a pane to join it, or onto a pane's edge to split that pane on that side. A pane whose last tab closes folds away. The tab context menu also closes the other tabs of the strip — **Close Others**, **Close to the Left**, **Close to the Right**, **Close All** — asking once for all the sessions still connected.
+
 **Data export and import**
 
 **Session → Export Data…** writes the saved sessions and their groups, the Sender's saved commands, and the display settings to a single `.edgeterm` file (plain JSON inside); **Session → Import Data…** accepts only `.edgeterm` files.
@@ -78,7 +82,9 @@ A right click in the terminal opens a context menu — Copy, Paste, Select All, 
 | `⌘F` / `⌘G` | `Ctrl+Shift+F` / `Ctrl+Shift+G` | Search the terminal buffer / find next |
 | `⌘K` | `Alt+K` | Clear the screen |
 | `⌘J` | `Ctrl+Shift+J` | Reveal the shell's working directory in the Filer |
-| `⌘[` / `⌘]` | `Alt+[` / `Alt+]` | Switch to the previous / next open session |
+| `⌘[` / `⌘]` | `Alt+[` / `Alt+]` | Switch to the previous / next tab of the pane |
+| `⌘\` / `⌘⇧\` | `Ctrl+Shift+\` / `Ctrl+Alt+\` | Split the pane: open the current session's profile again to the right / below |
+| `⌘⌥[` / `⌘⌥]` | `Ctrl+Alt+[` / `Ctrl+Alt+]` | Focus the previous / next pane |
 | `⌘1`–`⌘9` | `Alt+1`–`Alt+9` | Switch to tab N |
 | `⌘⌥←` / `⌘⌥→` / `⌘⌥↓` | `Ctrl+Alt+←` / `Ctrl+Alt+→` / `Ctrl+Alt+↓` | Show or hide Session / Filer / Sender |
 | `⌘C` / `⌘V` | `Ctrl+Shift+C` / `Ctrl+Shift+V` | Copy / paste inside the terminal |

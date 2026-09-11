@@ -139,6 +139,25 @@ export async function openSession(
 }
 
 /**
+ * Split Right / Split Down: opens another session of the tab's profile in
+ * a new pane beside the tab's own — what a terminal's split means (iTerm2,
+ * Windows Terminal, VS Code's terminal), since one session cannot show in
+ * two places. The profile is the tab's own copy, secrets included, so a
+ * saved password or passphrase is not asked for again.
+ */
+export async function splitSession(
+  id: string,
+  side: "right" | "down",
+): Promise<string | null> {
+  const store = useStore.getState();
+  const tab = store.tabs.find((item) => item.info.id === id);
+  if (!tab) return null;
+  // The new pane becomes the active one, which is where openSession opens.
+  store.splitPane(tab.paneId, side);
+  return openSession(tab.profile);
+}
+
+/**
  * Disconnects a tab's session but keeps the tab, its terminal and its
  * scrollback, so `reconnectSession` can bring it back in place. The backend
  * does not echo a "closed" state for a close it was asked for (see

@@ -40,6 +40,10 @@ export type ShortcutCommand =
   | "revealCwd"
   | "prevTab"
   | "nextTab"
+  | "splitRight"
+  | "splitDown"
+  | "prevPane"
+  | "nextPane"
   | "panelSessions"
   | "panelFiler"
   | "panelSender";
@@ -56,6 +60,8 @@ export type AppShortcut =
   | { kind: "revealCwd" }
   | { kind: "tabStep"; step: -1 | 1 }
   | { kind: "tab"; number: number }
+  | { kind: "splitPane"; side: "right" | "down" }
+  | { kind: "paneStep"; step: -1 | 1 }
   | { kind: "togglePanel"; panel: PanelName };
 
 /** What each command does, and the order the settings dialog lists them in. */
@@ -88,6 +94,30 @@ export const SHORTCUT_COMMANDS: {
     label: "Next Session",
     hint: "Select the tab on the right",
     action: { kind: "tabStep", step: 1 },
+  },
+  {
+    id: "splitRight",
+    label: "Split Right",
+    hint: "Open the current session's profile again in a pane to the right",
+    action: { kind: "splitPane", side: "right" },
+  },
+  {
+    id: "splitDown",
+    label: "Split Down",
+    hint: "Open the current session's profile again in a pane below",
+    action: { kind: "splitPane", side: "down" },
+  },
+  {
+    id: "prevPane",
+    label: "Previous Pane",
+    hint: "Focus the pane before this one",
+    action: { kind: "paneStep", step: -1 },
+  },
+  {
+    id: "nextPane",
+    label: "Next Pane",
+    hint: "Focus the pane after this one",
+    action: { kind: "paneStep", step: 1 },
   },
   {
     id: "find",
@@ -159,6 +189,11 @@ const MAC_DEFAULTS: ShortcutBindings = {
   revealCwd: chord("KeyJ", { meta: true }),
   prevTab: chord("BracketLeft", { meta: true }),
   nextTab: chord("BracketRight", { meta: true }),
+  // ⌘\ splits in VS Code; ⌘⌥[ / ⌘⌥] step panes the way ⌘[ / ⌘] step tabs.
+  splitRight: chord("Backslash", { meta: true }),
+  splitDown: chord("Backslash", { meta: true, shift: true }),
+  prevPane: chord("BracketLeft", { meta: true, alt: true }),
+  nextPane: chord("BracketRight", { meta: true, alt: true }),
   panelSessions: chord("ArrowLeft", { meta: true, alt: true }),
   panelFiler: chord("ArrowRight", { meta: true, alt: true }),
   panelSender: chord("ArrowDown", { meta: true, alt: true }),
@@ -184,6 +219,15 @@ const OTHER_DEFAULTS: ShortcutBindings = {
   revealCwd: chord("KeyJ", { ctrl: true, shift: true }),
   prevTab: chord("BracketLeft", { alt: true }),
   nextTab: chord("BracketRight", { alt: true }),
+  // Ctrl+\ is VS Code's split but SIGQUIT in a terminal; with Shift the
+  // shell would get the same byte, so it is taken like Ctrl+Shift+letter.
+  // Alt+\ is readline's delete-horizontal-space and Alt+Shift switches the
+  // input language on Windows, so the second split and the pane steps go
+  // to Ctrl+Alt like the panel toggles.
+  splitRight: chord("Backslash", { ctrl: true, shift: true }),
+  splitDown: chord("Backslash", { ctrl: true, alt: true }),
+  prevPane: chord("BracketLeft", { ctrl: true, alt: true }),
+  nextPane: chord("BracketRight", { ctrl: true, alt: true }),
   panelSessions: chord("ArrowLeft", { ctrl: true, alt: true }),
   panelFiler: chord("ArrowRight", { ctrl: true, alt: true }),
   panelSender: chord("ArrowDown", { ctrl: true, alt: true }),

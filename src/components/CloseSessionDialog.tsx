@@ -1,19 +1,23 @@
 import { useEffect, useRef } from "react";
 
-import type { Tab } from "../store";
+import { tabTitle, type Tab } from "../store";
 
 interface Props {
-  tab: Tab;
+  /** The live tabs about to close: one, or a strip's worth at once. */
+  tabs: Tab[];
   onConfirm: () => void;
   onCancel: () => void;
 }
+
+/** Names shown before a bulk close is summarised as "… and N more". */
+const LISTED_TABS = 6;
 
 /**
  * Confirmation shown before a live session tab is closed. Enter confirms and
  * Esc cancels, so a stray ⌘W or a mis-click on the tab's ✕ can no longer
  * drop an open SSH / serial / FTP session and its scrollback without asking.
  */
-export function CloseSessionDialog({ tab, onConfirm, onCancel }: Props) {
+export function CloseSessionDialog({ tabs, onConfirm, onCancel }: Props) {
   const confirmRef = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
@@ -39,7 +43,21 @@ export function CloseSessionDialog({ tab, onConfirm, onCancel }: Props) {
     return () => window.removeEventListener("keydown", onKeyDown, true);
   }, [onCancel, onConfirm]);
 
-  const connecting = tab.state === "connecting";
+  const single = tabs.length === 1 ? tabs[0] : null;
+  const connecting = tabs.some((tab) => tab.state === "connecting");
+  const connected = tabs.some((tab) => tab.state === "connected");
+  const hint = connecting && connected
+    ? "Connected sessions will be disconnected and their terminal output discarded; connection attempts will be cancelled."
+    : connecting
+      ? tabs.length === 1
+        ? "The connection attempt will be cancelled."
+        : "The connection attempts will be cancelled."
+      : tabs.length === 1
+        ? "The session will be disconnected and its terminal output discarded."
+        : "The sessions will be disconnected and their terminal output discarded.";
+  // A long list is summarised rather than scrolled: the names are a
+  // reminder, the decision is the count.
+  const listed = tabs.slice(0, LISTED_TABS);
 
   return (
     <div className="dialog-backdrop" onMouseDown={onCancel}>
@@ -50,20 +68,36 @@ export function CloseSessionDialog({ tab, onConfirm, onCancel }: Props) {
         onMouseDown={(event) => event.stopPropagation()}
       >
         <div className="dialog-header" id="close-session-title">
-          Close Session
+          {single ? "Close Session" : `Close ${tabs.length} Sessions`}
         </div>
         <div className="dialog-body confirm-dialog-body">
-          <span>
-            Close <strong>{tab.info.name}</strong>?
-          </span>
-          <span className="confirm-dialog-target">
-            {tab.info.protocol} · {tab.info.address}
-          </span>
-          <span className="confirm-dialog-hint">
-            {connecting
-              ? "The connection attempt will be cancelled."
-              : "The session will be disconnected and its terminal output discarded."}
-          </span>
+          {single ? (
+            <>
+              <span>
+                Close <strong>{single.info.name}</strong>?
+              </span>
+              <span className="confirm-dialog-target">
+                {single.info.protocol} · {single.info.address}
+              </span>
+            </>
+          ) : (
+            <>
+              <span>
+                Close <strong>{tabs.length} sessions</strong>?
+              </span>
+              {listed.map((tab) => (
+                <span className="confirm-dialog-target" key={tab.info.id}>
+                  {tabTitle(tab)} · {tab.info.protocol} · {tab.info.address}
+                </span>
+              ))}
+              {tabs.length > listed.length && (
+                <span className="confirm-dialog-target">
+                  … and {tabs.length - listed.length} more
+                </span>
+              )}
+            </>
+          )}
+          <span className="confirm-dialog-hint">{hint}</span>
         </div>
         <div className="dialog-footer confirm-dialog-footer">
           <span className="confirm-dialog-keys">

@@ -6,6 +6,7 @@ import {
   Suspense,
   useCallback,
   useEffect,
+  useMemo,
   useRef,
   useState,
   type CSSProperties,
@@ -15,6 +16,7 @@ import {
   acceptHostKey,
   revealCwdInFiler,
   SESSION_CLOSED_NOTICE,
+  splitSession,
 } from "./actions";
 import * as api from "./api";
 import { AuthPromptDialog } from "./components/AuthPromptDialog";
@@ -30,9 +32,8 @@ import {
 import { ShortcutsDialog } from "./components/ShortcutsDialog";
 import { Splitter } from "./components/Splitter";
 import { StatusBar } from "./components/StatusBar";
-import { TabStrip } from "./components/TabStrip";
-import { TerminalPane } from "./components/TerminalPane";
 import { UpdateDialog } from "./components/UpdateDialog";
+import { Workspace } from "./components/Workspace";
 import { FilerPanel } from "./components/panels/FilerPanel";
 import { SenderPanel } from "./components/panels/SenderPanel";
 import { SessionPanel } from "./components/panels/SessionPanel";
@@ -87,6 +88,7 @@ export default function App() {
   const setShortcuts = useStore((s) => s.setShortcuts);
   const setActive = useStore((s) => s.setActive);
   const activateAdjacentTab = useStore((s) => s.activateAdjacentTab);
+  const activateAdjacentPane = useStore((s) => s.activateAdjacentPane);
   const closeTab = useStore((s) => s.closeTab);
   const requestCloseTab = useStore((s) => s.requestCloseTab);
   const setClosePrompt = useStore((s) => s.setClosePrompt);
@@ -100,10 +102,14 @@ export default function App() {
   const theme = useStore((s) => s.theme);
   const activeTab = useActiveTab();
   const fileMode = activeTab ? isFileSession(activeTab.info.kind) : false;
-  const closingTab = useStore((s) =>
-    s.closePrompt === null
-      ? undefined
-      : s.tabs.find((tab) => tab.info.id === s.closePrompt),
+  const closePrompt = useStore((s) => s.closePrompt);
+  const tabs = useStore((s) => s.tabs);
+  const closingTabs = useMemo(
+    () =>
+      closePrompt
+        ? tabs.filter((tab) => closePrompt.includes(tab.info.id))
+        : [],
+    [closePrompt, tabs],
   );
 
   const [dialog, setDialog] = useState<{ profile: SessionProfile | null } | null>(
@@ -299,6 +305,16 @@ export default function App() {
             void revealCwdInFiler(activeId);
           }
           return;
+        case "splitPane":
+          if (activeId) {
+            event.preventDefault();
+            void splitSession(activeId, shortcut.side);
+          }
+          return;
+        case "paneStep":
+          event.preventDefault();
+          activateAdjacentPane(shortcut.step);
+          return;
         case "tab": {
           const tab = useStore
             .getState()
@@ -314,6 +330,7 @@ export default function App() {
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [
+    activateAdjacentPane,
     activateAdjacentTab,
     activeId,
     findNext,
@@ -374,14 +391,13 @@ export default function App() {
         )}
 
         <div className="center">
-          <TabStrip />
+          <Workspace onNewSession={newSession} />
           {searchOpen && (
             <SearchOverlay
               ref={searchRef}
               onClose={() => setSearchOpen(false)}
             />
           )}
-          <TerminalPane onNewSession={newSession} />
         </div>
 
         {showRight && (
@@ -436,14 +452,14 @@ export default function App() {
         </Suspense>
       )}
 
-      {closingTab && (
+      {closingTabs.length > 0 && (
         <CloseSessionDialog
-          tab={closingTab}
+          tabs={closingTabs}
           onConfirm={() => {
             // Dismiss first so a second Enter cannot re-enter closeTab while
             // the backend close is still in flight.
             setClosePrompt(null);
-            void closeTab(closingTab.info.id);
+            for (const tab of closingTabs) void closeTab(tab.info.id);
           }}
           onCancel={() => setClosePrompt(null)}
         />

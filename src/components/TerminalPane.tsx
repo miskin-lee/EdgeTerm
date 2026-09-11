@@ -5,10 +5,10 @@ import {
   useEffect,
   useRef,
   useState,
+  type CSSProperties,
   type MouseEvent as ReactMouseEvent,
 } from "react";
 
-import appIcon from "../../src-tauri/icons/128x128@2x.png";
 import { ensureController, revealCwdInFiler } from "../actions";
 import { fontStack } from "../fonts";
 import { IS_MAC, shortcutLabel as sc } from "../platform";
@@ -26,57 +26,44 @@ const FtpPane = lazy(() =>
 );
 
 interface Props {
-  onNewSession: () => void;
+  tab: Tab;
+  /** Shown in its pane: the tab its strip has selected. */
+  visible: boolean;
+  /** The active tab of the active pane, which is where keys go. */
+  focused: boolean;
+  /** Where the pane sits in the workspace; see `Workspace`. */
+  style: CSSProperties;
 }
 
 /** The user-configurable accelerator for `command`, as a menu writes it. */
-const useAccelerator = (command: ShortcutCommand): string =>
+export const useAccelerator = (command: ShortcutCommand): string =>
   useStore((s) => chordLabel(s.shortcuts[command]));
 
-export function TerminalPane({ onNewSession }: Props) {
-  const tabs = useStore((s) => s.tabs);
-  const activeId = useStore((s) => s.activeId);
-  const newSessionKey = useAccelerator("newSession");
+export function SessionPane({ tab, visible, focused, style }: Props) {
+  const setActive = useStore((s) => s.setActive);
+  const id = tab.info.id;
+
+  // A press or keyboard focus anywhere in the pane makes its session the
+  // active one — menus, the Filer and the Sender follow it — the way a
+  // click in a VS Code editor group focuses that group. Capture phase, so
+  // xterm's own mousedown handling is untouched.
+  const claim = () => {
+    if (useStore.getState().activeId !== id) setActive(id);
+  };
 
   return (
-    <div className="term-stack">
-      {tabs.map((tab) => (
-        isFileSession(tab.info.kind) ? (
-          <Suspense key={tab.info.id} fallback={null}>
-            <FtpPane tab={tab} active={tab.info.id === activeId} />
-          </Suspense>
-        ) : (
-          <TerminalHost
-            key={tab.info.id}
-            tab={tab}
-            active={tab.info.id === activeId}
-          />
-        )
-      ))}
-
-      {tabs.length === 0 && (
-        <div className="term-empty">
-          <img
-            className="term-empty-icon"
-            src={appIcon}
-            alt=""
-            draggable={false}
-          />
-          <h1>EdgeTerm</h1>
-          <p className="term-empty-hint">
-            {newSessionKey ? (
-              <>
-                Press <kbd>{newSessionKey}</kbd> for a new session, or pick one
-                from the Session panel.
-              </>
-            ) : (
-              "Open a new session, or pick one from the Session panel."
-            )}
-          </p>
-          <button className="btn is-primary" onClick={onNewSession}>
-            New Session
-          </button>
-        </div>
+    <div
+      className={`pane-slot${visible ? "" : " is-hidden"}`}
+      style={style}
+      onMouseDownCapture={claim}
+      onFocusCapture={claim}
+    >
+      {isFileSession(tab.info.kind) ? (
+        <Suspense fallback={null}>
+          <FtpPane tab={tab} active={visible} />
+        </Suspense>
+      ) : (
+        <TerminalHost tab={tab} visible={visible} focused={focused} />
       )}
     </div>
   );
@@ -98,7 +85,15 @@ interface TerminalMenu {
  * treats as "bypass the program" (macOS has no such key: Option is Meta
  * there).
  */
-function TerminalHost({ tab, active }: { tab: Tab; active: boolean }) {
+function TerminalHost({
+  tab,
+  visible,
+  focused,
+}: {
+  tab: Tab;
+  visible: boolean;
+  focused: boolean;
+}) {
   const ref = useRef<HTMLDivElement>(null);
   const gutterMode = useStore((s) => s.gutterMode);
   const bufferFontSize = useStore((s) => s.bufferFontSize);
@@ -262,22 +257,27 @@ function TerminalHost({ tab, active }: { tab: Tab; active: boolean }) {
     if (!terminal) return;
     // The terminal keeps its WebGL renderer for the tabs shown recently
     // and gives it up for the rest; see TerminalController.setVisible.
-    terminal.setVisible(active);
-    if (!active) return;
-    // The pane is hidden while inactive, so it can only be measured and
-    // focused once it is on screen again.
-    const frame = requestAnimationFrame(() => {
-      terminal.fit();
-      terminal.focus();
-    });
+    terminal.setVisible(visible);
+    if (!visible) return;
+    // The pane is hidden while its strip shows another tab, so it can only
+    // be measured once it is on screen again.
+    const frame = requestAnimationFrame(() => terminal.fit());
     return () => cancelAnimationFrame(frame);
-  }, [active, terminal]);
+  }, [visible, terminal]);
+
+  // Keys go to the active tab of the active pane; a tab shown in another
+  // pane stays visible without taking them.
+  useEffect(() => {
+    if (!terminal || !focused) return;
+    const frame = requestAnimationFrame(() => terminal.focus());
+    return () => cancelAnimationFrame(frame);
+  }, [focused, terminal]);
 
   return (
     <>
       <div
         ref={ref}
-        className={`term-pane${active ? "" : " is-hidden"}`}
+        className="term-pane"
         onContextMenu={onContextMenu}
         onMouseUp={onMiddleButton}
         onAuxClick={onMiddleButton}

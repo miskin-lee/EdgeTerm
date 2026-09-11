@@ -310,11 +310,35 @@ textarea:focus {
   flex: none;
 }
 
+/* The bar's right third: the layout buttons, then (Windows / Linux) the window controls. */
+.menubar-right {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  align-self: stretch;
+  flex: 2 1 20%;
+  min-width: min-content;
+}
+
+.layout-actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  margin: 0 4px;
+}
+
+.layout-actions .panel-action:disabled {
+  color: var(--fg-faint);
+  opacity: 0.5;
+  background: none;
+  cursor: default;
+}
+
 .window-controls {
   display: flex;
   justify-content: flex-end;
   align-self: stretch;
-  flex: 2 1 20%;
+  flex: none;
   min-width: min-content;
   margin-right: -8px; /* flush with the window edge despite the bar padding */
 }
@@ -973,8 +997,8 @@ textarea:focus {
 /* --- tabs ----------------------------------------------------------------- */
 
 .tabstrip {
-  flex: 0 0 30px;
-  height: 30px;
+  flex: 0 0 var(--tabstrip-height);
+  height: var(--tabstrip-height);
   display: flex;
   align-items: stretch;
   background: var(--bg-app);
@@ -1430,11 +1454,51 @@ textarea:focus {
 
 /* --- terminal ------------------------------------------------------------- */
 
-.term-stack {
+/*
+ * The terminal area (see Workspace): panes and sessions are placed in
+ * fractions of it, sessions over the pane holding them, splitters over the
+ * boundaries. --tabstrip-height is what the geometry takes off the top of a
+ * pane for its strip.
+ */
+.workspace {
+  --tabstrip-height: 30px;
   position: relative;
   flex: 1;
   min-height: 0;
   background: var(--bg-terminal);
+}
+
+.pane {
+  position: absolute;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.pane-stack {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  background: var(--bg-terminal);
+}
+
+/* An unfocused pane still shows which tab it has, but quieter. */
+.pane:not(.is-focused) .tab.is-active {
+  color: var(--fg-dim);
+  box-shadow: inset 0 2px 0
+    color-mix(in srgb, var(--session-color, var(--accent)) 40%, transparent);
+}
+
+.pane-slot {
+  position: absolute;
+  display: flex;
+  overflow: hidden;
+}
+
+.pane-slot.is-hidden {
+  visibility: hidden;
+  pointer-events: none;
+  z-index: -1;
 }
 
 .term-pane {
@@ -1444,10 +1508,97 @@ textarea:focus {
   overflow: hidden;
 }
 
-.term-pane.is-hidden {
-  visibility: hidden;
+/*
+ * A boundary between panes. The 1px line sits on the last pixel of the pane
+ * before it, so the panes tile the workspace exactly; the grab area is the
+ * splitter's own.
+ */
+.pane-splitter {
+  position: absolute;
+  z-index: 5;
+  display: flex;
+}
+
+.pane-splitter.is-row {
+  width: 1px;
+  margin-left: -1px;
+}
+
+.pane-splitter.is-column {
+  flex-direction: column;
+  height: 1px;
+  margin-top: -1px;
+}
+
+/* Where a dragged tab would land: the whole pane, or the half it would split off. */
+.pane-drop {
+  position: absolute;
+  inset: 0;
+  z-index: 4;
   pointer-events: none;
-  z-index: -1;
+  background: color-mix(in srgb, var(--accent) 18%, transparent);
+  box-shadow: inset 0 0 0 1px var(--accent);
+  transition:
+    left 90ms ease,
+    right 90ms ease,
+    top 90ms ease,
+    bottom 90ms ease;
+}
+
+.pane-drop.is-left {
+  right: 50%;
+}
+
+.pane-drop.is-right {
+  left: 50%;
+}
+
+.pane-drop.is-up {
+  bottom: 50%;
+}
+
+.pane-drop.is-down {
+  top: 50%;
+}
+
+/* The slot a tab dragged from another strip would take. */
+.tab-drop-marker {
+  position: relative;
+  flex: 0 0 0;
+  width: 0;
+  z-index: 2;
+}
+
+.tab-drop-marker::after {
+  content: "";
+  position: absolute;
+  top: 5px;
+  bottom: 5px;
+  left: -1px;
+  width: 2px;
+  border-radius: 1px;
+  background: var(--accent);
+}
+
+/* Follows the pointer while a tab is dragged beyond its own strip. */
+.tab-drag-ghost {
+  position: fixed;
+  top: 0;
+  left: 0;
+  z-index: 1000;
+  pointer-events: none;
+  max-width: 220px;
+  padding: 4px 10px;
+  border: 1px solid var(--border-strong);
+  border-radius: 4px;
+  background: var(--bg-panel);
+  box-shadow: var(--shadow-pop);
+  color: var(--fg);
+  font-size: var(--panel-font-size);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  opacity: 0.92;
 }
 
 /* --- FTP workspace -------------------------------------------------------- */

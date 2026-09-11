@@ -13,7 +13,11 @@ import { ask } from "@tauri-apps/plugin-dialog";
 import { openUrl } from "@tauri-apps/plugin-opener";
 
 import appIcon from "../../src-tauri/icons/32x32.png";
-import { revealCwdInFiler, toggleSessionConnection } from "../actions";
+import {
+  revealCwdInFiler,
+  splitSession,
+  toggleSessionConnection,
+} from "../actions";
 import { windowControl } from "../api";
 import { exportAppData, importAppData } from "../dataTransfer";
 import { commandHistory } from "../history";
@@ -264,6 +268,7 @@ export function MenuBar(props: Props) {
   const setStatus = useStore((s) => s.setStatus);
   const requestCloseTab = useStore((s) => s.requestCloseTab);
   const activateAdjacentTab = useStore((s) => s.activateAdjacentTab);
+  const activateAdjacentPane = useStore((s) => s.activateAdjacentPane);
 
   useEffect(() => {
     if (!open) return;
@@ -332,6 +337,16 @@ export function MenuBar(props: Props) {
           label: "Next Session",
           shortcut: accel("nextTab"),
           action: () => activateAdjacentTab(1),
+        },
+        {
+          label: "Previous Pane",
+          shortcut: accel("prevPane"),
+          action: () => activateAdjacentPane(-1),
+        },
+        {
+          label: "Next Pane",
+          shortcut: accel("nextPane"),
+          action: () => activateAdjacentPane(1),
         },
         "separator",
         {
@@ -494,6 +509,19 @@ export function MenuBar(props: Props) {
           shortcut: accel("panelSender"),
           checked: panels.sender,
           action: () => togglePanel("sender"),
+        },
+        "separator",
+        {
+          // A split opens the active session's profile again beside it; see
+          // splitSession.
+          label: "Split Right",
+          shortcut: accel("splitRight"),
+          action: withActive((id) => void splitSession(id, "right")),
+        },
+        {
+          label: "Split Down",
+          shortcut: accel("splitDown"),
+          action: withActive((id) => void splitSession(id, "down")),
         },
         "separator",
         {
@@ -714,7 +742,31 @@ export function MenuBar(props: Props) {
           </span>
         </div>
       )}
-      {!IS_MAC && <WindowControls maximized={maximized} />}
+      {/* Layout buttons at the right end of the bar, where VS Code keeps
+          its own; on Windows / Linux the window controls follow them. */}
+      <div className="menubar-right" data-tauri-drag-region>
+        <div className="layout-actions">
+          <button
+            className="panel-action"
+            disabled={!activeId}
+            onClick={withActive((id) => void splitSession(id, "right"))}
+            title={`Split Right${accel("splitRight") ? ` (${accel("splitRight")})` : ""}`}
+            aria-label="Split Right"
+          >
+            <Icon name="split-horizontal" />
+          </button>
+          <button
+            className="panel-action"
+            disabled={!activeId}
+            onClick={withActive((id) => void splitSession(id, "down"))}
+            title={`Split Down${accel("splitDown") ? ` (${accel("splitDown")})` : ""}`}
+            aria-label="Split Down"
+          >
+            <Icon name="split-vertical" />
+          </button>
+        </div>
+        {!IS_MAC && <WindowControls maximized={maximized} />}
+      </div>
     </div>
   );
 }
