@@ -11,7 +11,7 @@ import {
 
 import { ensureController, revealCwdInFiler } from "../actions";
 import { fontStack } from "../fonts";
-import { IS_MAC, shortcutLabel as sc } from "../platform";
+import { IS_MAC } from "../platform";
 import { chordLabel, type ShortcutCommand } from "../shortcuts";
 import { useStore, type Tab } from "../store";
 import type { TerminalController } from "../terminal";
@@ -113,6 +113,9 @@ function TerminalHost({
   // the semantic colors that ride on it. Keeping it in state re-runs them the
   // moment it exists.
   const [terminal, setTerminal] = useState<TerminalController | null>(null);
+  const copyKey = useAccelerator("copy");
+  const pasteKey = useAccelerator("paste");
+  const selectAllKey = useAccelerator("selectAll");
   const clearKey = useAccelerator("clear");
   const revealCwdKey = useAccelerator("revealCwd");
 
@@ -170,20 +173,20 @@ function TerminalHost({
     {
       label: "Copy",
       icon: "copy",
-      shortcut: sc("⌘C", "Ctrl+Shift+C"),
+      shortcut: copyKey,
       disabled: !menu?.canCopy,
       action: withTerminal((controller) => controller.copySelection()),
     },
     {
       label: "Paste",
       icon: "clippy",
-      shortcut: sc("⌘V", "Ctrl+Shift+V"),
+      shortcut: pasteKey,
       action: withTerminal((controller) => controller.pasteFromClipboard()),
     },
     {
       label: "Select All",
       icon: "list-selection",
-      shortcut: sc("⌘A", "Ctrl+Shift+A"),
+      shortcut: selectAllKey,
       action: withTerminal((controller) => controller.selectAll()),
     },
     "separator",

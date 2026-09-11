@@ -7,7 +7,3 @@ export const IS_MAC: boolean = __EDGETERM_MAC__;
 
 /** True when built for Windows (shell placeholder, path conventions). */
 export const IS_WINDOWS: boolean = __EDGETERM_WINDOWS__;
-
-/** Pick the shortcut label for the current platform. */
-export const shortcutLabel = (mac: string, other: string): string =>
-  IS_MAC ? mac : other;

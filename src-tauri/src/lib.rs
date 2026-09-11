@@ -59,8 +59,9 @@ fn create_main_window(app: &tauri::App) -> tauri::Result<()> {
     // WebView2's PermissionRequested with "allow" and turns on WebKitGTK's
     // javascript-can-access-clipboard; without it WebView2 shows its own
     // prompt, remembers a refusal, and every paste fails silently (#45).
-    // macOS needs nothing. `read_clipboard_text` covers a profile that already
-    // refused.
+    // `read_clipboard_text` covers a profile that already refused, and is
+    // the whole paste path on macOS, where WebKit confirms any page read
+    // outside its own ⌘V with a "Paste" menu (#47).
     let mut builder = tauri::WebviewWindowBuilder::from_config(app.handle(), &config)?
         .enable_clipboard_access()
         .background_color(match store::startup_theme() {

@@ -315,6 +315,13 @@ export default function App() {
           event.preventDefault();
           activateAdjacentPane(shortcut.step);
           return;
+        case "copy":
+        case "paste":
+        case "selectAll":
+          // The terminal's own: its key filter answers them while it has
+          // focus (see terminal.ts). Anywhere else the browser keeps its
+          // native editing keys, so ⌘C in a text field still copies from it.
+          return;
         case "tab": {
           const tab = useStore
             .getState()

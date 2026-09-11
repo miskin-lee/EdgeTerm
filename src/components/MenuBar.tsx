@@ -21,7 +21,7 @@ import {
 import { windowControl } from "../api";
 import { exportAppData, importAppData } from "../dataTransfer";
 import { commandHistory } from "../history";
-import { IS_MAC, shortcutLabel as sc } from "../platform";
+import { IS_MAC } from "../platform";
 import { chordLabel, type ShortcutCommand } from "../shortcuts";
 import { tabTitle, useActiveTab, useStore } from "../store";
 import type {
@@ -261,8 +261,8 @@ export function MenuBar(props: Props) {
   const rightClickAction = useStore((s) => s.rightClickAction);
   const setRightClickAction = useStore((s) => s.setRightClickAction);
   const resetSettings = useStore((s) => s.resetSettings);
-  // The accelerators the user can rebind; the rest are fixed per platform
-  // (see shortcuts.ts) and stay written out with `sc`.
+  // The accelerators as the user has bound them (see shortcuts.ts); only
+  // the tab-number keys are fixed.
   const shortcuts = useStore((s) => s.shortcuts);
   const accel = (command: ShortcutCommand) => chordLabel(shortcuts[command]);
   const setStatus = useStore((s) => s.setStatus);
@@ -410,17 +410,17 @@ export function MenuBar(props: Props) {
       entries: [
         {
           label: "Copy",
-          shortcut: sc("⌘C", "Ctrl+Shift+C"),
+          shortcut: accel("copy"),
           action: withActive((id) => getController(id)?.copySelection()),
         },
         {
           label: "Paste",
-          shortcut: sc("⌘V", "Ctrl+Shift+V"),
+          shortcut: accel("paste"),
           action: withActive((id) => getController(id)?.pasteFromClipboard()),
         },
         {
           label: "Select All",
-          shortcut: sc("⌘A", "Ctrl+Shift+A"),
+          shortcut: accel("selectAll"),
           action: withActive((id) => getController(id)?.selectAll()),
         },
         // Mouse copy / paste is a Windows / Linux choice; macOS terminals

@@ -158,6 +158,14 @@ function openTerminalWebLink(event: MouseEvent, uri: string) {
   });
 }
 
+/** Plain Ctrl+letter: a control character to the shell (^C, ^W, ^D …). */
+const isControlLetter = (event: KeyboardEvent): boolean =>
+  event.ctrlKey &&
+  !event.altKey &&
+  !event.metaKey &&
+  !event.shiftKey &&
+  /^[a-z]$/i.test(event.key);
+
 /**
  * What Alt+arrow sends, by `event.key` in lower case: what xterm 5 sent for
  * the same keys (see the handler in the constructor).
@@ -594,127 +602,131 @@ export class TerminalController {
       this.queueViewportSync();
       if (this.inputAnchor || this.candidates.length) this.schedulePopupSync();
     });
-    this.term.attachCustomKeyEventHandler((event) => {
-      if (event.type !== "keydown") return true;
-      const key = event.key.toLowerCase();
-
-      // IDE-style completion popup. While it is *passive* every key still
-      // reaches the shell (so ↑ history, Tab completion and a remote shell's
-      // own → autosuggest keep working); only ↓ (step into the list) and Esc
-      // (dismiss) are taken. Once a row is selected the list owns ↑/↓ and
-      // Enter/Tab accept — the user opted in by stepping into it.
-      if (
-        this.candidates.length > 0 &&
-        !event.isComposing &&
-        !event.ctrlKey &&
-        !event.altKey &&
-        !event.metaKey &&
-        !event.shiftKey
-      ) {
-        if (key === "escape") {
-          event.preventDefault();
-          this.dismissedInput = this.popupInput;
-          this.hidePopup();
-          return false;
-        }
-        if (key === "arrowdown") {
-          event.preventDefault();
-          this.setPopupIndex(
-            this.popupIndex >= this.candidates.length - 1
-              ? this.candidates.length - 1
-              : this.popupIndex + 1,
-          );
-          return false;
-        }
-        if (this.popupIndex >= 0) {
-          if (key === "arrowup") {
-            event.preventDefault();
-            this.setPopupIndex(this.popupIndex - 1);
-            return false;
-          }
-          if (key === "enter" || key === "tab") {
-            event.preventDefault();
-            this.acceptSuggestion(this.popupIndex);
-            return false;
-          }
-        }
-      }
-
-      // Alt+arrow word jumps. xterm 5 rewrote Alt+←/→ into the readline
-      // word-motion keys (ESC b / ESC f on macOS, Ctrl+arrow elsewhere) and
-      // Alt+↑/↓ into Ctrl+↑/↓ off macOS; xterm 6 dropped that (#5346) and
-      // sends the plain Alt-modified sequences, which zsh and bash leave
-      // unbound. Kept here so the keys behave as they did in 0.6.x.
-      if (
-        event.altKey &&
-        !event.ctrlKey &&
-        !event.metaKey &&
-        !event.shiftKey &&
-        !event.isComposing
-      ) {
-        const sequence = ALT_ARROW_SEQUENCES[key];
-        if (sequence) {
-          event.preventDefault();
-          this.term.input(sequence, true);
-          return false;
-        }
-      }
-
-      if (IS_MAC) {
-        // Only ⌘ combinations are app keys on macOS. Option types characters
-        // and Ctrl belongs to the shell, so both go straight to xterm.
-        if (!event.metaKey) return true;
-        if (key === "c" && this.term.hasSelection()) {
-          // Let the browser emit its native copy event. xterm handles that
-          // event and writes the current selection to the clipboard once.
-          return false;
-        }
-        if (key === "v") {
-          // Let the browser emit its native paste event. xterm handles newline
-          // normalization and bracketed paste before forwarding the text
-          // through onData. Reading and forwarding it here as well would paste
-          // it twice.
-          return false;
-        }
-        // ⌘N / W / F / G / K, ⌘[ / ⌘] and ⌘1–9 are app shortcuts. Leave
-        // them unhandled so the window-level handler receives them.
-        if (matchAppShortcut(event)) return false;
-        return true;
-      }
-
-      // Windows / Linux: Ctrl+Shift+A / C / V select all, copy and paste, as
-      // in WindTerm, GNOME Terminal and VS Code. Plain Ctrl+A/C/V keep
-      // reaching the shell (^A is readline beginning-of-line, ^C is SIGINT,
-      // ^V is quoted-insert), and Alt+letter is left alone because it is
-      // readline's Meta layer. (xterm itself maps ⌘A to select-all on macOS.)
-      const ctrlShiftOnly =
-        event.ctrlKey && event.shiftKey && !event.altKey && !event.metaKey;
-      if (ctrlShiftOnly && key === "a") {
-        event.preventDefault();
-        this.term.selectAll();
-        return false;
-      }
-      if (ctrlShiftOnly && key === "c") {
-        // Consumed even without a selection so it never reaches the shell
-        // as an accidental ^C.
-        event.preventDefault();
-        this.copySelection();
-        return false;
-      }
-      if (ctrlShiftOnly && key === "v") {
-        event.preventDefault();
-        this.pasteFromClipboard();
-        return false;
-      }
-
-      // Ctrl+Shift+W / F / G, Alt+N / K, Alt+[ / Alt+] and Alt+1–9 are app
-      // shortcuts. Leave them unhandled so the window-level handler receives
-      // them instead of xterm sending ESC-prefixed input.
-      if (matchAppShortcut(event)) return false;
-      return true;
-    });
+    this.term.attachCustomKeyEventHandler((event) => this.filterKey(event));
 
     this.lineTimes.push(Date.now());
+  }
+
+  /**
+   * xterm's key filter. True hands the key to xterm; false keeps it from
+   * xterm, and unless it is cancelled here as well the window-level
+   * shortcut handler still receives it.
+   */
+  private filterKey(event: KeyboardEvent): boolean {
+    if (event.type !== "keydown") return true;
+    const key = event.key.toLowerCase();
+
+    // IDE-style completion popup. While it is *passive* every key still
+    // reaches the shell (so ↑ history, Tab completion and a remote shell's
+    // own → autosuggest keep working); only ↓ (step into the list) and Esc
+    // (dismiss) are taken. Once a row is selected the list owns ↑/↓ and
+    // Enter/Tab accept — the user opted in by stepping into it.
+    if (
+      this.candidates.length > 0 &&
+      !event.isComposing &&
+      !event.ctrlKey &&
+      !event.altKey &&
+      !event.metaKey &&
+      !event.shiftKey
+    ) {
+      if (key === "escape") {
+        event.preventDefault();
+        this.dismissedInput = this.popupInput;
+        this.hidePopup();
+        return false;
+      }
+      if (key === "arrowdown") {
+        event.preventDefault();
+        this.setPopupIndex(
+          this.popupIndex >= this.candidates.length - 1
+            ? this.candidates.length - 1
+            : this.popupIndex + 1,
+        );
+        return false;
+      }
+      if (this.popupIndex >= 0) {
+        if (key === "arrowup") {
+          event.preventDefault();
+          this.setPopupIndex(this.popupIndex - 1);
+          return false;
+        }
+        if (key === "enter" || key === "tab") {
+          event.preventDefault();
+          this.acceptSuggestion(this.popupIndex);
+          return false;
+        }
+      }
+    }
+
+    // Alt+arrow word jumps. xterm 5 rewrote Alt+←/→ into the readline
+    // word-motion keys (ESC b / ESC f on macOS, Ctrl+arrow elsewhere) and
+    // Alt+↑/↓ into Ctrl+↑/↓ off macOS; xterm 6 dropped that (#5346) and
+    // sends the plain Alt-modified sequences, which zsh and bash leave
+    // unbound. Kept here so the keys behave as they did in 0.6.x.
+    if (
+      event.altKey &&
+      !event.ctrlKey &&
+      !event.metaKey &&
+      !event.shiftKey &&
+      !event.isComposing
+    ) {
+      const sequence = ALT_ARROW_SEQUENCES[key];
+      if (sequence) {
+        event.preventDefault();
+        this.term.input(sequence, true);
+        return false;
+      }
+    }
+
+    // The shortcut table, copy / paste / select all included (#47). Those
+    // three are the terminal's own and run right here; every other match
+    // is left unhandled — not cancelled — so the window-level handler
+    // receives it instead of xterm turning it into input. Plain
+    // Ctrl+letter and Alt+letter are never matched unless the user bound
+    // them: they are the shell's control characters and readline's Meta
+    // layer.
+    const shortcut = matchAppShortcut(event);
+    if (shortcut) {
+      switch (shortcut.kind) {
+        case "copy":
+          // A copy key that is plain Ctrl+letter is a shell key as well
+          // (Ctrl+C interrupts), so with nothing selected it goes on to the
+          // shell, as in Windows Terminal. Any other chord is consumed even
+          // then: Ctrl+Shift+C would otherwise arrive as a stray ^C.
+          if (!this.term.hasSelection() && isControlLetter(event)) return true;
+          event.preventDefault();
+          this.copySelection();
+          return false;
+        case "paste":
+          event.preventDefault();
+          this.pasteFromClipboard();
+          return false;
+        case "selectAll":
+          event.preventDefault();
+          this.term.selectAll();
+          return false;
+        default:
+          return false;
+      }
+    }
+
+    // WebKit answers plain ⌘C / ⌘V itself (its copy and paste editing
+    // commands fire on xterm's textarea) and xterm maps ⌘A to select-all,
+    // so once the user has moved those commands to other keys these have
+    // to be swallowed, or the old bindings would go on working beside the
+    // new ones. ⌘ never reaches the shell, so nothing is lost.
+    if (
+      IS_MAC &&
+      event.metaKey &&
+      !event.ctrlKey &&
+      !event.altKey &&
+      !event.shiftKey &&
+      (key === "c" || key === "v" || key === "a")
+    ) {
+      event.preventDefault();
+      return false;
+    }
+    return true;
   }
 
   attach(root: HTMLElement) {
@@ -1080,13 +1092,19 @@ export class TerminalController {
   }
 
   /**
-   * The clipboard's text. The page reads it itself, which WebView2 gates
-   * behind the clipboard-read permission (granted through
-   * `enable_clipboard_access` in lib.rs). A profile that refused the prompt
-   * before the app granted it keeps refusing, and the prompt is not raised
-   * again, so on Windows the process reads it instead (`read_clipboard_text`).
+   * The clipboard's text. On macOS the process reads it
+   * (`read_clipboard_text`): WebKit lets a page read the pasteboard only from
+   * inside its own paste command (⌘V, Edit → Paste on the system menu) and
+   * answers any other gesture with a "Paste" confirmation menu the user has
+   * to click, which a rebindable paste key cannot live with. Elsewhere the
+   * page reads it, which WebView2 gates behind the clipboard-read permission
+   * (granted through `enable_clipboard_access` in lib.rs). A profile that
+   * refused the prompt before the app granted it keeps refusing, and the
+   * prompt is not raised again, so on Windows the process reads it as well
+   * when the page cannot.
    */
   private async readClipboard(): Promise<string> {
+    if (IS_MAC) return readClipboardText();
     try {
       return await navigator.clipboard.readText();
     } catch (error) {

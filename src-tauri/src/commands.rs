@@ -687,13 +687,18 @@ pub fn show_main_window(window: tauri::WebviewWindow) -> Result<()> {
     Ok(())
 }
 
-/// The clipboard's text, read by the process rather than the page. The page
-/// reads its own clipboard (`navigator.clipboard.readText`), and the window is
-/// created with `enable_clipboard_access` so WebView2 grants that; but a
-/// WebView2 profile that refused the permission prompt before the app granted
-/// it keeps refusing (the refusal is stored per origin and the prompt is not
-/// raised again), so on Windows the front end falls back to this (#45). Empty
-/// when the clipboard holds no text, as the page's read is.
+/// The clipboard's text, read by the process rather than the page. On macOS
+/// this is the paste path (#47): WebKit lets a page read the pasteboard only
+/// from inside its own paste command (⌘V, Edit → Paste on the system menu)
+/// and answers any other gesture with a "Paste" confirmation menu the user
+/// has to click, so a paste key the user chose could not read it from the
+/// page. Elsewhere the page reads its own clipboard
+/// (`navigator.clipboard.readText`), and the window is created with
+/// `enable_clipboard_access` so WebView2 grants that; but a WebView2 profile
+/// that refused the permission prompt before the app granted it keeps
+/// refusing (the refusal is stored per origin and the prompt is not raised
+/// again), so on Windows the front end falls back to this (#45). Empty when
+/// the clipboard holds no text, as the page's read is.
 #[tauri::command]
 pub fn read_clipboard_text() -> Result<String> {
     #[cfg(windows)]
@@ -703,7 +708,14 @@ pub fn read_clipboard_text() -> Result<String> {
         }
         clipboard_win::get_clipboard_string().map_err(err)
     }
-    #[cfg(not(windows))]
+    #[cfg(target_os = "macos")]
+    {
+        use objc2_app_kit::{NSPasteboard, NSPasteboardTypeString};
+        let text =
+            NSPasteboard::generalPasteboard().stringForType(unsafe { NSPasteboardTypeString });
+        Ok(text.map(|text| text.to_string()).unwrap_or_default())
+    }
+    #[cfg(not(any(windows, target_os = "macos")))]
     {
         Err("the page reads the clipboard on this platform".into())
     }

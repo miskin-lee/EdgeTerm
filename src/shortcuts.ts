@@ -44,6 +44,9 @@ export type ShortcutCommand =
   | "splitDown"
   | "prevPane"
   | "nextPane"
+  | "copy"
+  | "paste"
+  | "selectAll"
   | "panelSessions"
   | "panelFiler"
   | "panelSender";
@@ -62,6 +65,9 @@ export type AppShortcut =
   | { kind: "tab"; number: number }
   | { kind: "splitPane"; side: "right" | "down" }
   | { kind: "paneStep"; step: -1 | 1 }
+  | { kind: "copy" }
+  | { kind: "paste" }
+  | { kind: "selectAll" }
   | { kind: "togglePanel"; panel: PanelName };
 
 /** What each command does, and the order the settings dialog lists them in. */
@@ -118,6 +124,24 @@ export const SHORTCUT_COMMANDS: {
     label: "Next Pane",
     hint: "Focus the pane after this one",
     action: { kind: "paneStep", step: 1 },
+  },
+  {
+    id: "copy",
+    label: "Copy",
+    hint: "Copy the terminal selection",
+    action: { kind: "copy" },
+  },
+  {
+    id: "paste",
+    label: "Paste",
+    hint: "Paste the clipboard into the terminal",
+    action: { kind: "paste" },
+  },
+  {
+    id: "selectAll",
+    label: "Select All",
+    hint: "Select the whole terminal buffer",
+    action: { kind: "selectAll" },
   },
   {
     id: "find",
@@ -194,6 +218,9 @@ const MAC_DEFAULTS: ShortcutBindings = {
   splitDown: chord("Backslash", { meta: true, shift: true }),
   prevPane: chord("BracketLeft", { meta: true, alt: true }),
   nextPane: chord("BracketRight", { meta: true, alt: true }),
+  copy: chord("KeyC", { meta: true }),
+  paste: chord("KeyV", { meta: true }),
+  selectAll: chord("KeyA", { meta: true }),
   panelSessions: chord("ArrowLeft", { meta: true, alt: true }),
   panelFiler: chord("ArrowRight", { meta: true, alt: true }),
   panelSender: chord("ArrowDown", { meta: true, alt: true }),
@@ -228,6 +255,12 @@ const OTHER_DEFAULTS: ShortcutBindings = {
   splitDown: chord("Backslash", { ctrl: true, alt: true }),
   prevPane: chord("BracketLeft", { ctrl: true, alt: true }),
   nextPane: chord("BracketRight", { ctrl: true, alt: true }),
+  // Ctrl+Shift+C / V is what WindTerm, MobaXterm, GNOME Terminal and VS Code
+  // paste with; Ctrl+Insert / Shift+Insert (PuTTY) and plain Ctrl+C / V are
+  // a rebinding away.
+  copy: chord("KeyC", { ctrl: true, shift: true }),
+  paste: chord("KeyV", { ctrl: true, shift: true }),
+  selectAll: chord("KeyA", { ctrl: true, shift: true }),
   panelSessions: chord("ArrowLeft", { ctrl: true, alt: true }),
   panelFiler: chord("ArrowRight", { ctrl: true, alt: true }),
   panelSender: chord("ArrowDown", { ctrl: true, alt: true }),
@@ -380,29 +413,20 @@ export function chordLabel(binding: KeyChord | null | undefined): string {
 }
 
 /**
- * Chords the terminal or the OS answers before the app ever sees them, so
- * binding a command to one would leave it silently dead. Copy / paste /
- * select all are handled inside the terminal (see `terminal.ts`); the macOS
- * entries belong to the system menu Tauri installs.
+ * Chords the OS answers before the app ever sees them, so binding a command
+ * to one would leave it silently dead: the macOS entries belong to the
+ * system menu Tauri installs. Copy / paste / select all used to be listed
+ * here; they are ordinary commands of the table now (#47), answered by the
+ * terminal's key filter.
  */
 const RESERVED_CHORDS: { chord: KeyChord; owner: string }[] = IS_MAC
   ? [
-      { chord: chord("KeyC", { meta: true }), owner: "Copy" },
-      { chord: chord("KeyV", { meta: true }), owner: "Paste" },
-      { chord: chord("KeyA", { meta: true }), owner: "Select All" },
       { chord: chord("KeyX", { meta: true }), owner: "Cut" },
       { chord: chord("KeyQ", { meta: true }), owner: "Quit EdgeTerm" },
       { chord: chord("KeyH", { meta: true }), owner: "Hide EdgeTerm" },
       { chord: chord("KeyM", { meta: true }), owner: "Minimize" },
     ]
-  : [
-      { chord: chord("KeyC", { ctrl: true, shift: true }), owner: "Copy" },
-      { chord: chord("KeyV", { ctrl: true, shift: true }), owner: "Paste" },
-      {
-        chord: chord("KeyA", { ctrl: true, shift: true }),
-        owner: "Select All",
-      },
-    ];
+  : [];
 
 /** The modifiers that switch to tab N; the digits themselves stay fixed. */
 const tabDigitModifiers = (event: ShortcutKeyEvent): boolean =>
@@ -429,13 +453,21 @@ const toEvent = (binding: KeyChord): ShortcutKeyEvent => ({
 });
 
 /**
+ * Keys that never type a character, so Shift alone is modifier enough for
+ * them: Shift+Insert is the paste key of PuTTY, MobaXterm and every X
+ * terminal, and Ctrl+Insert / Shift+Delete are its copy / cut companions.
+ */
+const SHIFT_ONLY_KEYS = /^(Insert|Delete|Home|End|PageUp|PageDown|F([1-9]|1\d|2[0-4]))$/;
+
+/**
  * Why `binding` cannot be given to `command`, or null when it can. Chords
  * without a real modifier are refused because they would swallow ordinary
- * typing, and chords the terminal or the system already answers are refused
- * because the command would never run.
+ * typing, and chords the system already answers are refused because the
+ * command would never run.
  */
 export function chordProblem(binding: KeyChord): string | null {
-  if (!binding.ctrl && !binding.alt && !binding.meta) {
+  const bareShift = binding.shift && SHIFT_ONLY_KEYS.test(binding.code);
+  if (!binding.ctrl && !binding.alt && !binding.meta && !bareShift) {
     return IS_MAC
       ? "Hold ⌘, ⌥ or ⌃ as well, or the key would be typed into the terminal."
       : "Hold Ctrl or Alt as well, or the key would be typed into the terminal.";

@@ -3,7 +3,6 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 vi.mock("./platform", () => ({
   IS_MAC: true,
   IS_WINDOWS: false,
-  shortcutLabel: (mac: string) => mac,
 }));
 
 import {
@@ -68,6 +67,18 @@ describe("default bindings", () => {
     expect(
       matchAppShortcut(press("ArrowLeft", { metaKey: true, altKey: true })),
     ).toEqual({ kind: "togglePanel", panel: "sessions" });
+  });
+
+  it("lists copy, paste and select all like any other command", () => {
+    expect(matchAppShortcut(press("KeyC", { metaKey: true }))).toEqual({
+      kind: "copy",
+    });
+    expect(matchAppShortcut(press("KeyV", { metaKey: true }))).toEqual({
+      kind: "paste",
+    });
+    expect(matchAppShortcut(press("KeyA", { metaKey: true }))).toEqual({
+      kind: "selectAll",
+    });
   });
 
   it("switches tabs on ⌘1–9, which stay fixed", () => {
@@ -151,9 +162,22 @@ describe("chords", () => {
 
   it("refuses chords the app could never answer", () => {
     expect(chordProblem(chord("KeyN", { shift: true }))).toMatch(/⌘/);
-    expect(chordProblem(chord("KeyC", { meta: true }))).toMatch(/Copy/);
+    expect(chordProblem(chord("KeyX", { meta: true }))).toMatch(/Cut/);
     expect(chordProblem(chord("Digit1", { meta: true }))).toMatch(/tab 1/);
     expect(chordProblem(chord("KeyN", { meta: true }))).toBeNull();
+  });
+
+  it("lets copy and paste move, PuTTY's Shift+Insert included", () => {
+    // ⌘C / ⌘V / ⌘A used to be reserved for the terminal.
+    expect(chordProblem(chord("KeyC", { meta: true }))).toBeNull();
+    expect(chordProblem(chord("KeyV", { ctrl: true }))).toBeNull();
+    // Shift alone is enough for a key that never types a character…
+    expect(chordProblem(chord("Insert", { shift: true }))).toBeNull();
+    expect(chordProblem(chord("F12", { shift: true }))).toBeNull();
+    // …but not for one that does, and a bare key is still refused.
+    expect(chordProblem(chord("KeyV", { shift: true }))).toMatch(/⌘/);
+    expect(chordProblem(chord("Insert", {}))).toMatch(/⌘/);
+    expect(chordLabel(chord("Insert", { shift: true }))).toBe("⇧Ins");
   });
 });
 

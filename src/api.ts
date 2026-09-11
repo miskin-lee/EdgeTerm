@@ -557,8 +557,10 @@ export const setStartupTheme = (theme: ThemeMode): Promise<void> =>
 export const showMainWindow = (): Promise<void> => invoke("show_main_window");
 
 /**
- * The clipboard's text read by the process, for a paste WebView2 refuses the
- * page (Windows only; see `read_clipboard_text`).
+ * The clipboard's text as the process reads it. The paste path on macOS,
+ * where a page read outside WebKit's own ⌘V pops a confirmation menu, and
+ * the fallback on Windows for a WebView2 profile that refuses the page's
+ * read (see `read_clipboard_text`).
  */
 export const readClipboardText = (): Promise<string> =>
   invoke("read_clipboard_text");

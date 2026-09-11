@@ -22,22 +22,13 @@ interface Props {
 
 /** The shortcuts this dialog cannot change, shown so they are not hunted for. */
 const FIXED_SHORTCUTS: { keys: string; label: string }[] = IS_MAC
-  ? [
-      { keys: "⌘1–⌘9", label: "Switch to tab N" },
-      { keys: "⌘C / ⌘V", label: "Copy / paste" },
-      { keys: "⌘A", label: "Select all" },
-    ]
-  : [
-      { keys: "Alt+1–Alt+9", label: "Switch to tab N" },
-      { keys: "Ctrl+Shift+C / V", label: "Copy / paste" },
-      { keys: "Ctrl+Shift+A", label: "Select all" },
-    ];
+  ? [{ keys: "⌘1–⌘9", label: "Switch to tab N" }]
+  : [{ keys: "Alt+1–Alt+9", label: "Switch to tab N" }];
 
 /**
  * Rebinds the application's keyboard shortcuts. A row records the next chord
- * pressed while it is armed; the terminal's own copy / paste keys and the
- * tab-number keys stay fixed (see `chordProblem`), because the terminal
- * answers them before the shortcut table is ever consulted.
+ * pressed while it is armed; only the tab-number keys stay fixed (see
+ * `chordProblem`).
  */
 export function ShortcutsDialog({ bindings, onApply, onClose }: Props) {
   const dialogRef = useRef<HTMLFormElement>(null);

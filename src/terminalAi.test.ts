@@ -3,7 +3,6 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 vi.mock("./platform", () => ({
   IS_MAC: true,
   IS_WINDOWS: false,
-  shortcutLabel: (mac: string) => mac,
 }));
 
 import { TerminalController } from "./terminal";
