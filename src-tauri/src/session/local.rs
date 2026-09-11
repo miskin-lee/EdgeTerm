@@ -10,6 +10,34 @@ use super::{cwd, emit_state, locale, reject_unsupported, OutputPump, SessionComm
 use crate::error::{err, Result};
 use crate::model::{split_command_line, SessionKind, SessionProfile};
 
+/// Shells whose `-l` flag starts them as a login shell; see `login_flag`.
+const LOGIN_SHELLS: &[&str] = &[
+    "bash", "csh", "dash", "fish", "ksh", "nu", "pwsh", "sh", "tcsh", "xonsh", "zsh",
+];
+
+/// The flag that turns a bare `argv` into a login shell on macOS, or None
+/// when the command line is to run as written.
+///
+/// A process the Dock or Finder starts inherits launchd's environment, whose
+/// PATH is the four system directories and nothing else: no Homebrew, no
+/// `/usr/local/bin`, none of what `/etc/paths.d` and `~/.zprofile` add,
+/// because `/etc/zprofile` and `~/.zprofile` run for login shells only. A
+/// `.zshrc` that expects `brew` or its tools on the PATH then fails line by
+/// line (issue #28). Terminal.app, iTerm2 and VS Code all start the shell as
+/// a login shell for this reason, so a bare shell gets `-l` here too. A
+/// command line that carries arguments is the user's to run verbatim (`zsh
+/// +l` opts out), and a program that is not a known shell is not guessed at.
+/// Linux terminals conventionally start non-login shells and a desktop
+/// session there already carries the user's environment, so nothing is
+/// added off macOS.
+fn login_flag(argv: &[String], macos: bool) -> Option<&'static str> {
+    if !macos || argv.len() != 1 {
+        return None;
+    }
+    let program = argv[0].rsplit('/').next().unwrap_or(&argv[0]);
+    LOGIN_SHELLS.contains(&program).then_some("-l")
+}
+
 /// Spawns a login shell on a local pseudo-terminal.
 ///
 /// Two threads per session: one parked on the pty reader, one draining the
@@ -34,7 +62,10 @@ pub fn spawn(
     // The Shell field is a command line, not just a program name, so a
     // profile can start `wsl.exe -d Ubuntu` or `pwsh -NoLogo`.
     let shell = profile.shell_command_line();
-    let argv = split_command_line(&shell, cfg!(windows)).map_err(err)?;
+    let mut argv = split_command_line(&shell, cfg!(windows)).map_err(err)?;
+    if let Some(flag) = login_flag(&argv, cfg!(target_os = "macos")) {
+        argv.push(flag.to_string());
+    }
     let mut cmd = CommandBuilder::new(&argv[0]);
     cmd.args(&argv[1..]);
     cmd.env("TERM", "xterm-256color");
@@ -141,4 +172,41 @@ pub fn spawn(
         .map_err(err)?;
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::login_flag;
+
+    fn argv(words: &[&str]) -> Vec<String> {
+        words.iter().map(|w| w.to_string()).collect()
+    }
+
+    #[test]
+    fn a_bare_shell_becomes_a_login_shell_on_macos() {
+        assert_eq!(login_flag(&argv(&["/bin/zsh"]), true), Some("-l"));
+        assert_eq!(login_flag(&argv(&["zsh"]), true), Some("-l"));
+        assert_eq!(
+            login_flag(&argv(&["/opt/homebrew/bin/fish"]), true),
+            Some("-l")
+        );
+        assert_eq!(
+            login_flag(&argv(&["/usr/local/bin/pwsh"]), true),
+            Some("-l")
+        );
+    }
+
+    #[test]
+    fn a_command_line_with_arguments_runs_as_written() {
+        assert_eq!(login_flag(&argv(&["/bin/zsh", "+l"]), true), None);
+        assert_eq!(login_flag(&argv(&["pwsh", "-NoLogo"]), true), None);
+        assert_eq!(login_flag(&argv(&["/bin/zsh", "-l"]), true), None);
+    }
+
+    #[test]
+    fn only_known_shells_and_only_on_macos() {
+        assert_eq!(login_flag(&argv(&["/usr/bin/python3"]), true), None);
+        assert_eq!(login_flag(&argv(&["/bin/zsh"]), false), None);
+        assert_eq!(login_flag(&argv(&["wsl.exe"]), false), None);
+    }
 }
