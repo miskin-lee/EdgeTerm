@@ -110,7 +110,9 @@ Every shortcut above can be rebound in **View → Keyboard Shortcuts…** — cl
 | --- | --- |
 | Windows x64 | NSIS installer (`.exe`) and portable `.zip` |
 | macOS Apple Silicon | `.dmg`, plus the `.app.tar.gz` bundle used by the in-app updater |
-| Linux x64 / ARM64 | `.AppImage` and `.deb` |
+| Linux x64 / ARM64 | `.AppImage`, `.deb` and `.rpm` |
+
+Debian, Ubuntu and their derivatives take the `.deb`; Fedora, RHEL and the other RPM distributions take the `.rpm` — `sudo dnf install ./EdgeTerm-<version>-1.x86_64.rpm`. The RPM lists the libraries the binary links against, so `dnf` installs WebKitGTK 4.1 (`webkit2gtk4.1` and `javascriptcoregtk4.1` on Fedora) with it; a distribution that only ships the older WebKitGTK 4.0 cannot run EdgeTerm, and the AppImage is the way in there.
 
 The Windows portable zip needs no installation: it ships a `data` folder next to `EdgeTerm.exe`, and while that folder exists every setting is stored inside it, so the whole folder can move between machines or live on a removable drive (saved passwords are encrypted with a machine-bound key and do not decrypt elsewhere; sessions and settings travel fine). The AppImage likewise runs in place on Linux without installation.
 

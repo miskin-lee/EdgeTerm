@@ -151,10 +151,10 @@ jobs:
         include:
           - name: Linux x64
             platform: ubuntu-22.04
-            bundle_args: --bundles appimage,deb
+            bundle_args: --bundles appimage,deb,rpm
           - name: Linux ARM64
             platform: ubuntu-22.04-arm
-            bundle_args: --bundles appimage,deb
+            bundle_args: --bundles appimage,deb,rpm
           - name: Windows x64
             platform: windows-2022
             bundle_args: --bundles nsis
@@ -350,9 +350,11 @@ jobs:
             "linux-x86_64=EdgeTerm_${APP_VERSION}_amd64.AppImage"
             "linux-x86_64-appimage=EdgeTerm_${APP_VERSION}_amd64.AppImage"
             "linux-x86_64-deb=EdgeTerm_${APP_VERSION}_amd64.deb"
+            "linux-x86_64-rpm=EdgeTerm-${APP_VERSION}-1.x86_64.rpm"
             "linux-aarch64=EdgeTerm_${APP_VERSION}_aarch64.AppImage"
             "linux-aarch64-appimage=EdgeTerm_${APP_VERSION}_aarch64.AppImage"
             "linux-aarch64-deb=EdgeTerm_${APP_VERSION}_arm64.deb"
+            "linux-aarch64-rpm=EdgeTerm-${APP_VERSION}-1.aarch64.rpm"
           )
 
           platforms='{}'
@@ -411,6 +413,8 @@ jobs:
             "EdgeTerm_${APP_VERSION}_aarch64.AppImage"
             "EdgeTerm_${APP_VERSION}_amd64.deb"
             "EdgeTerm_${APP_VERSION}_arm64.deb"
+            "EdgeTerm-${APP_VERSION}-1.x86_64.rpm"
+            "EdgeTerm-${APP_VERSION}-1.aarch64.rpm"
           )
 
           is_expected_asset() {
@@ -469,6 +473,8 @@ jobs:
             "EdgeTerm_${APP_VERSION}_aarch64.AppImage"
             "EdgeTerm_${APP_VERSION}_amd64.deb"
             "EdgeTerm_${APP_VERSION}_arm64.deb"
+            "EdgeTerm-${APP_VERSION}-1.x86_64.rpm"
+            "EdgeTerm-${APP_VERSION}-1.aarch64.rpm"
           )
 
           if [[ "$(jq 'length' release-check/assets.json)" -ne "${#expected_assets[@]}" ]]; then
@@ -556,6 +562,10 @@ jobs:
             "EdgeTerm_${APP_VERSION}_aarch64.AppImage"
           verify_update linux-aarch64-deb \
             "EdgeTerm_${APP_VERSION}_arm64.deb"
+          verify_update linux-x86_64-rpm \
+            "EdgeTerm-${APP_VERSION}-1.x86_64.rpm"
+          verify_update linux-aarch64-rpm \
+            "EdgeTerm-${APP_VERSION}-1.aarch64.rpm"
 
       - name: Publish GitHub Release
         env:

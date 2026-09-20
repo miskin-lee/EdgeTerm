@@ -38,6 +38,18 @@
     "macOS": {
       "signingIdentity": "-"
     },
+    "linux": {
+      "rpm": {
+        "release": "1",
+        "depends": [
+          "libwebkit2gtk-4.1.so.0()(64bit)",
+          "libjavascriptcoregtk-4.1.so.0()(64bit)",
+          "libgtk-3.so.0()(64bit)",
+          "libsoup-3.0.so.0()(64bit)",
+          "libudev.so.1()(64bit)"
+        ]
+      }
+    },
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",

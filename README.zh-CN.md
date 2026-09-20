@@ -99,7 +99,9 @@ Windows 和 Linux 下右键按控制台惯例来：有选区时复制、没有�
 | --- | --- |
 | Windows x64 | NSIS 安装程序（`.exe`） |
 | macOS Apple Silicon | `.dmg`，以及应用内更新使用的 `.app.tar.gz` |
-| Linux x64 / ARM64 | `.AppImage` 和 `.deb` |
+| Linux x64 / ARM64 | `.AppImage`、`.deb` 和 `.rpm` |
+
+Debian、Ubuntu 及其衍生版用 `.deb`；Fedora、RHEL 等 RPM 发行版用 `.rpm`，`sudo dnf install ./EdgeTerm-<版本>-1.x86_64.rpm` 即可。RPM 里写明了程序链接的库，缺少 WebKitGTK 4.1 时 `dnf` 会一并装上（Fedora 上是 `webkit2gtk4.1` 和 `javascriptcoregtk4.1`）；只提供 WebKitGTK 4.0 的发行版无法运行 EdgeTerm，那里请用 AppImage。
 
 已安装的版本启动时会检查最新 Release 并可在应用内直接更新；也可以随时用 **Help → Check for Updates…** 手动检查。
 
