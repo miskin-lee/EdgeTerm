@@ -127,6 +127,7 @@ export async function ensureController(id: string): Promise<TerminalController> 
   controller.setSuggestions(useStore.getState().suggestionsEnabled);
   controller.setRightClickAction(useStore.getState().rightClickAction);
   controller.setPasteWarning(useStore.getState().pasteWarning);
+  controller.setCopyOnSelect(useStore.getState().copyOnSelect);
   // A paste that would submit several commands stops here and asks; App
   // renders the dialog and pastes it once the user agrees.
   controller.onConfirmPaste((text) =>

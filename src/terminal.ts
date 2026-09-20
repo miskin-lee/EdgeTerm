@@ -416,6 +416,12 @@ export class TerminalController {
   private suggestionsOn = false;
   /** Edit → Warn Before Multi-line Paste; see `paste`. */
   private pasteWarning = true;
+  /** Edit → Copy on Select; see `onSelectionMouseUp`. */
+  private copyOnSelect = false;
+  /** A left button is down on this terminal, so a selection is being made. */
+  private selecting = false;
+  /** The selection changed since that button went down. */
+  private selectionChanged = false;
   private confirmPaste: ((text: string) => void) | null = null;
   private inputAnchor: InputAnchor | null = null;
   /** Marker and prompt signature for detecting when the submitted command returns. */
@@ -676,9 +682,52 @@ export class TerminalController {
       if (this.inputAnchor || this.candidates.length) this.schedulePopupSync();
     });
     this.term.attachCustomKeyEventHandler((event) => this.filterKey(event));
+    this.term.onSelectionChange(() => {
+      this.selectionChanged = true;
+    });
+    // Copy on select (see `onSelectionMouseUp`). The buttons are watched on
+    // the document rather than the host: a selection drag routinely ends
+    // outside the terminal, and the mouse up that finishes it is then
+    // delivered to whatever is under the pointer.
+    document.addEventListener("mousedown", this.onSelectionMouseDown);
+    document.addEventListener("mouseup", this.onSelectionMouseUp);
 
     this.lineTimes.push(Date.now());
   }
+
+  private readonly onSelectionMouseDown = (event: MouseEvent) => {
+    // Only the left button makes a selection to copy. The right one selects
+    // the word under the pointer in menu mode, and putting that on the
+    // clipboard for merely opening the menu is not what was asked for.
+    const target = event.target;
+    this.selecting =
+      event.button === 0 &&
+      !!this.host &&
+      target instanceof Node &&
+      this.host.contains(target);
+    this.selectionChanged = false;
+  };
+
+  /**
+   * Copy on select, the X11 / PuTTY / Xshell habit that Windows Terminal
+   * calls `copyOnSelect`: a selection made with the mouse is on the
+   * clipboard the moment the button comes up, with no Copy in between.
+   *
+   * The copy waits for the button rather than running from
+   * `onSelectionChange`, for two reasons: a selection is only finished once
+   * the drag is, and WebKit lets a page write the clipboard only from inside
+   * a user gesture, which a mid-drag selection event is not. A selection the
+   * mouse had no part in (Select All from a key or a menu) is left alone —
+   * it would replace the clipboard with the whole scrollback behind the
+   * user's back.
+   */
+  private readonly onSelectionMouseUp = () => {
+    const made = this.selecting && this.selectionChanged;
+    this.selecting = false;
+    this.selectionChanged = false;
+    if (!made || !this.copyOnSelect || this.disposed) return;
+    this.copySelection();
+  };
 
   /**
    * xterm's key filter. True hands the key to xterm; false keeps it from
@@ -1143,10 +1192,18 @@ export class TerminalController {
     return this.term.hasSelection();
   }
 
-  /** Copies the selection to the clipboard; false when there is none. */
+  /**
+   * Copies the selection to the clipboard; false when there is none. A write
+   * the browser refuses is reported in the pane rather than swallowed: with
+   * Copy on Select there is no other sign that nothing was copied.
+   */
   copySelection(): boolean {
     if (!this.term.hasSelection()) return false;
-    void navigator.clipboard.writeText(this.term.getSelection());
+    void navigator.clipboard
+      .writeText(this.term.getSelection())
+      .catch((error: unknown) => {
+        this.showTransferNotice(`Copy failed: ${errorMessage(error)}`, "error");
+      });
     return true;
   }
 
@@ -1218,6 +1275,11 @@ export class TerminalController {
   /** Edit → Warn Before Multi-line Paste. */
   setPasteWarning(enabled: boolean) {
     this.pasteWarning = enabled;
+  }
+
+  /** Edit → Copy on Select; see `onSelectionMouseUp`. */
+  setCopyOnSelect(enabled: boolean) {
+    this.copyOnSelect = enabled;
   }
 
   /**
@@ -1461,6 +1523,8 @@ export class TerminalController {
 
   dispose() {
     this.disposed = true;
+    document.removeEventListener("mousedown", this.onSelectionMouseDown);
+    document.removeEventListener("mouseup", this.onSelectionMouseUp);
     this.dropAnchor();
     this.resetTrimMarker();
     this.resetCommandTracking();

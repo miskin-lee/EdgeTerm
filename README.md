@@ -83,6 +83,8 @@ XMODEM has no handshake to detect, so it is started from **Session → File Tran
 
 On Windows and Linux a right click follows the console convention — it copies the selection if there is one and pastes otherwise — the way conhost, PuTTY and Xshell do. **Edit → Right Click** switches it to *Show Menu*: a context menu with Copy, Paste, Select All, Clear Buffer and Reveal Working Directory in Filer, with the word under the pointer selected first. macOS always uses the menu. Middle-click pastes on every platform. Programs that take over the mouse (vim, tmux with mouse support, htop) receive the clicks instead; on Windows / Linux hold `Shift` to bypass them.
 
+**Edit → Copy on Select** puts a selection on the clipboard as soon as the mouse button comes up, the way PuTTY, Xshell and X11 terminals do; it is off by default, and a Select All made from the keyboard or a menu is left alone.
+
 A paste that would submit more than one command — or a single line too long to have been read — is shown first, with the lines it holds, so a clipboard that turns out to be six commands does not run six commands on a production host. `Enter` pastes, `Esc` cancels, and **Edit → Warn Before Multi-line Paste** turns the check off.
 
 **Keyboard shortcuts**
