@@ -833,6 +833,13 @@ export function SenderPanel() {
                     showCommandTooltip(command, event.currentTarget)
                   }
                   onMouseLeave={hideCommandTooltip}
+                  // A press here must not move the focus: the point of a
+                  // saved command is to send it and keep typing in the
+                  // session, and the default focus change would leave the
+                  // keyboard on the button (or on the body, which is where
+                  // WebKit puts it for a button) until the terminal is
+                  // clicked again. Keyboard activation still focuses it.
+                  onMouseDown={(event) => event.preventDefault()}
                   onClick={() => {
                     setSelectedCommandId(command.id);
                     void sendCommand(command.text, command.ending);
