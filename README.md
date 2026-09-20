@@ -63,9 +63,9 @@ With **Edit → Command Suggestions** enabled, EdgeTerm remembers the commands y
 
 A background tab shows what is running in it and keeps a highlight afterwards until you visit it, so you can start something slow and switch away. Agentic CLIs — Claude Code, Codex, Gemini CLI, Aider and the like — are followed differently: their session lasts as long as you keep the tool open, so the tab reports the assistant's turns instead, running while it works and finished when it hands the terminal back.
 
-**Duplicate a session**
+**Duplicate a tab**
 
-**Duplicate Session** (in **Session**, or **Duplicate Tab** on a tab's context menu) opens another session of that tab's profile. For SSH and SFTP it opens on the connection the tab is already using: one more channel of it, with no handshake and nothing to log in to again — which is what makes a server behind MFA usable, since the verification code is spent on the connection rather than on the tab. **Split Right** / **Split Down** share the connection the same way. The tabs sharing a connection are otherwise independent — each has its own shell, and closing one leaves the others alone — but they do go down together if the connection does, and a connection that has already gone is simply dialled again.
+**Duplicate Tab** — in the **Session** menu, or on a tab's context menu — opens another session of that tab's profile. For SSH and SFTP it opens on the connection the tab is already using: one more channel of it, with no handshake and nothing to log in to again — which is what makes a server behind MFA usable, since the verification code is spent on the connection rather than on the tab. **Split Right** / **Split Down** share the connection the same way. The tabs sharing a connection are otherwise independent — each has its own shell, and closing one leaves the others alone — but they do go down together if the connection does, and a connection that has already gone is simply dialled again.
 
 **Split panes**
 
