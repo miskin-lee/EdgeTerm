@@ -9,10 +9,12 @@
       // otherwise, and the module bundle below runs too late to set it: a
       // deferred script may run after the first paint, so a light-theme user
       // would see a dark page for a frame (issue #35). Reads the same key
-      // loadTheme() does in src/store.ts; App.tsx keeps it in step afterwards.
+      // loadTheme() does in src/store.ts, and the list has to name every
+      // ThemeMode in src/types.ts; App.tsx keeps it in step afterwards.
       try {
+        var themes = ["dark", "light", "serialx-dark", "serialx-light"];
         var theme = localStorage.getItem("edgeterm.theme");
-        if (theme === "dark" || theme === "light") {
+        if (themes.indexOf(theme) >= 0) {
           document.documentElement.dataset.theme = theme;
         }
       } catch (e) {

@@ -28,6 +28,8 @@ use window_state::{Observation, WindowMemory};
 /// until the page loads.
 const DARK_BACKGROUND: tauri::window::Color = tauri::window::Color(0x18, 0x18, 0x18, 0xff);
 const LIGHT_BACKGROUND: tauri::window::Color = tauri::window::Color(0xf8, 0xf8, 0xf8, 0xff);
+const SERIALX_DARK_BACKGROUND: tauri::window::Color = tauri::window::Color(0x0f, 0x11, 0x16, 0xff);
+const SERIALX_LIGHT_BACKGROUND: tauri::window::Color = tauri::window::Color(0xf4, 0xf4, 0xf2, 0xff);
 
 /// Build the main window from `tauri.conf.json` (`create: false` there keeps
 /// Tauri from creating it first), at the size it had when it last changed
@@ -83,6 +85,8 @@ fn create_main_window(app: &tauri::App) -> tauri::Result<()> {
         .background_color(match store::startup_theme() {
             Theme::Dark => DARK_BACKGROUND,
             Theme::Light => LIGHT_BACKGROUND,
+            Theme::SerialxDark => SERIALX_DARK_BACKGROUND,
+            Theme::SerialxLight => SERIALX_LIGHT_BACKGROUND,
         });
     if let Some(geometry) = remembered {
         // tao applies `maximized` to the hidden window and shows it that

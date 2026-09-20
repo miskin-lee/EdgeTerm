@@ -14,10 +14,13 @@ pub enum SessionKind {
 /// the webview's own storage; the backend only remembers the last one so the
 /// next window can be created in its background colour (`store::startup_theme`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "lowercase")]
+#[serde(rename_all = "kebab-case")]
 pub enum Theme {
     Dark,
     Light,
+    /// The two palettes ported from serialX; see `ThemeMode` in `src/types.ts`.
+    SerialxDark,
+    SerialxLight,
 }
 
 impl Default for Theme {

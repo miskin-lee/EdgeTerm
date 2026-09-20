@@ -1,4 +1,4 @@
-import type { ThemeMode } from "./types";
+import { isLightTheme, type ThemeMode } from "./types";
 
 export interface SemanticRange {
   start: number;
@@ -38,12 +38,13 @@ type SemanticPalette = Record<
   string
 >;
 
-// One palette per background. Both lean warm on purpose: the most frequent
-// tokens in terminal output (paths, strings, numbers, options, prompts) sit in
-// the yellow/orange/purple/pink range, and blue/cyan are reserved for the few
-// classes where they carry meaning (links, network, commands, keys).
+// One palette per kind of background, dark or light. Both lean warm on
+// purpose: the most frequent tokens in terminal output (paths, strings,
+// numbers, options, prompts) sit in the yellow/orange/purple/pink range, and
+// blue/cyan are reserved for the few classes where they carry meaning (links,
+// network, commands, keys).
 //
-// Role map (same for both themes):
+// Role map (the same in every theme):
 //   rose    prompt sign, fatal/panic class, signals, git conflicts
 //   red     errors, root user, diff removals, executable permission bits
 //   coral   environment variables, pending/transitional states
@@ -64,61 +65,72 @@ type SemanticPalette = Record<
 //   pink    hashes
 //   slate   debug class, HTTP versions, diff headers, timezone
 //   gray    comments, muted permission bits, disabled states
+// Monokai-derived, as WindTerm's dige-black scheme is, tuned so every entry
+// clears 4.5:1 on the #1f1f1f terminal background. That matters because the
+// renderer's minimum-contrast pass would otherwise shift these hues.
+const DARK_SEMANTICS: SemanticPalette = {
+  rose: "#ff6188",
+  red: "#ff5c57",
+  coral: "#ff7f50",
+  orange: "#fd971f",
+  amber: "#ffb454",
+  yellow: "#e6db74",
+  gold: "#ffd866",
+  lime: "#a6e22e",
+  green: "#3fd463",
+  mint: "#5fd7c0",
+  cyan: "#66d9ef",
+  sky: "#7fb4ff",
+  blue: "#6796e6",
+  violet: "#ab9df2",
+  purple: "#ae81ff",
+  orchid: "#da70d6",
+  pink: "#f78fb3",
+  slate: "#8a9bb0",
+  gray: "#8c8c8c",
+};
+
+// The same hues pulled down to 4.5:1 on white. WindTerm's own light scheme
+// uses web-color names (Plum, DarkOrange, DodgerBlue) that fall well short
+// of that, so these are darker cousins rather than copies.
+const LIGHT_SEMANTICS: SemanticPalette = {
+  rose: "#d6336c",
+  red: "#d32f2f",
+  coral: "#c93d0a",
+  orange: "#b85208",
+  amber: "#9a6600",
+  yellow: "#8a7000",
+  gold: "#9a6b00",
+  lime: "#4f7d00",
+  green: "#22804e",
+  mint: "#0b7f70",
+  cyan: "#0a7ea4",
+  sky: "#1a6fd0",
+  blue: "#1e5bb8",
+  violet: "#6f42c1",
+  purple: "#7e3fbf",
+  orchid: "#b23fb2",
+  pink: "#c2185b",
+  slate: "#5b6b7b",
+  gray: "#767676",
+};
+
 export const SEMANTIC_PALETTES: Record<ThemeMode, SemanticPalette> = {
-  // Monokai-derived, as WindTerm's dige-black scheme is, tuned so every entry
-  // clears 4.5:1 on the #1f1f1f terminal background. That matters because the
-  // renderer's minimum-contrast pass would otherwise shift these hues.
-  dark: {
-    rose: "#ff6188",
-    red: "#ff5c57",
-    coral: "#ff7f50",
-    orange: "#fd971f",
-    amber: "#ffb454",
-    yellow: "#e6db74",
-    gold: "#ffd866",
-    lime: "#a6e22e",
-    green: "#3fd463",
-    mint: "#5fd7c0",
-    cyan: "#66d9ef",
-    sky: "#7fb4ff",
-    blue: "#6796e6",
-    violet: "#ab9df2",
-    purple: "#ae81ff",
-    orchid: "#da70d6",
-    pink: "#f78fb3",
-    slate: "#8a9bb0",
-    gray: "#8c8c8c",
-  },
-  // The same hues pulled down to 4.5:1 on white. WindTerm's own light scheme
-  // uses web-color names (Plum, DarkOrange, DodgerBlue) that fall well short
-  // of that, so these are darker cousins rather than copies.
-  light: {
-    rose: "#d6336c",
-    red: "#d32f2f",
-    coral: "#c93d0a",
-    orange: "#b85208",
-    amber: "#9a6600",
-    yellow: "#8a7000",
-    gold: "#9a6b00",
-    lime: "#4f7d00",
-    green: "#22804e",
-    mint: "#0b7f70",
-    cyan: "#0a7ea4",
-    sky: "#1a6fd0",
-    blue: "#1e5bb8",
-    violet: "#6f42c1",
-    purple: "#7e3fbf",
-    orchid: "#b23fb2",
-    pink: "#c2185b",
-    slate: "#5b6b7b",
-    gray: "#767676",
-  },
+  dark: DARK_SEMANTICS,
+  light: LIGHT_SEMANTICS,
+  // serialX paints on the same two papers — its dark canvas is a shade
+  // deeper and bluer, its light one is the same white — so the hues carry
+  // over and only the background the bands blend over changes.
+  "serialx-dark": DARK_SEMANTICS,
+  "serialx-light": LIGHT_SEMANTICS,
 };
 
 /** Terminal backgrounds the bands are blended against (see XTERM_THEMES). */
 const TERMINAL_BACKGROUNDS: Record<ThemeMode, string> = {
   dark: "#1f1f1f",
   light: "#ffffff",
+  "serialx-dark": "#0b0d11",
+  "serialx-light": "#ffffff",
 };
 
 interface SemanticBands {
@@ -145,7 +157,7 @@ function blend(base: string, color: string, alpha: number): string {
 function bandsFor(mode: ThemeMode): SemanticBands {
   const base = TERMINAL_BACKGROUNDS[mode];
   const palette = SEMANTIC_PALETTES[mode];
-  const strength = mode === "dark" ? 1 : 0.7;
+  const strength = isLightTheme(mode) ? 0.7 : 1;
   return {
     header: blend(base, palette.sky, 0.09 * strength),
     error: blend(base, palette.red, 0.13 * strength),
@@ -158,6 +170,8 @@ function bandsFor(mode: ThemeMode): SemanticBands {
 export const SEMANTIC_BANDS: Record<ThemeMode, SemanticBands> = {
   dark: bandsFor("dark"),
   light: bandsFor("light"),
+  "serialx-dark": bandsFor("serialx-dark"),
+  "serialx-light": bandsFor("serialx-light"),
 };
 
 // Mutable bindings so semanticLine picks up the active theme without every

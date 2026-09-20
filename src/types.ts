@@ -16,7 +16,28 @@ export function isSshTransport(kind: SessionKind): boolean {
   return kind === "ssh" || kind === "sftp";
 }
 
-export type ThemeMode = "dark" | "light";
+/**
+ * The interface palettes. Each one is a `:root[data-theme=...]` block in
+ * styles.css plus an entry in the xterm, search and semantic palettes; the
+ * serialX pair is ported from that project's own workbench design system.
+ */
+export type ThemeMode = "dark" | "light" | "serialx-dark" | "serialx-light";
+
+/** Menu labels, in the order View → Theme lists them. */
+export const THEME_LABELS: Record<ThemeMode, string> = {
+  dark: "Dark",
+  light: "Light",
+  "serialx-dark": "Dark (serialX)",
+  "serialx-light": "Light (serialX)",
+};
+
+/**
+ * True for the palettes drawn on paper. Anything that picks between a pair of
+ * assets or blends a tint asks this instead of comparing against "light".
+ */
+export function isLightTheme(theme: ThemeMode): boolean {
+  return theme === "light" || theme === "serialx-light";
+}
 
 export interface SessionProfile {
   id: string;

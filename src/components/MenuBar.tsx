@@ -34,7 +34,7 @@ import type {
   TerminalController,
 } from "../terminal";
 import { getController } from "../terminalRegistry";
-import type { ThemeMode } from "../types";
+import { THEME_LABELS, type ThemeMode } from "../types";
 import { MenuCheck, menuRole, type MenuMark } from "./ContextMenu";
 import { Icon } from "./icons";
 import { submenuKey, useSubmenuHover } from "./submenuHover";
@@ -311,8 +311,8 @@ export function MenuBar(props: Props) {
     action: () => setGutterMode(mode),
   });
 
-  const themeEntry = (label: string, mode: ThemeMode): Entry => ({
-    label,
+  const themeEntry = (mode: ThemeMode): Entry => ({
+    label: THEME_LABELS[mode],
     checked: theme === mode,
     mark: "radio",
     action: () => setTheme(mode),
@@ -551,7 +551,7 @@ export function MenuBar(props: Props) {
         "separator",
         {
           label: "Theme",
-          children: [themeEntry("Dark", "dark"), themeEntry("Light", "light")],
+          children: (Object.keys(THEME_LABELS) as ThemeMode[]).map(themeEntry),
         },
         "separator",
         { label: "Display Settings…", action: props.onFontSettings },

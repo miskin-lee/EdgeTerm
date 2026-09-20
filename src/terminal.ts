@@ -236,6 +236,59 @@ const XTERM_THEMES: Record<ThemeMode, ITheme> = {
     brightCyan: "#0598bc",
     brightWhite: "#a5a5a5",
   },
+  // serialX's own terminal palettes (its TerminalPalette::DARK / ::LIGHT).
+  // Its plain red, green and yellow are the workbench's danger, success and
+  // warning, so device colours and chrome agree; on white "bright" cannot
+  // mean lighter or it would vanish, so the bright eight are the plain ones
+  // lifted a little instead.
+  "serialx-dark": {
+    background: "#0b0d11",
+    foreground: "#b2b8c4",
+    cursor: "#8b87ff",
+    cursorAccent: "#0b0d11",
+    selectionBackground: "#34365e",
+    selectionInactiveBackground: "#262a45",
+    black: "#1b1f27",
+    red: "#ef8a83",
+    green: "#4fc38a",
+    yellow: "#e0b070",
+    blue: "#7aa2f7",
+    magenta: "#c792ea",
+    cyan: "#5fd1d8",
+    white: "#b2b8c4",
+    brightBlack: "#767d8c",
+    brightRed: "#ff9f98",
+    brightGreen: "#6ee0a2",
+    brightYellow: "#f0c88a",
+    brightBlue: "#99b8ff",
+    brightMagenta: "#d8aaff",
+    brightCyan: "#7fe6ec",
+    brightWhite: "#edf0f5",
+  },
+  "serialx-light": {
+    background: "#ffffff",
+    foreground: "#3b3b42",
+    cursor: "#5b57d8",
+    cursorAccent: "#ffffff",
+    selectionBackground: "#c4c2f2",
+    selectionInactiveBackground: "#e2e1f8",
+    black: "#17171b",
+    red: "#cb4b40",
+    green: "#2f8a5b",
+    yellow: "#a8730f",
+    blue: "#2f6fd6",
+    magenta: "#8e44ad",
+    cyan: "#1a8a96",
+    white: "#3b3b42",
+    brightBlack: "#86868f",
+    brightRed: "#e0665b",
+    brightGreen: "#3aa66f",
+    brightYellow: "#c08a2a",
+    brightBlue: "#4f89e8",
+    brightMagenta: "#a85ec8",
+    brightCyan: "#2aa3b1",
+    brightWhite: "#5c5c66",
+  },
 };
 
 type SearchDecorations = NonNullable<ISearchOptions["decorations"]>;
@@ -244,19 +297,27 @@ type SearchDecorations = NonNullable<ISearchOptions["decorations"]>;
  * Find-in-buffer highlights, per theme. Enabling decorations is also what
  * makes the search addon report the match index / count.
  */
+const DARK_SEARCH_DECORATIONS: SearchDecorations = {
+  matchBackground: "#623315",
+  matchOverviewRuler: "#d18616",
+  activeMatchBackground: "#9e6a03",
+  activeMatchColorOverviewRuler: "#ffb700",
+};
+
+const LIGHT_SEARCH_DECORATIONS: SearchDecorations = {
+  matchBackground: "#f5d3b0",
+  matchOverviewRuler: "#d18616",
+  activeMatchBackground: "#a8ac94",
+  activeMatchColorOverviewRuler: "#ffb700",
+};
+
 const SEARCH_DECORATIONS: Record<ThemeMode, SearchDecorations> = {
-  dark: {
-    matchBackground: "#623315",
-    matchOverviewRuler: "#d18616",
-    activeMatchBackground: "#9e6a03",
-    activeMatchColorOverviewRuler: "#ffb700",
-  },
-  light: {
-    matchBackground: "#f5d3b0",
-    matchOverviewRuler: "#d18616",
-    activeMatchBackground: "#a8ac94",
-    activeMatchColorOverviewRuler: "#ffb700",
-  },
+  dark: DARK_SEARCH_DECORATIONS,
+  light: LIGHT_SEARCH_DECORATIONS,
+  // The amber wash reads the same on serialX's two canvases, which differ
+  // from these only in how deep the dark one is.
+  "serialx-dark": DARK_SEARCH_DECORATIONS,
+  "serialx-light": LIGHT_SEARCH_DECORATIONS,
 };
 
 interface Callbacks {

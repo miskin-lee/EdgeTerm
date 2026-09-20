@@ -22,6 +22,7 @@ import {
 } from "./shortcuts";
 import type { CursorStyle, GutterMode, RightClickAction } from "./terminal";
 import { disposeController, getController } from "./terminalRegistry";
+import { THEME_LABELS } from "./types";
 import type {
   AuthPrompt,
   HostKeyChange,
@@ -173,7 +174,9 @@ const loadSuggestionsEnabled = (): boolean => {
 // The parse* helpers validate a stored or imported value and return null for
 // anything unknown, so both localStorage and a data file get the same checks.
 const parseTheme = (value: unknown): ThemeMode | null =>
-  value === "dark" || value === "light" ? value : null;
+  typeof value === "string" && value in THEME_LABELS
+    ? (value as ThemeMode)
+    : null;
 
 const parseGutterMode = (value: unknown): GutterMode | null =>
   value === "both" || value === "line" || value === "time" || value === "off"

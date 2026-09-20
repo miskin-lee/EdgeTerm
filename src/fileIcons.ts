@@ -10,7 +10,7 @@ import {
   light,
 } from "material-icon-theme/dist/material-icons.json";
 
-import type { ThemeMode } from "./types";
+import { isLightTheme, type ThemeMode } from "./types";
 
 // Every SVG in the theme, keyed by icon name (the `.clone` suffix marks
 // generated colour variants and is not part of the icon name). The Filer is a
@@ -78,13 +78,13 @@ function resolveIconName(
   const lower = name.toLowerCase();
   if (isDir) {
     return (
-      (theme === "light" ? lightMaps.folderNames.get(lower) : undefined) ??
+      (isLightTheme(theme) ? lightMaps.folderNames.get(lower) : undefined) ??
       darkMaps.folderNames.get(lower) ??
       defaultFolderIcon
     );
   }
   return (
-    (theme === "light" ? lookupFile(lightMaps, lower) : undefined) ??
+    (isLightTheme(theme) ? lookupFile(lightMaps, lower) : undefined) ??
     lookupFile(darkMaps, lower) ??
     defaultFileIcon
   );

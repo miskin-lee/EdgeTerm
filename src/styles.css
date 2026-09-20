@@ -20,6 +20,10 @@
   --fg-dim: #9d9d9d;
   --fg-faint: #6e7681;
   --accent: #0078d4;
+  /* --accent on its own tint is muddy here; the suggestion list's match
+     highlight uses this lifted twin instead. Palettes whose accent stays
+     readable on the tint set it to --accent. */
+  --accent-bright: #75beff;
   --accent-soft: #04395e;
   --accent-contrast: #ffffff;
   --panel-session: #6ea8fe;
@@ -102,6 +106,7 @@
   --fg-dim: #616161;
   --fg-faint: #868686;
   --accent: #005fb8;
+  --accent-bright: var(--accent);
   --accent-soft: #bed6ed;
   --accent-contrast: #ffffff;
   --panel-session: #2563eb;
@@ -140,6 +145,137 @@
   --notice-success-fg: #107c10;
   --notice-error-bg: rgba(255, 235, 233, 0.96);
   --notice-error-fg: #a1260d;
+
+  --shadow-menu:
+    0 14px 36px -8px rgba(0, 0, 0, 0.22),
+    0 3px 10px rgba(0, 0, 0, 0.08);
+  --shadow-pop: 0 6px 18px rgba(0, 0, 0, 0.14);
+  --shadow-notice: 0 5px 18px rgba(0, 0, 0, 0.14);
+  --shadow-dialog: 0 20px 60px rgba(0, 0, 0, 0.22);
+}
+
+/* serialX's own two palettes, ported from its workbench design system
+   (src/theme.rs there). Ink: a near-black canvas lifted by a hint of blue,
+   with the chrome a step above the terminal rather than below it, and a
+   lavender accent in place of the VS Code blue. The surface roles map onto
+   serialX's elevation ladder: --bg-app is its title bar, --bg-panel its
+   panel, --bg-panel-alt its raised surface and --bg-terminal its editor.
+   Shadows, metrics and fonts stay the ones :root sets. */
+:root[data-theme="serialx-dark"] {
+  color-scheme: dark;
+
+  --bg-app: #0f1116;
+  --bg-panel: #0e1015;
+  --bg-panel-alt: #13161c;
+  --bg-terminal: #0b0d11;
+  --bg-field: #13161c;
+  --bg-active: #34365e;
+  --bg-hover: #181b23;
+  --border: #1f232c;
+  --border-strong: #252a34;
+  --fg: #b2b8c4;
+  --fg-dim: #767d8c;
+  --fg-faint: #555c6a;
+  --accent: #8b87ff;
+  --accent-bright: #a3a0ff;
+  --accent-soft: #34365e;
+  --accent-contrast: #ffffff;
+  --panel-session: #62b0f5;
+  --panel-sender: #f2b45c;
+  --panel-filer: #4fc9dc;
+  --green: #4fc38a;
+  --yellow: #e0b070;
+  --red: #ef8a83;
+
+  --scrollbar-thumb: #3d434f;
+  --scrollbar-thumb-hover: #4d5462;
+  --term-scrollbar-thumb-hover: #767d8c;
+  --row-separator: rgba(255, 255, 255, 0.07);
+  --swatch-ring: rgba(255, 255, 255, 0.1);
+
+  --bg-menu: #171b22;
+  --bg-menu-glass: rgba(23, 27, 34, 0.86);
+  --border-menu: #2b313c;
+  --menu-highlight: rgba(255, 255, 255, 0.06);
+  --menu-separator: rgba(255, 255, 255, 0.09);
+  --menu-mark: rgba(255, 255, 255, 0.32);
+  --bg-track: #1f242e;
+  --bg-knob: #4f5665;
+  --shadow-knob: 0 1px 2px rgba(0, 0, 0, 0.4);
+
+  --dir-label: #62b0f5;
+  --symlink-label: #b98af5;
+
+  --gutter-border: #1f232c;
+  --gutter-time-fg: #555c6a;
+  --gutter-line-fg: #767d8c;
+
+  --notice-info-bg: rgba(18, 26, 44, 0.95);
+  --notice-info-fg: #8ab6f5;
+  --notice-success-bg: rgba(17, 33, 27, 0.96);
+  --notice-success-fg: #4fc38a;
+  --notice-error-bg: rgba(42, 23, 25, 0.96);
+  --notice-error-fg: #ef8a83;
+}
+
+/* Paper: serialX's light half. A white terminal inside warm-neutral chrome,
+   the same lavender accent at ink strength, and its category hues for the
+   panel marks. */
+:root[data-theme="serialx-light"] {
+  color-scheme: light;
+
+  --bg-app: #f4f4f2;
+  --bg-panel: #fbfbf9;
+  --bg-panel-alt: #f7f7f5;
+  --bg-terminal: #ffffff;
+  --bg-field: #ffffff;
+  --bg-active: #e7e7e2;
+  --bg-hover: #f0f0ec;
+  --border: #e4e4e0;
+  --border-strong: #dededa;
+  --fg: #3b3b42;
+  --fg-dim: #86868f;
+  --fg-faint: #acacb4;
+  --accent: #5b57d8;
+  --accent-bright: var(--accent);
+  --accent-soft: #c4c2f2;
+  --accent-contrast: #ffffff;
+  --panel-session: #2f7fd4;
+  --panel-sender: #b2740b;
+  --panel-filer: #0f8593;
+  --green: #2f8a5b;
+  --yellow: #a8730f;
+  --red: #cb4b40;
+
+  --scrollbar-thumb: #c6c6cd;
+  --scrollbar-thumb-hover: #a8a8b1;
+  --term-scrollbar-thumb-hover: #86868f;
+  --row-separator: rgba(0, 0, 0, 0.08);
+  --swatch-ring: rgba(0, 0, 0, 0.15);
+
+  --bg-menu: #ffffff;
+  --bg-menu-glass: rgba(255, 255, 255, 0.86);
+  --border-menu: #dededa;
+  --menu-highlight: rgba(255, 255, 255, 0.9);
+  --menu-separator: rgba(0, 0, 0, 0.09);
+  --menu-mark: rgba(0, 0, 0, 0.32);
+  --bg-track: #eeeeea;
+  --bg-knob: #ffffff;
+  --shadow-knob: 0 1px 2px rgba(0, 0, 0, 0.14);
+
+  --dir-label: #2f7fd4;
+  --symlink-label: #8a3ee0;
+
+  --gutter-border: #e4e4e0;
+  --gutter-time-fg: #acacb4;
+  --gutter-line-fg: #86868f;
+
+  --notice-info-bg: rgba(240, 240, 253, 0.96);
+  --notice-info-fg: #4d49cc;
+  --notice-success-bg: rgba(233, 246, 238, 0.96);
+  --notice-success-fg: #22794e;
+  --notice-error-bg: rgba(253, 236, 234, 0.96);
+  --notice-error-fg: #b03a30;
 
   --shadow-menu:
     0 14px 36px -8px rgba(0, 0, 0, 0.22),
@@ -2155,14 +2291,8 @@ textarea:focus {
   font-weight: 600;
 }
 
-/* --accent is muddy on its own tint in the dark palette; lighten it there.
-   The light palette's tint is pale, where --accent stays readable. */
 .term-suggest-item.is-selected .term-suggest-match {
-  color: #75beff;
-}
-
-:root[data-theme="light"] .term-suggest-item.is-selected .term-suggest-match {
-  color: var(--accent);
+  color: var(--accent-bright);
 }
 
 .term-host .xterm {

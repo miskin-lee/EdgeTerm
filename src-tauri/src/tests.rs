@@ -1646,6 +1646,32 @@ fn the_startup_theme_survives_a_restart_and_defaults_to_dark() {
 }
 
 #[test]
+fn a_theme_is_stored_under_the_name_the_front_end_uses() {
+    let dir = temp_dir("appearance-names");
+    let path = dir.join("appearance.json");
+
+    // The front end writes these ids to its own storage (`ThemeMode` in
+    // src/types.ts) and sends them here, so the two spellings have to agree
+    // or a serialX user's window opens in the wrong background colour.
+    // Each step is a different theme from the one before, since a save that
+    // changes nothing leaves the file alone.
+    for (theme, name) in [
+        (Theme::SerialxDark, "serialx-dark"),
+        (Theme::SerialxLight, "serialx-light"),
+        (Theme::Light, "light"),
+        (Theme::Dark, "dark"),
+    ] {
+        save_startup_theme_at(&path, theme).expect("save theme");
+        assert!(std::fs::read_to_string(&path)
+            .expect("read file")
+            .contains(&format!("\"{name}\"")));
+        assert_eq!(startup_theme_at(&path), theme);
+    }
+
+    std::fs::remove_dir_all(&dir).ok();
+}
+
+#[test]
 fn the_window_size_survives_a_restart_beside_the_theme() {
     let dir = temp_dir("appearance-window");
     let path = dir.join("appearance.json");
