@@ -226,6 +226,12 @@ pub struct SessionInfo {
     /// servers; empty when none did. See `session::ssh::LEGACY_KEX`.
     #[serde(default)]
     pub legacy_algorithms: Vec<LegacyAlgorithms>,
+    /// Whether this session was opened on another session's SSH connection
+    /// rather than one of its own (`open_session`'s `reuse_session_id`), so
+    /// the UI can say the login was not repeated — and that the tabs sharing
+    /// the connection go down together.
+    #[serde(default)]
+    pub shared_connection: bool,
 }
 
 /// The legacy algorithms one SSH server was connected with, because it

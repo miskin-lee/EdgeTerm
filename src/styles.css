@@ -3772,6 +3772,42 @@ textarea:focus {
   font-size: 11px;
 }
 
+.paste-warning-dialog {
+  width: min(560px, calc(100vw - 40px));
+}
+
+/* The clipboard as the shell would receive it: the terminal's own font, no
+   wrapping — a wrapped line would read as two commands, which is the very
+   thing the dialog is asking about. */
+.paste-warning-preview {
+  max-height: 148px;
+  margin: 2px 0 0;
+  overflow: auto;
+  padding: 7px 9px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--bg-terminal);
+  color: var(--fg-dim);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 1.45;
+  white-space: pre;
+  user-select: text;
+}
+
+.paste-warning-more {
+  color: var(--fg-faint);
+}
+
+.paste-warning-remember {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 2px;
+  color: var(--fg-dim);
+  cursor: default;
+}
+
 .auth-prompt-dialog {
   display: flex;
   flex-direction: column;

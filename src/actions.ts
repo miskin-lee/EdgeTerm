@@ -58,6 +58,7 @@ function pendingSessionInfo(
     recording: null,
     // Known once the backend has connected.
     legacyAlgorithms: [],
+    sharedConnection: false,
   };
 }
 
@@ -126,6 +127,12 @@ export async function ensureController(id: string): Promise<TerminalController> 
   );
   controller.setSuggestions(useStore.getState().suggestionsEnabled);
   controller.setRightClickAction(useStore.getState().rightClickAction);
+  controller.setPasteWarning(useStore.getState().pasteWarning);
+  // A paste that would submit several commands stops here and asks; App
+  // renders the dialog and pastes it once the user agrees.
+  controller.onConfirmPaste((text) =>
+    useStore.getState().setPastePrompt({ sessionId: id, text }),
+  );
   setController(id, controller);
   return controller;
 }
@@ -134,16 +141,52 @@ export async function ensureController(id: string): Promise<TerminalController> 
  * Opens a session. The id is minted here and the terminal is created *before*
  * the backend connects, so output emitted during login (an SSH banner, a
  * shell's first prompt) always has somewhere to land.
+ *
+ * `reuseSessionId` puts the new session on that session's SSH connection
+ * instead of dialling one of its own; see `sharableConnection`.
  */
 export async function openSession(
   profile: SessionProfile,
+  reuseSessionId?: string,
 ): Promise<string | null> {
   const id = newSessionId();
   useStore
     .getState()
     .addTab(pendingSessionInfo(id, profile), profile, "connecting");
   if (!isFileSession(profile.kind)) await ensureController(id);
-  return connectSession(id, profile);
+  return connectSession(id, profile, reuseSessionId);
+}
+
+/**
+ * The session a new one of the same profile can share a connection with, or
+ * undefined when it has to make its own. An SSH connection carries as many
+ * sessions as the server allows, and everything the login took — a password,
+ * a key passphrase, a one-time code, a push — was spent on the connection,
+ * not on the session: sharing it is what lets a second tab onto a server
+ * behind MFA without a second challenge (issue #63).
+ *
+ * Only a live SSH or SFTP session has one to share. The two go down
+ * together if the connection does, which the tabs say through
+ * `info.sharedConnection`.
+ */
+function sharableConnection(tab: Tab): string | undefined {
+  const shareable = tab.info.kind === "ssh" || tab.info.kind === "sftp";
+  return shareable && tab.state === "connected" ? tab.info.id : undefined;
+}
+
+/**
+ * Duplicate Tab: another session of this tab's profile, in the same pane and
+ * on the same SSH connection. The profile is the tab's own copy, secrets
+ * included, so nothing is asked for again.
+ */
+export async function duplicateSession(id: string): Promise<string | null> {
+  const store = useStore.getState();
+  const tab = store.tabs.find((item) => item.info.id === id);
+  if (!tab) return null;
+  // The duplicate belongs beside its original, which need not be in the pane
+  // the user last worked in; openSession opens into the active one.
+  store.setActivePane(tab.paneId);
+  return openSession(tab.profile, sharableConnection(tab));
 }
 
 /**
@@ -151,7 +194,8 @@ export async function openSession(
  * a new pane beside the tab's own — what a terminal's split means (iTerm2,
  * Windows Terminal, VS Code's terminal), since one session cannot show in
  * two places. The profile is the tab's own copy, secrets included, so a
- * saved password or passphrase is not asked for again.
+ * saved password or passphrase is not asked for again, and a live SSH
+ * connection is shared rather than dialled twice.
  */
 export async function splitSession(
   id: string,
@@ -162,7 +206,7 @@ export async function splitSession(
   if (!tab) return null;
   // The new pane becomes the active one, which is where openSession opens.
   store.splitPane(tab.paneId, side);
-  return openSession(tab.profile);
+  return openSession(tab.profile, sharableConnection(tab));
 }
 
 /**
@@ -233,6 +277,7 @@ export function toggleSessionConnection(id: string): void {
 async function connectSession(
   id: string,
   profile: SessionProfile,
+  reuseSessionId?: string,
 ): Promise<string | null> {
   const store = useStore.getState();
   const pending = store.tabs.find((item) => item.info.id === id);
@@ -251,7 +296,7 @@ async function connectSession(
 
   pendingConnects.add(id);
   try {
-    const outcome = await api.openSession(profile, id);
+    const outcome = await api.openSession(profile, id, reuseSessionId);
 
     // The user may close the optimistic tab while SSH is still negotiating.
     // In that case close the newly-created backend session immediately.
@@ -277,7 +322,9 @@ async function connectSession(
     connectedStore.updateTabInfo(id, info);
     connectedStore.applyState(id, "connected");
     connectedStore.setStatus(
-      `Connected to ${tabTitle({ info, ordinal: tab.ordinal })}`,
+      info.sharedConnection
+        ? `Connected to ${tabTitle({ info, ordinal: tab.ordinal })} on the same connection`
+        : `Connected to ${tabTitle({ info, ordinal: tab.ordinal })}`,
     );
 
     // The pane was fitted while the backend was still connecting, so its

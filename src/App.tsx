@@ -25,6 +25,7 @@ import { QuitConfirmDialog } from "./components/QuitConfirmDialog";
 import { FontSizeDialog } from "./components/FontSizeDialog";
 import { HostKeyDialog } from "./components/HostKeyDialog";
 import { MenuBar } from "./components/MenuBar";
+import { PasteWarningDialog } from "./components/PasteWarningDialog";
 import {
   SearchOverlay,
   type SearchOverlayHandle,
@@ -107,6 +108,9 @@ export default function App() {
   const activeTab = useActiveTab();
   const fileMode = activeTab ? isFileSession(activeTab.info.kind) : false;
   const closePrompt = useStore((s) => s.closePrompt);
+  const pastePrompt = useStore((s) => s.pastePrompt);
+  const setPastePrompt = useStore((s) => s.setPastePrompt);
+  const setPasteWarning = useStore((s) => s.setPasteWarning);
   const tabs = useStore((s) => s.tabs);
   const closingTabs = useMemo(
     () =>
@@ -508,6 +512,21 @@ export default function App() {
             void exit(0);
           }}
           onCancel={() => setQuitPromptOpen(false)}
+        />
+      )}
+
+      {pastePrompt && (
+        <PasteWarningDialog
+          key={pastePrompt.sessionId}
+          text={pastePrompt.text}
+          onConfirm={(remember) => {
+            // Dismiss first: the dialog's own Enter must not reach the
+            // terminal that is about to receive the paste.
+            setPastePrompt(null);
+            if (remember) setPasteWarning(false);
+            getController(pastePrompt.sessionId)?.writePaste(pastePrompt.text);
+          }}
+          onCancel={() => setPastePrompt(null)}
         />
       )}
 

@@ -268,6 +268,7 @@ pub fn run() {
             remote_edits: Default::default(),
             auth_prompts: Default::default(),
             transfers: Default::default(),
+            ssh_transports: Default::default(),
         })
         .on_window_event(|window, event| {
             let Some(memory) = window.try_state::<WindowMemory>() else {

@@ -63,6 +63,10 @@ With **Edit → Command Suggestions** enabled, EdgeTerm remembers the commands y
 
 A background tab shows what is running in it and keeps a highlight afterwards until you visit it, so you can start something slow and switch away. Agentic CLIs — Claude Code, Codex, Gemini CLI, Aider and the like — are followed differently: their session lasts as long as you keep the tool open, so the tab reports the assistant's turns instead, running while it works and finished when it hands the terminal back.
 
+**Duplicate a session**
+
+**Duplicate Session** (in **Session**, or **Duplicate Tab** on a tab's context menu) opens another session of that tab's profile. For SSH and SFTP it opens on the connection the tab is already using: one more channel of it, with no handshake and nothing to log in to again — which is what makes a server behind MFA usable, since the verification code is spent on the connection rather than on the tab. **Split Right** / **Split Down** share the connection the same way. The tabs sharing a connection are otherwise independent — each has its own shell, and closing one leaves the others alone — but they do go down together if the connection does, and a connection that has already gone is simply dialled again.
+
 **Split panes**
 
 The terminal area splits the way VS Code's editor area does: every pane has its own tab strip, and the panes can be nested side by side and one above the other and resized on their dividers. **Split Right** / **Split Down** — on a tab's context menu, in **View**, on the buttons at the right end of the menu bar, or with `⌘\` / `Ctrl+Shift+\` — opens the session's profile again in a new pane beside it, the way a terminal split works, since one session cannot show in two places. To put an existing tab beside another, drag it: onto another pane's strip to file it there, onto the middle of a pane to join it, or onto a pane's edge to split that pane on that side. A pane whose last tab closes folds away. The tab context menu also closes the other tabs of the strip — **Close Others**, **Close to the Left**, **Close to the Right**, **Close All** — asking once for all the sessions still connected.
@@ -81,7 +85,9 @@ XMODEM has no handshake to detect, so it is started from **Session → File Tran
 
 **Mouse copy / paste**
 
-A right click in the terminal opens a context menu — Copy, Paste, Select All, Clear Buffer and Reveal Working Directory in Filer — with the word under the pointer selected first; middle-click pastes. On Windows and Linux, **Edit → Right Click** switches that to *Copy or Paste*, the console convention: a right click copies the selection if there is one and pastes otherwise, and no menu appears. macOS always uses the menu. Programs that take over the mouse (vim, tmux with mouse support, htop) receive the clicks instead; on Windows / Linux hold `Shift` to bypass them.
+On Windows and Linux a right click follows the console convention — it copies the selection if there is one and pastes otherwise — the way conhost, PuTTY and Xshell do. **Edit → Right Click** switches it to *Show Menu*: a context menu with Copy, Paste, Select All, Clear Buffer and Reveal Working Directory in Filer, with the word under the pointer selected first. macOS always uses the menu. Middle-click pastes on every platform. Programs that take over the mouse (vim, tmux with mouse support, htop) receive the clicks instead; on Windows / Linux hold `Shift` to bypass them.
+
+A paste that would submit more than one command — or a single line too long to have been read — is shown first, with the lines it holds, so a clipboard that turns out to be six commands does not run six commands on a production host. `Enter` pastes, `Esc` cancels, and **Edit → Warn Before Multi-line Paste** turns the check off.
 
 **Keyboard shortcuts**
 

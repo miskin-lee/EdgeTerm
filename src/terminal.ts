@@ -28,6 +28,7 @@ import {
   shellPromptEnd,
   type SemanticRange,
 } from "./semanticColors";
+import { needsPasteWarning } from "./terminalPaste";
 import { errorMessage, type TransferNoticeKind } from "./terminalTransfer";
 import type { ThemeMode } from "./types";
 import { XmodemController, type XmodemBlockSize } from "./xmodem";
@@ -351,6 +352,9 @@ export class TerminalController {
   private locked = false;
   /** Command history capture + completion popup. Opt-in via the Edit menu. */
   private suggestionsOn = false;
+  /** Edit → Warn Before Multi-line Paste; see `paste`. */
+  private pasteWarning = true;
+  private confirmPaste: ((text: string) => void) | null = null;
   private inputAnchor: InputAnchor | null = null;
   /** Marker and prompt signature for detecting when the submitted command returns. */
   private commandMarker: IMarker | null = null;
@@ -1098,20 +1102,63 @@ export class TerminalController {
   }
 
   /**
-   * Pastes the clipboard as typed input. xterm applies bracketed paste and
-   * drops it while the terminal is locked (`disableStdin`). A read that
-   * fails is reported in the pane rather than swallowed, which is how #45
-   * looked: a paste that did nothing at all.
+   * Pastes the clipboard as typed input — from the paste key, the Edit menu,
+   * the terminal's own menu, a right click in copy-or-paste mode and the
+   * middle button, so everything that pastes passes the check below. A read
+   * that fails is reported in the pane rather than swallowed, which is how
+   * #45 looked: a paste that did nothing at all.
    */
   pasteFromClipboard() {
     void this.readClipboard().then(
       (text) => {
-        if (text) this.term.paste(text);
+        if (text) this.paste(text);
       },
       (error: unknown) => {
         this.showTransferNotice(`Paste failed: ${errorMessage(error)}`, "error");
       },
     );
+  }
+
+  /**
+   * Hands text to the terminal as if it were typed. xterm applies bracketed
+   * paste and drops it while the terminal is locked (`disableStdin`).
+   *
+   * A paste the shell would run as several commands is confirmed first
+   * (issue #63): the lines after the first are executed the moment they
+   * arrive, so a stray clipboard is a handful of commands on a production
+   * host before anything can be read. Confirming is the terminal's
+   * convention — Windows Terminal, iTerm2 and Xshell all do it — and
+   * `pasteWarning` turns it off. `confirmPaste` shows the dialog and calls
+   * back here; without a confirmer (a test, a pane still wiring up) the text
+   * goes through, since refusing to paste would be worse than pasting.
+   */
+  paste(text: string) {
+    if (this.pasteWarning && this.confirmPaste && needsPasteWarning(text)) {
+      this.confirmPaste(text);
+      return;
+    }
+    this.writePaste(text);
+  }
+
+  /**
+   * Pastes without asking — what the confirmation dialog calls once the user
+   * has said yes, and the only path that may skip the check.
+   */
+  writePaste(text: string) {
+    this.term.paste(text);
+  }
+
+  /** Edit → Warn Before Multi-line Paste. */
+  setPasteWarning(enabled: boolean) {
+    this.pasteWarning = enabled;
+  }
+
+  /**
+   * Where a paste that needs confirming goes; the dialog calls `paste` back
+   * with the same text once the user has said yes.
+   */
+  onConfirmPaste(confirm: (text: string) => void) {
+    this.confirmPaste = confirm;
   }
 
   /**

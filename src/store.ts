@@ -108,6 +108,15 @@ export interface HostKeyPrompt {
   change: HostKeyChange;
 }
 
+/**
+ * A paste waiting to be confirmed, because it would submit more than one
+ * command; see `TerminalController.paste`.
+ */
+export interface PastePrompt {
+  sessionId: string;
+  text: string;
+}
+
 export type PanelName = "filer" | "sessions" | "sender";
 
 export const PANEL_FONT_SIZE = { min: 9, max: 18, default: 12 } as const;
@@ -138,6 +147,18 @@ const RIGHT_CLICK_KEY = "edgeterm.rightClick";
 const SHORTCUTS_KEY = "edgeterm.shortcuts";
 const CURSOR_STYLE_KEY = "edgeterm.cursorStyle";
 const CURSOR_BLINK_KEY = "edgeterm.cursorBlink";
+const PASTE_WARNING_KEY = "edgeterm.pasteWarning";
+
+// On by default: a paste that would run several commands is confirmed first
+// (see `TerminalController.paste`). Only an explicit "off" turns it off, so a
+// storage failure keeps the guard rather than dropping it.
+const loadPasteWarning = (): boolean => {
+  try {
+    return localStorage.getItem(PASTE_WARNING_KEY) !== "off";
+  } catch {
+    return true;
+  }
+};
 
 // Opt-in: command capture and the completion popup stay off until the user
 // enables them in the Edit menu.
@@ -163,20 +184,29 @@ const parseRightClickAction = (value: unknown): RightClickAction | null =>
   value === "menu" || value === "copyPaste" ? value : null;
 
 /**
- * The context menu is the behavior everywhere unless a Windows / Linux user
- * asks for the console convention in Edit → Right Click. macOS terminals
- * have no such convention, so the value is pinned there: a stored or
- * imported `copyPaste` never applies and the menu doesn't offer it.
+ * Where a right click goes by default: the console convention on Windows and
+ * Linux — copy the selection, or paste when there is none — which is what
+ * conhost, PuTTY, Xshell and SecureCRT all do, and the users of those arrive
+ * expecting it (issue #63 reported it missing while it was only unset).
+ * Edit → Right Click switches to the context menu.
+ *
+ * macOS terminals have no such convention, so the value is pinned to the menu
+ * there: a stored or imported `copyPaste` never applies and the menu doesn't
+ * offer it.
  */
+const defaultRightClickAction = (): RightClickAction =>
+  IS_MAC ? "menu" : "copyPaste";
+
 const loadRightClickAction = (): RightClickAction => {
   if (IS_MAC) return "menu";
   try {
     return (
-      parseRightClickAction(localStorage.getItem(RIGHT_CLICK_KEY)) ?? "menu"
+      parseRightClickAction(localStorage.getItem(RIGHT_CLICK_KEY)) ??
+      defaultRightClickAction()
     );
   } catch {
     // Use the default when storage is unavailable.
-    return "menu";
+    return defaultRightClickAction();
   }
 };
 
@@ -395,6 +425,8 @@ export interface AppSettings {
   cursorStyle: CursorStyle;
   cursorBlink: boolean;
   suggestionsEnabled: boolean;
+  /** Confirm a paste that would submit more than one command. */
+  pasteWarning: boolean;
   /** Windows / Linux only; macOS always opens the menu. */
   rightClickAction: RightClickAction;
   /** Only the key bindings that differ from the platform defaults. */
@@ -437,6 +469,10 @@ interface AppStore {
   cursorBlink: boolean;
   /** Command history recording + fish-style inline suggestions. */
   suggestionsEnabled: boolean;
+  /** Whether a multi-line paste is confirmed first; see `pastePrompt`. */
+  pasteWarning: boolean;
+  /** The paste waiting for the user's yes, or null. */
+  pastePrompt: PastePrompt | null;
   /** What a right click in the terminal does; see `RightClickAction`. */
   rightClickAction: RightClickAction;
   /** The chord each app command answers; see `shortcuts.ts`. */
@@ -566,6 +602,8 @@ interface AppStore {
   setCursorStyle: (style: CursorStyle) => void;
   setCursorBlink: (blink: boolean) => void;
   setSuggestionsEnabled: (enabled: boolean) => void;
+  setPasteWarning: (enabled: boolean) => void;
+  setPastePrompt: (prompt: PastePrompt | null) => void;
   setRightClickAction: (action: RightClickAction) => void;
   setShortcuts: (bindings: ShortcutBindings) => void;
   resetSettings: () => void;
@@ -719,6 +757,8 @@ export const useStore = create<AppStore>((set, get) => ({
   cursorStyle: loadCursorStyle(),
   cursorBlink: loadCursorBlink(),
   suggestionsEnabled: loadSuggestionsEnabled(),
+  pasteWarning: loadPasteWarning(),
+  pastePrompt: null,
   rightClickAction: loadRightClickAction(),
   shortcuts: initialShortcuts,
   panels: loadPanels(),
@@ -862,6 +902,8 @@ export const useStore = create<AppStore>((set, get) => ({
       errorSessionId: clearsSessionError ? null : current.errorSessionId,
       hostKeyPrompt:
         current.hostKeyPrompt?.sessionId === id ? null : current.hostKeyPrompt,
+      pastePrompt:
+        current.pastePrompt?.sessionId === id ? null : current.pastePrompt,
       authPrompts: current.authPrompts.filter(
         (prompt) => prompt.sessionId !== id,
       ),
@@ -1152,6 +1194,15 @@ export const useStore = create<AppStore>((set, get) => ({
     saveSetting(CURSOR_BLINK_KEY, blink ? "on" : "off");
   },
 
+  setPasteWarning(enabled) {
+    set({ pasteWarning: enabled });
+    saveSetting(PASTE_WARNING_KEY, enabled ? "on" : "off");
+  },
+
+  setPastePrompt(prompt) {
+    set({ pastePrompt: prompt });
+  },
+
   setSuggestionsEnabled(enabled) {
     set({ suggestionsEnabled: enabled });
     // The history is only fetched once someone opts in (load() is a no-op on
@@ -1198,7 +1249,8 @@ export const useStore = create<AppStore>((set, get) => ({
       cursorStyle: "block",
       cursorBlink: true,
       suggestionsEnabled: false,
-      rightClickAction: "menu",
+      pasteWarning: true,
+      rightClickAction: defaultRightClickAction(),
     });
     try {
       localStorage.removeItem(PANELS_KEY);
@@ -1212,6 +1264,7 @@ export const useStore = create<AppStore>((set, get) => ({
       localStorage.removeItem(CURSOR_STYLE_KEY);
       localStorage.removeItem(CURSOR_BLINK_KEY);
       localStorage.removeItem(SUGGESTIONS_KEY);
+      localStorage.removeItem(PASTE_WARNING_KEY);
       localStorage.removeItem(RIGHT_CLICK_KEY);
       localStorage.removeItem(SHORTCUTS_KEY);
     } catch {
@@ -1233,6 +1286,7 @@ export const useStore = create<AppStore>((set, get) => ({
       cursorStyle: state.cursorStyle,
       cursorBlink: state.cursorBlink,
       suggestionsEnabled: state.suggestionsEnabled,
+      pasteWarning: state.pasteWarning,
       rightClickAction: state.rightClickAction,
       shortcuts: shortcutOverrides(state.shortcuts),
     };
@@ -1275,6 +1329,9 @@ export const useStore = create<AppStore>((set, get) => ({
     }
     if (typeof values.suggestionsEnabled === "boolean") {
       state.setSuggestionsEnabled(values.suggestionsEnabled);
+    }
+    if (typeof values.pasteWarning === "boolean") {
+      state.setPasteWarning(values.pasteWarning);
     }
     const rightClickAction = parseRightClickAction(values.rightClickAction);
     if (rightClickAction) state.setRightClickAction(rightClickAction);

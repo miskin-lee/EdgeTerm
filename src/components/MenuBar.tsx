@@ -14,6 +14,7 @@ import { openUrl } from "@tauri-apps/plugin-opener";
 
 import appIcon from "../../src-tauri/icons/32x32.png";
 import {
+  duplicateSession,
   revealCwdInFiler,
   splitSession,
   toggleSessionConnection,
@@ -265,6 +266,8 @@ export function MenuBar(props: Props) {
   const setSuggestionsEnabled = useStore((s) => s.setSuggestionsEnabled);
   const rightClickAction = useStore((s) => s.rightClickAction);
   const setRightClickAction = useStore((s) => s.setRightClickAction);
+  const pasteWarning = useStore((s) => s.pasteWarning);
+  const setPasteWarning = useStore((s) => s.setPasteWarning);
   const resetSettings = useStore((s) => s.resetSettings);
   // The accelerators as the user has bound them (see shortcuts.ts); only
   // the tab-number keys are fixed.
@@ -331,6 +334,13 @@ export function MenuBar(props: Props) {
           label: "New Session…",
           shortcut: accel("newSession"),
           action: props.onNewSession,
+        },
+        {
+          // Another session of the same profile, on the same SSH connection
+          // where there is one to share: the login — MFA included — is not
+          // repeated (issue #63).
+          label: "Duplicate Session",
+          action: withActive((id) => void duplicateSession(id)),
         },
         "separator",
         {
@@ -431,6 +441,14 @@ export function MenuBar(props: Props) {
           label: "Select All",
           shortcut: accel("selectAll"),
           action: withActive((id) => getController(id)?.selectAll()),
+        },
+        "separator",
+        {
+          // Every line of a paste after the first runs as its own command,
+          // so a paste that holds several is confirmed first (issue #63).
+          label: "Warn Before Multi-line Paste",
+          checked: pasteWarning,
+          action: () => setPasteWarning(!pasteWarning),
         },
         // Mouse copy / paste is a Windows / Linux choice; macOS terminals
         // always open the menu, so the submenu is left out there.

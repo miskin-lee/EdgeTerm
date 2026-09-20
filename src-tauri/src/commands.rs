@@ -1,5 +1,6 @@
 use base64::{engine::general_purpose::STANDARD as B64, Engine as _};
 use std::path::Path;
+use std::sync::Arc;
 use std::time::UNIX_EPOCH;
 use tauri::{ipc::Channel, AppHandle, State};
 use tokio::io::{AsyncReadExt, AsyncSeekExt, AsyncWriteExt};
@@ -17,7 +18,7 @@ use crate::model::{
 use crate::remote_edit::RemoteEdits;
 use crate::session::auth::{AuthPrompter, AuthPrompts};
 use crate::session::recording::{self, Recorder};
-use crate::session::ssh::{ConnectOutcome, SftpConnectOutcome};
+use crate::session::ssh::{ConnectOutcome, SftpConnectOutcome, SshTransports};
 use crate::session::transfer::Transfers;
 use crate::session::{
     self, SessionCommand, SessionHandle, SessionManager, SftpRequest, SftpResponse,
@@ -35,6 +36,10 @@ pub struct AppState {
     pub auth_prompts: AuthPrompts,
     /// Transfers in flight, so `cancel_transfer` can reach one.
     pub transfers: Transfers,
+    /// The authenticated SSH transports open sessions run on, so another
+    /// session can be opened on one instead of authenticating again; see
+    /// `open_session`'s `reuse_session_id`.
+    pub ssh_transports: SshTransports,
 }
 
 // --- profiles ---------------------------------------------------------------
@@ -212,6 +217,18 @@ pub fn import_ssh_config(
 
 // --- sessions ---------------------------------------------------------------
 
+/// The SSH connection a new session asked to share, when the session named
+/// still has one and it is still up. `None` means the session opens its own,
+/// which is also what happens when the shared one turns out to be unusable:
+/// the tab connects as it always did, and the user is asked for credentials
+/// again only because there is genuinely nothing left to share.
+fn reuse(
+    state: &State<'_, AppState>,
+    session_id: &Option<String>,
+) -> Option<Arc<session::ssh::SharedTransport>> {
+    state.ssh_transports.get(session_id.as_deref()?)
+}
+
 #[tauri::command]
 pub async fn open_session(
     app: AppHandle,
@@ -220,6 +237,12 @@ pub async fn open_session(
     // The frontend mints the id so it can have a terminal listening before the
     // first byte of output arrives.
     session_id: String,
+    // The session whose SSH connection this one should run on instead of
+    // dialling and authenticating its own — what Duplicate Tab and a split of
+    // a live SSH tab ask for, so a server behind MFA is answered once per
+    // connection rather than once per tab. A connection that has gone down in
+    // the meantime is simply dialled again.
+    reuse_session_id: Option<String>,
 ) -> Result<OpenSessionOutcome> {
     // A profile may arrive by id (from the tree) or inline (quick connect).
     let profile = if !profile.id.is_empty() {
@@ -280,42 +303,67 @@ pub async fn open_session(
             )?)
         }
         SessionKind::Ssh => {
-            let prompter = AuthPrompter::ui(&app, &state.auth_prompts, &id);
-            match session::ssh::connect(&profile, &state.store.jump_chain(&profile)?, &prompter)
-                .await?
-            {
-                ConnectOutcome::Ready(conn) => {
-                    info.legacy_algorithms = conn.legacy_algorithms().to_vec();
-                    let recorder = start_recording(&mut info)?;
-                    session::ssh::spawn(app.clone(), id.clone(), conn, rx, recorder);
-                    None
+            // A connection to share, when one was asked for and is still up.
+            let shared = match reuse(&state, &reuse_session_id) {
+                Some(transport) => session::ssh::connect_on(transport, &profile).await.ok(),
+                None => None,
+            };
+            info.shared_connection = shared.is_some();
+            let conn = match shared {
+                Some(conn) => conn,
+                None => {
+                    let prompter = AuthPrompter::ui(&app, &state.auth_prompts, &id);
+                    match session::ssh::connect(
+                        &profile,
+                        &state.store.jump_chain(&profile)?,
+                        &prompter,
+                    )
+                    .await?
+                    {
+                        ConnectOutcome::Ready(conn) => conn,
+                        // Nothing was opened; the user decides whether to trust
+                        // the new key and the frontend retries with the same
+                        // session id.
+                        ConnectOutcome::HostKeyChanged(change) => {
+                            return Ok(OpenSessionOutcome::HostKeyChanged { change });
+                        }
+                    }
                 }
-                // Nothing was opened; the user decides whether to trust the new
-                // key and the frontend retries with the same session id.
-                ConnectOutcome::HostKeyChanged(change) => {
-                    return Ok(OpenSessionOutcome::HostKeyChanged { change });
-                }
-            }
+            };
+            info.legacy_algorithms = conn.legacy_algorithms().to_vec();
+            state.ssh_transports.register(&id, &conn.transport());
+            let recorder = start_recording(&mut info)?;
+            session::ssh::spawn(app.clone(), id.clone(), conn, rx, recorder);
+            None
         }
         SessionKind::Sftp => {
-            let prompter = AuthPrompter::ui(&app, &state.auth_prompts, &id);
-            match session::ssh::connect_sftp(
-                &profile,
-                &state.store.jump_chain(&profile)?,
-                &prompter,
-            )
-            .await?
-            {
-                SftpConnectOutcome::Ready(conn) => {
-                    info.legacy_algorithms = conn.legacy_algorithms().to_vec();
-                    session::ssh::spawn_sftp(app.clone(), id.clone(), conn, rx);
-                    None
+            let shared = reuse(&state, &reuse_session_id)
+                .and_then(|transport| session::ssh::connect_sftp_on(transport, &profile).ok());
+            info.shared_connection = shared.is_some();
+            let conn = match shared {
+                Some(conn) => conn,
+                None => {
+                    let prompter = AuthPrompter::ui(&app, &state.auth_prompts, &id);
+                    match session::ssh::connect_sftp(
+                        &profile,
+                        &state.store.jump_chain(&profile)?,
+                        &prompter,
+                    )
+                    .await?
+                    {
+                        SftpConnectOutcome::Ready(conn) => conn,
+                        // Same host-key decision as a shell session on the
+                        // same transport.
+                        SftpConnectOutcome::HostKeyChanged(change) => {
+                            return Ok(OpenSessionOutcome::HostKeyChanged { change });
+                        }
+                    }
                 }
-                // Same host-key decision as a shell session on the same transport.
-                SftpConnectOutcome::HostKeyChanged(change) => {
-                    return Ok(OpenSessionOutcome::HostKeyChanged { change });
-                }
-            }
+            };
+            info.legacy_algorithms = conn.legacy_algorithms().to_vec();
+            state.ssh_transports.register(&id, &conn.transport());
+            session::ssh::spawn_sftp(app.clone(), id.clone(), conn, rx);
+            None
         }
     };
 
@@ -350,6 +398,10 @@ pub fn answer_auth_prompt(
 
 #[tauri::command]
 pub fn close_session(state: State<'_, AppState>, id: String) -> Result<()> {
+    // Nothing new may be opened on this session's connection once it is
+    // closing; whether the connection itself goes down depends on the other
+    // sessions sharing it (see `session::ssh::SharedTransport`).
+    state.ssh_transports.forget(&id);
     if let Some(handle) = state.sessions.remove(&id) {
         let _ = handle.tx.send(SessionCommand::Close);
         if let Some(owner_thread) = handle.owner_thread {

@@ -103,6 +103,7 @@ function TerminalHost({
   const cursorStyle = useStore((s) => s.cursorStyle);
   const cursorBlink = useStore((s) => s.cursorBlink);
   const suggestionsEnabled = useStore((s) => s.suggestionsEnabled);
+  const pasteWarning = useStore((s) => s.pasteWarning);
   const rightClickAction = useStore((s) => s.rightClickAction);
   const [menu, setMenu] = useState<TerminalMenu | null>(null);
   const closeMenu = useCallback(() => setMenu(null), []);
@@ -254,6 +255,10 @@ function TerminalHost({
   useEffect(() => {
     terminal?.setSuggestions(suggestionsEnabled);
   }, [terminal, suggestionsEnabled]);
+
+  useEffect(() => {
+    terminal?.setPasteWarning(pasteWarning);
+  }, [terminal, pasteWarning]);
 
   useEffect(() => {
     terminal?.setRightClickAction(rightClickAction);

@@ -59,6 +59,10 @@
 
 后台标签会显示其中正在运行的内容，结束后保留高亮直到你切回去，方便跑长任务时先去忙别的。Claude Code、Codex、Gemini CLI、Aider 这类 AI 命令行工具则按另一套规则跟踪：它们的会话要一直开着，所以标签显示的是助手的每一轮——它在干活时显示运行中，把终端交还给你时显示已结束。
 
+**复制会话（同一条连接）**
+
+**Session → Duplicate Session**（标签右键菜单里是 **Duplicate Tab**）再开一个同 profile 的会话。SSH / SFTP 会直接开在这个标签已经在用的那条连接上——只是这条连接上的又一个通道，不握手、不需要再登录一次。开了 MFA 的服务器因此只在建立连接时验证一次，而不是每开一个标签都要输一次验证码；**Split Right** / **Split Down** 同样复用。共用一条连接的标签彼此独立：各有各的 Shell，关掉其中一个不影响其它；但这条连接断了它们会一起断，而连接已经没了时则照常重新拨号。
+
 **数据导出与导入**
 
 **Session → Export Data…** 把保存的会话及其分组、Sender 的常用命令和显示设置导出为一个 `.edgeterm` 文件（内容为 JSON）；**Session → Import Data…** 只接受 `.edgeterm` 文件。
@@ -73,7 +77,9 @@ XMODEM 没有可供检测的握手，需要从 **Session → File Transfer** 菜
 
 **鼠标复制 / 粘贴**
 
-在终端里点击右键会弹出上下文菜单——Copy / Paste / Select All / Clear Buffer / Reveal Working Directory in Filer，并先选中指针所在的单词；中键粘贴。Windows 和 Linux 下可在 **Edit → Right Click** 改为 *Copy or Paste*，即控制台惯例：右键有选区时复制、没有选区时粘贴，不再弹菜单。macOS 始终使用菜单。vim、tmux（开启鼠标）、htop 等接管了鼠标的程序会收到这些点击；Windows / Linux 下按住 `Shift` 可绕过它们。
+Windows 和 Linux 下右键按控制台惯例来：有选区时复制、没有选区时粘贴，和 conhost、PuTTY、Xshell 一致。想要菜单可在 **Edit → Right Click** 改为 *Show Menu*——弹出 Copy / Paste / Select All / Clear Buffer / Reveal Working Directory in Filer，并先选中指针所在的单词。macOS 始终使用菜单。中键在所有平台都是粘贴。vim、tmux（开启鼠标）、htop 等接管了鼠标的程序会收到这些点击；Windows / Linux 下按住 `Shift` 可绕过它们。
+
+粘贴内容不止一行（或者是一行长到根本没看完的文本）时，会先把要粘的内容列出来确认：剪贴板里万一是六条命令，就不会直接在生产机上跑掉六条。`Enter` 粘贴、`Esc` 取消，**Edit → Warn Before Multi-line Paste** 可以关掉这个提醒。
 
 **快捷键**
 
