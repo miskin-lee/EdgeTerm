@@ -135,23 +135,8 @@ export const clearCommandHistory = () =>
 
 // --- sessions ---------------------------------------------------------------
 
-/**
- * Opens a session under an id the caller minted. `reuseSessionId` names a
- * session whose SSH connection this one should run on instead of dialling
- * and authenticating its own — how a duplicated tab reaches a server behind
- * MFA without a second challenge. A connection that is no longer up is
- * silently replaced by a connection of this session's own.
- */
-export const openSession = (
-  profile: SessionProfile,
-  sessionId: string,
-  reuseSessionId?: string,
-) =>
-  invoke<OpenSessionOutcome>("open_session", {
-    profile,
-    sessionId,
-    reuseSessionId: reuseSessionId ?? null,
-  });
+export const openSession = (profile: SessionProfile, sessionId: string) =>
+  invoke<OpenSessionOutcome>("open_session", { profile, sessionId });
 
 /** Records the key from a reported change as the host's only known key. */
 export const acceptHostKey = (change: HostKeyChange) =>

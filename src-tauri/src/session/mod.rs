@@ -371,7 +371,6 @@ pub fn make_info(id: &str, profile: &SessionProfile) -> SessionInfo {
         ),
         recording: None,
         legacy_algorithms: Vec::new(),
-        shared_connection: false,
     }
 }
 
@@ -397,7 +396,6 @@ mod tests {
                 supports_remote_files: true,
                 recording: None,
                 legacy_algorithms: Vec::new(),
-                shared_connection: false,
             },
             tx,
             encoding: encoding_rs::UTF_8,
@@ -446,7 +444,6 @@ mod tests {
                 supports_remote_files: true,
                 recording: None,
                 legacy_algorithms: Vec::new(),
-                shared_connection: false,
             },
             tx,
             encoding: encoding_rs::GBK,

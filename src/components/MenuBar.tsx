@@ -14,7 +14,6 @@ import { openUrl } from "@tauri-apps/plugin-opener";
 
 import appIcon from "../../src-tauri/icons/32x32.png";
 import {
-  duplicateSession,
   revealCwdInFiler,
   splitSession,
   toggleSessionConnection,
@@ -334,15 +333,6 @@ export function MenuBar(props: Props) {
           label: "New Session…",
           shortcut: accel("newSession"),
           action: props.onNewSession,
-        },
-        {
-          // Another session of the active tab's profile, on the same SSH
-          // connection where there is one to share: the login — MFA included
-          // — is not repeated (issue #63). Named for the tab, not the
-          // session: "session" is what the left panel saves, and duplicating
-          // one of those would mean copying the profile.
-          label: "Duplicate Tab",
-          action: withActive((id) => void duplicateSession(id)),
         },
         "separator",
         {

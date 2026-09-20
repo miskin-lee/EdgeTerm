@@ -63,10 +63,6 @@ With **Edit → Command Suggestions** enabled, EdgeTerm remembers the commands y
 
 A background tab shows what is running in it and keeps a highlight afterwards until you visit it, so you can start something slow and switch away. Agentic CLIs — Claude Code, Codex, Gemini CLI, Aider and the like — are followed differently: their session lasts as long as you keep the tool open, so the tab reports the assistant's turns instead, running while it works and finished when it hands the terminal back.
 
-**Duplicate a tab**
-
-**Duplicate Tab** — in the **Session** menu, or on a tab's context menu — opens another session of that tab's profile. For SSH and SFTP it opens on the connection the tab is already using: one more channel of it, with no handshake and nothing to log in to again — which is what makes a server behind MFA usable, since the verification code is spent on the connection rather than on the tab. **Split Right** / **Split Down** share the connection the same way. The tabs sharing a connection are otherwise independent — each has its own shell, and closing one leaves the others alone — but they do go down together if the connection does, and a connection that has already gone is simply dialled again.
-
 **Split panes**
 
 The terminal area splits the way VS Code's editor area does: every pane has its own tab strip, and the panes can be nested side by side and one above the other and resized on their dividers. **Split Right** / **Split Down** — on a tab's context menu, in **View**, on the buttons at the right end of the menu bar, or with `⌘\` / `Ctrl+Shift+\` — opens the session's profile again in a new pane beside it, the way a terminal split works, since one session cannot show in two places. To put an existing tab beside another, drag it: onto another pane's strip to file it there, onto the middle of a pane to join it, or onto a pane's edge to split that pane on that side. A pane whose last tab closes folds away. The tab context menu also closes the other tabs of the strip — **Close Others**, **Close to the Left**, **Close to the Right**, **Close All** — asking once for all the sessions still connected.

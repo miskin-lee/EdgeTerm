@@ -9,7 +9,7 @@ import {
   type MouseEvent as ReactMouseEvent,
 } from "react";
 
-import { duplicateSession, splitSession } from "../actions";
+import { splitSession } from "../actions";
 import { tabTitle, useStore, type DropTarget, type Tab } from "../store";
 import { colorForSession } from "../types";
 import { ContextMenu, type MenuItem } from "./ContextMenu";
@@ -238,11 +238,6 @@ export function TabStrip({ paneId }: Props) {
       },
       { label: "Close All", action: () => requestCloseTabs(ids) },
       "separator",
-      {
-        label: "Duplicate Tab",
-        icon: "copy",
-        action: () => void duplicateSession(id),
-      },
       {
         label: "Split Right",
         icon: "split-horizontal",
