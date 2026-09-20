@@ -1,10 +1,6 @@
-import {
-  ask,
-  open as openDialog,
-  save as saveDialog,
-} from "@tauri-apps/plugin-dialog";
 
 import * as api from "./api";
+import { ask, open as openDialog, save as saveDialog } from "./nativeDialog";
 import { useStore } from "./store";
 import type { AppData } from "./types";
 

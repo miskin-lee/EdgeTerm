@@ -1,6 +1,5 @@
 import type { PhysicalPosition } from "@tauri-apps/api/dpi";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
-import { open as openDialog, save as saveDialog } from "@tauri-apps/plugin-dialog";
 import {
   useCallback,
   useEffect,
@@ -12,6 +11,7 @@ import {
 
 import { revealCwdInFiler } from "../../actions";
 import * as api from "../../api";
+import { open as openDialog, save as saveDialog } from "../../nativeDialog";
 import { IS_MAC, IS_WINDOWS } from "../../platform";
 import { chordLabel } from "../../shortcuts";
 import { tabTitle, useActiveTab, useStore } from "../../store";

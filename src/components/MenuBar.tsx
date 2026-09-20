@@ -9,7 +9,6 @@ import {
   getCurrentWindow,
   type Window as TauriWindow,
 } from "@tauri-apps/api/window";
-import { ask } from "@tauri-apps/plugin-dialog";
 import { openUrl } from "@tauri-apps/plugin-opener";
 
 import appIcon from "../../src-tauri/icons/32x32.png";
@@ -25,6 +24,7 @@ import {
   importSshConfig,
 } from "../dataTransfer";
 import { commandHistory } from "../history";
+import { ask } from "../nativeDialog";
 import { IS_MAC } from "../platform";
 import { chordLabel, type ShortcutCommand } from "../shortcuts";
 import { tabTitle, useActiveTab, useStore } from "../store";

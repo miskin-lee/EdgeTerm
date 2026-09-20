@@ -1,4 +1,3 @@
-import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import { useEffect, useRef, useState, type CSSProperties } from "react";
 
 import { openSession } from "../actions";
@@ -10,6 +9,7 @@ import {
   LOCALE_SUGGESTIONS,
   TERMINAL_ENCODINGS,
 } from "../encodings";
+import { open as openDialog } from "../nativeDialog";
 import { IS_WINDOWS } from "../platform";
 import {
   flattenGroups,

@@ -602,6 +602,15 @@ export const showMainWindow = (): Promise<void> => invoke("show_main_window");
 export const readClipboardText = (): Promise<string> =>
   invoke("read_clipboard_text");
 
+/**
+ * Brings the mouse pointer back before a native dialog opens. macOS hides it
+ * while the user types and only restores it once this process sees the mouse
+ * move, which never happens while a file panel is up — so `rz`, whose panel
+ * opens on the command just typed, would be picked blind. See `show_pointer`
+ * in commands.rs; every native dialog goes through `nativeDialog.ts`.
+ */
+export const showPointer = (): Promise<void> => invoke("show_pointer");
+
 // --- portable mode ----------------------------------------------------------
 
 /**

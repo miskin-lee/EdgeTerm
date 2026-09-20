@@ -82,7 +82,7 @@ core-foundation-sys = "0.8"
 objc2 = "0.6"
 block2 = "0.6"
 objc2-foundation = { version = "0.3", features = ["NSArray", "NSData", "NSDictionary", "NSError", "NSGeometry", "NSObject", "NSOperation", "NSString", "NSURL"] }
-objc2-app-kit = { version = "0.3", features = ["block2", "NSApplication", "NSDragging", "NSDraggingItem", "NSDraggingSession", "NSEvent", "NSFilePromiseProvider", "NSImage", "NSPasteboard", "NSView", "NSWindow"] }
+objc2-app-kit = { version = "0.3", features = ["block2", "NSApplication", "NSCursor", "NSDragging", "NSDraggingItem", "NSDraggingSession", "NSEvent", "NSFilePromiseProvider", "NSImage", "NSPasteboard", "NSView", "NSWindow"] }
 
 # Drive enumeration and volume labels for the Filer's "This PC" view, the
 # registry MachineGuid the credential key is bound to, and the WM_SYSCOMMAND

@@ -1,6 +1,6 @@
-import { open as openDialog, save as saveDialog } from "@tauri-apps/plugin-dialog";
 
 import * as api from "./api";
+import { open as openDialog, save as saveDialog } from "./nativeDialog";
 import {
   BufferedFileWriter,
   ChunkedFileReader,

@@ -784,6 +784,38 @@ pub fn read_clipboard_text() -> Result<String> {
     }
 }
 
+/// Brings the mouse pointer back, for the moment before a native dialog
+/// opens.
+///
+/// macOS hides the pointer while the user types: WebKit asks AppKit for
+/// `setHiddenUntilMouseMoves:` on every keystroke that lands in an editable
+/// area, and a terminal is one, so the pointer is gone the instant a command
+/// is typed. AppKit lifts that at the next mouse-moved event *this* process
+/// handles, which is why it is never noticed — the pointer is back before
+/// the hand is. A file panel breaks that: its window delivers no mouse-moved
+/// events to us, so the flag stays set and the panel has no pointer at all
+/// for as long as it is up. `rz` is where it hurts, since the panel opens
+/// straight off the command the user just typed, and the file to send then
+/// has to be picked blind.
+///
+/// Clearing the flag costs nothing when the pointer is already visible, so
+/// every native dialog goes through it (see `nativeDialog.ts`). Elsewhere
+/// this is a no-op: Windows hides the pointer while typing through the
+/// system setting, which restores it on the next mouse move wherever it is.
+#[tauri::command]
+pub fn show_pointer(window: tauri::WebviewWindow) -> Result<()> {
+    #[cfg(target_os = "macos")]
+    {
+        // AppKit, so the main thread; a command is not promised to run on it.
+        window
+            .run_on_main_thread(|| objc2_app_kit::NSCursor::setHiddenUntilMouseMoves(false))
+            .map_err(err)?;
+    }
+    #[cfg(not(target_os = "macos"))]
+    let _ = window;
+    Ok(())
+}
+
 /// Whether this copy runs in portable mode (a `data` directory next to the
 /// executable holds all configuration). The updater must not run the NSIS
 /// installer then; the front end opens the release page instead.

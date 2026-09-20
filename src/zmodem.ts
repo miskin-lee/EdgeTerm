@@ -1,4 +1,3 @@
-import { open as openDialog, save as saveDialog } from "@tauri-apps/plugin-dialog";
 import Zmodem, {
   type Detection,
   type Offer,
@@ -8,6 +7,7 @@ import Zmodem, {
 } from "zmodem.js";
 
 import * as api from "./api";
+import { open as openDialog, save as saveDialog } from "./nativeDialog";
 import {
   BufferedFileWriter,
   concatBytes,

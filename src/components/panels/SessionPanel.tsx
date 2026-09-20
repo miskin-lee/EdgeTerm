@@ -1,9 +1,9 @@
 import { useCallback, useMemo, useState, type MouseEvent } from "react";
-import { ask } from "@tauri-apps/plugin-dialog";
 
 import { openSession, toggleSessionConnection } from "../../actions";
 import * as api from "../../api";
 import { importSshConfig } from "../../dataTransfer";
+import { ask } from "../../nativeDialog";
 import {
   byName,
   childGroups,
