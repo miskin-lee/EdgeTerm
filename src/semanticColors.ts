@@ -1,4 +1,5 @@
-import { isLightTheme, type ThemeMode } from "./types";
+import { serialxLine, setSerialxTheme } from "./serialxHighlight";
+import { isLightTheme, isSerialxTheme, type ThemeMode } from "./types";
 
 export interface SemanticRange {
   start: number;
@@ -7,6 +8,12 @@ export interface SemanticRange {
   color: string;
   /** Draw a thin underline in `color` (links). */
   underline?: boolean;
+  /**
+   * A ground under the span, for a token set as a pill (serialX's HTTP
+   * methods). Painted as a second decoration on the bottom layer, like a
+   * band, since a top-layer background would cover the glyphs.
+   */
+  background?: string;
 }
 
 export interface SemanticLine {
@@ -180,9 +187,24 @@ export const SEMANTIC_BANDS: Record<ThemeMode, SemanticBands> = {
 export let SEMANTIC_COLORS: SemanticPalette = SEMANTIC_PALETTES.dark;
 let BANDS: SemanticBands = SEMANTIC_BANDS.dark;
 
+// Which engine reads a line. A serialX theme brings serialX's highlighter
+// with it; the other two use the WindTerm-derived one below.
+let READ_AS_SERIALX = false;
+
 export function setSemanticColorTheme(mode: ThemeMode) {
   SEMANTIC_COLORS = SEMANTIC_PALETTES[mode];
   BANDS = SEMANTIC_BANDS[mode];
+  READ_AS_SERIALX = isSerialxTheme(mode);
+  setSerialxTheme(mode);
+}
+
+/**
+ * How the active theme reads `text`. The two engines share nothing but this
+ * door and the shape they answer in: the one below names a token and paints
+ * it whole, serialX's reads a line down to the parts of a token.
+ */
+export function semanticLine(text: string): SemanticLine {
+  return READ_AS_SERIALX ? serialxLine(text) : windtermLine(text);
 }
 
 function gitStatusColor(status: string): string {
@@ -331,7 +353,7 @@ function isTableHeader(text: string): boolean {
 const MAX_RANGES_PER_LINE = 240;
 const PUNCTUATION_MAX_LENGTH = 1000;
 
-export function semanticLine(text: string): SemanticLine {
+function windtermLine(text: string): SemanticLine {
   const C = SEMANTIC_COLORS;
   const ranges: SemanticRange[] = [];
   let band: string | undefined;

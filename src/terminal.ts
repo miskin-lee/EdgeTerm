@@ -25,6 +25,7 @@ import { SEARCH_HIGHLIGHT_LIMIT } from "./terminalSearch";
 import {
   isShellPrompt,
   semanticLine,
+  setSemanticColorTheme,
   shellPromptEnd,
   type SemanticRange,
 } from "./semanticColors";
@@ -492,6 +493,11 @@ export class TerminalController {
   ) {
     this.scrollback = scrollback;
     this.themeMode = theme;
+    // The semantic palette and the engine that reads a line are module-level
+    // state in semanticColors.ts, and this is the first place in the terminal
+    // bundle that knows the theme: App only owns the CSS variables, so that
+    // module (and serialX's highlighter behind it) never reaches the shell.
+    setSemanticColorTheme(theme);
     this.term = new Terminal({
       allowProposedApi: true,
       cursorBlink: true,
@@ -1390,6 +1396,7 @@ export class TerminalController {
   setTheme(theme: ThemeMode) {
     if (this.themeMode === theme) return;
     this.themeMode = theme;
+    setSemanticColorTheme(theme);
     this.term.options.theme = XTERM_THEMES[theme];
     // Decorations baked the previous palette's colors; drop them so the next
     // render recolors the viewport with the palette matching the new theme.
@@ -2282,6 +2289,19 @@ export class TerminalController {
 
         const marker = markerFor(row);
         if (!marker) continue;
+        if (range.background) {
+          // A pill's ground goes on the bottom layer, like a band: a
+          // top-layer background would be painted over the glyphs it sits
+          // under. Only serialX's HTTP methods ask for one.
+          const ground = this.term.registerDecoration({
+            marker,
+            x: startCol,
+            width: endCol - startCol,
+            backgroundColor: range.background,
+            layer: "bottom",
+          });
+          if (ground) record(row, ground);
+        }
         const decoration = this.term.registerDecoration({
           marker,
           x: startCol,

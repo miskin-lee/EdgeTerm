@@ -39,6 +39,15 @@ export function isLightTheme(theme: ThemeMode): boolean {
   return theme === "light" || theme === "serialx-light";
 }
 
+/**
+ * The two palettes ported from serialX. They bring that project's own
+ * highlighter along (`serialxHighlight.ts`), so the semantic layer asks this
+ * to decide which engine reads a line.
+ */
+export function isSerialxTheme(theme: ThemeMode): boolean {
+  return theme === "serialx-dark" || theme === "serialx-light";
+}
+
 export interface SessionProfile {
   id: string;
   name: string;

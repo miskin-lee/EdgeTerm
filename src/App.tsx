@@ -41,7 +41,6 @@ import { SenderPanel } from "./components/panels/SenderPanel";
 import { SessionPanel } from "./components/panels/SessionPanel";
 import { applyFonts, symbolFallbacks } from "./fonts";
 import { commandHistory } from "./history";
-import { setSemanticColorTheme } from "./semanticColors";
 import { matchAppShortcut } from "./shortcuts";
 import { useActiveTab, useStore } from "./store";
 import { allControllers, getController } from "./terminalRegistry";
@@ -171,13 +170,13 @@ export default function App() {
   }, []);
 
   // Theme is applied in three places: the CSS variable palette keys off the
-  // root data-theme attribute, semantic decorations read a module-level
-  // palette, and each live terminal owns its own xterm theme object. The
+  // root data-theme attribute, each live terminal owns its own xterm theme
+  // object, and the controller passes the theme on to the semantic layer —
+  // which lives in the terminal bundle, so the shell never loads it. The
   // backend is told as well, so the next launch opens its window in this
   // theme's background colour; a failed write only costs that.
   useEffect(() => {
     document.documentElement.dataset.theme = theme;
-    setSemanticColorTheme(theme);
     for (const controller of allControllers()) controller.setTheme(theme);
     void api.setStartupTheme(theme).catch(() => {});
   }, [theme]);
