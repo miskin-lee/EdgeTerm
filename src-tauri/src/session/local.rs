@@ -81,6 +81,12 @@ pub fn spawn(
     if let Some(lang) = locale::local_shell_lang(profile) {
         cmd.env("LANG", lang);
     }
+    // The NVIDIA startup workaround is for our own window; programs started
+    // from the terminal get the environment the user actually has.
+    #[cfg(target_os = "linux")]
+    if let Some(name) = crate::nvidia_quirk::injected() {
+        cmd.env_remove(name);
+    }
     if let Some(cwd) = profile.cwd.as_deref().filter(|c| !c.is_empty()) {
         cmd.cwd(cwd);
     } else if let Some(home) = dirs::home_dir() {

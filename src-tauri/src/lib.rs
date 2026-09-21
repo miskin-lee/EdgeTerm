@@ -4,7 +4,9 @@ mod file_promise;
 mod fonts;
 mod fs_local;
 mod model;
-#[cfg(target_os = "linux")]
+// Unix test builds compile it too: the detection is pure, and no CI job
+// runs the Rust tests on Linux.
+#[cfg(any(target_os = "linux", all(test, unix)))]
 mod nvidia_quirk;
 mod remote_edit;
 mod session;

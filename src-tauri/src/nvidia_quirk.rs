@@ -13,10 +13,16 @@
 //! set nothing: a crash is preferable to disabling rendering features for
 //! users on setups we misunderstood.
 //!
+//! The variable is for our own window only. A local shell would otherwise
+//! inherit it and hand it to every program started from the terminal, so the
+//! pty takes it back out (`injected`).
+//!
 //! Remove this module once an upstream fix ships in a WebKitGTK release we
 //! can require.
 
 use std::path::Path;
+#[cfg(target_os = "linux")]
+use std::sync::OnceLock;
 
 /// Primary-GPU identity as read from sysfs: PCI vendor id and the last
 /// segment of the `driver` symlink target.
@@ -164,9 +170,20 @@ fn plan(
     }
 }
 
+/// The variable `apply` set, if any. One the user set themselves is not
+/// recorded here and stays in the shell's environment.
+#[cfg(target_os = "linux")]
+static INJECTED: OnceLock<&'static str> = OnceLock::new();
+
+#[cfg(target_os = "linux")]
+pub fn injected() -> Option<&'static str> {
+    INJECTED.get().copied()
+}
+
 /// Set the workaround variable, if the crashing combination is detected.
 /// Runs at the very start of `run()`: single-threaded, before GTK/WebKit/EGL
 /// are initialised. Detection failures are silent by design (see plan()).
+#[cfg(target_os = "linux")]
 pub fn apply() {
     let env = |name: &str| std::env::var(name).ok();
     let path_exists = |path: &Path| path.exists();
@@ -179,6 +196,7 @@ pub fn apply() {
     // std::env::set_var becomes unsafe in edition 2024; revisit if the crate
     // is bumped.
     std::env::set_var(name, "1");
+    let _ = INJECTED.set(name);
     eprintln!(
         "edgeterm: set {name}=1 (NVIDIA primary GPU on Wayland; workaround for \
 GTK work item #8056 / WebKit bug #324551)"
@@ -331,12 +349,18 @@ mod tests {
     fn gdk_backend_first_recognised_entry_wins() {
         let gpu = nvidia_gpu();
         let wayland = env_from(&[("GDK_BACKEND", "wayland,x11")]);
-        assert_eq!(plan(&wayland, &no_paths, &gpu), Some(NV_DISABLE_EXPLICIT_SYNC));
+        assert_eq!(
+            plan(&wayland, &no_paths, &gpu),
+            Some(NV_DISABLE_EXPLICIT_SYNC)
+        );
         let x11 = env_from(&[("GDK_BACKEND", "x11")]);
         assert_eq!(plan(&x11, &no_paths, &gpu), None);
         // Unknown entries are skipped until one is recognised.
         let mixed = env_from(&[("GDK_BACKEND", "foo,wayland")]);
-        assert_eq!(plan(&mixed, &no_paths, &gpu), Some(NV_DISABLE_EXPLICIT_SYNC));
+        assert_eq!(
+            plan(&mixed, &no_paths, &gpu),
+            Some(NV_DISABLE_EXPLICIT_SYNC)
+        );
         let unknown_only = env_from(&[("GDK_BACKEND", "foo,bar")]);
         assert_eq!(plan(&unknown_only, &no_paths, &gpu), None);
     }
@@ -413,8 +437,7 @@ mod tests {
         std::fs::create_dir_all(&primary).unwrap();
         std::fs::write(primary.join("vendor"), "0x10de\n").unwrap();
         std::fs::write(primary.join("boot_vga"), "1\n").unwrap();
-        std::os::unix::fs::symlink("/sys/bus/pci/drivers/nvidia", primary.join("driver"))
-            .unwrap();
+        std::os::unix::fs::symlink("/sys/bus/pci/drivers/nvidia", primary.join("driver")).unwrap();
         let gpu = collect(&root).expect("primary card after skippable entries");
         assert_eq!(gpu.vendor, "0x10de");
         assert_eq!(gpu.driver, "nvidia");
