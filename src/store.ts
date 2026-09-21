@@ -149,7 +149,6 @@ const SHORTCUTS_KEY = "edgeterm.shortcuts";
 const CURSOR_STYLE_KEY = "edgeterm.cursorStyle";
 const CURSOR_BLINK_KEY = "edgeterm.cursorBlink";
 const PASTE_WARNING_KEY = "edgeterm.pasteWarning";
-const COPY_ON_SELECT_KEY = "edgeterm.copyOnSelect";
 
 // On by default: a paste that would run several commands is confirmed first
 // (see `TerminalController.paste`). Only an explicit "off" turns it off, so a
@@ -159,17 +158,6 @@ const loadPasteWarning = (): boolean => {
     return localStorage.getItem(PASTE_WARNING_KEY) !== "off";
   } catch {
     return true;
-  }
-};
-
-// Opt-in: a terminal that replaces the clipboard as soon as something is
-// selected surprises everyone who is not used to it, so Edit → Copy on
-// Select turns it on for the people who are (PuTTY, Xshell, X11).
-const loadCopyOnSelect = (): boolean => {
-  try {
-    return localStorage.getItem(COPY_ON_SELECT_KEY) === "on";
-  } catch {
-    return false;
   }
 };
 
@@ -442,8 +430,6 @@ export interface AppSettings {
   suggestionsEnabled: boolean;
   /** Confirm a paste that would submit more than one command. */
   pasteWarning: boolean;
-  /** Put a mouse selection on the clipboard as soon as it is made. */
-  copyOnSelect: boolean;
   /** Windows / Linux only; macOS always opens the menu. */
   rightClickAction: RightClickAction;
   /** Only the key bindings that differ from the platform defaults. */
@@ -488,8 +474,6 @@ interface AppStore {
   suggestionsEnabled: boolean;
   /** Whether a multi-line paste is confirmed first; see `pastePrompt`. */
   pasteWarning: boolean;
-  /** Whether a mouse selection is copied without a Copy; see the terminal. */
-  copyOnSelect: boolean;
   /** The paste waiting for the user's yes, or null. */
   pastePrompt: PastePrompt | null;
   /** What a right click in the terminal does; see `RightClickAction`. */
@@ -623,7 +607,6 @@ interface AppStore {
   setSuggestionsEnabled: (enabled: boolean) => void;
   setPasteWarning: (enabled: boolean) => void;
   setPastePrompt: (prompt: PastePrompt | null) => void;
-  setCopyOnSelect: (enabled: boolean) => void;
   setRightClickAction: (action: RightClickAction) => void;
   setShortcuts: (bindings: ShortcutBindings) => void;
   resetSettings: () => void;
@@ -778,7 +761,6 @@ export const useStore = create<AppStore>((set, get) => ({
   cursorBlink: loadCursorBlink(),
   suggestionsEnabled: loadSuggestionsEnabled(),
   pasteWarning: loadPasteWarning(),
-  copyOnSelect: loadCopyOnSelect(),
   pastePrompt: null,
   rightClickAction: loadRightClickAction(),
   shortcuts: initialShortcuts,
@@ -1220,11 +1202,6 @@ export const useStore = create<AppStore>((set, get) => ({
     saveSetting(PASTE_WARNING_KEY, enabled ? "on" : "off");
   },
 
-  setCopyOnSelect(enabled) {
-    set({ copyOnSelect: enabled });
-    saveSetting(COPY_ON_SELECT_KEY, enabled ? "on" : "off");
-  },
-
   setPastePrompt(prompt) {
     set({ pastePrompt: prompt });
   },
@@ -1276,7 +1253,6 @@ export const useStore = create<AppStore>((set, get) => ({
       cursorBlink: true,
       suggestionsEnabled: false,
       pasteWarning: true,
-      copyOnSelect: false,
       rightClickAction: defaultRightClickAction(),
     });
     try {
@@ -1292,7 +1268,6 @@ export const useStore = create<AppStore>((set, get) => ({
       localStorage.removeItem(CURSOR_BLINK_KEY);
       localStorage.removeItem(SUGGESTIONS_KEY);
       localStorage.removeItem(PASTE_WARNING_KEY);
-      localStorage.removeItem(COPY_ON_SELECT_KEY);
       localStorage.removeItem(RIGHT_CLICK_KEY);
       localStorage.removeItem(SHORTCUTS_KEY);
     } catch {
@@ -1315,7 +1290,6 @@ export const useStore = create<AppStore>((set, get) => ({
       cursorBlink: state.cursorBlink,
       suggestionsEnabled: state.suggestionsEnabled,
       pasteWarning: state.pasteWarning,
-      copyOnSelect: state.copyOnSelect,
       rightClickAction: state.rightClickAction,
       shortcuts: shortcutOverrides(state.shortcuts),
     };
@@ -1361,9 +1335,6 @@ export const useStore = create<AppStore>((set, get) => ({
     }
     if (typeof values.pasteWarning === "boolean") {
       state.setPasteWarning(values.pasteWarning);
-    }
-    if (typeof values.copyOnSelect === "boolean") {
-      state.setCopyOnSelect(values.copyOnSelect);
     }
     const rightClickAction = parseRightClickAction(values.rightClickAction);
     if (rightClickAction) state.setRightClickAction(rightClickAction);

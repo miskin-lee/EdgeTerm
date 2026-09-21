@@ -266,9 +266,7 @@ export function MenuBar(props: Props) {
   const rightClickAction = useStore((s) => s.rightClickAction);
   const setRightClickAction = useStore((s) => s.setRightClickAction);
   const pasteWarning = useStore((s) => s.pasteWarning);
-  const copyOnSelect = useStore((s) => s.copyOnSelect);
   const setPasteWarning = useStore((s) => s.setPasteWarning);
-  const setCopyOnSelect = useStore((s) => s.setCopyOnSelect);
   const resetSettings = useStore((s) => s.resetSettings);
   // The accelerators as the user has bound them (see shortcuts.ts); only
   // the tab-number keys are fixed.
@@ -437,13 +435,6 @@ export function MenuBar(props: Props) {
           action: withActive((id) => getController(id)?.selectAll()),
         },
         "separator",
-        {
-          // The X11 / PuTTY habit: a selection is on the clipboard the
-          // moment the mouse button comes up.
-          label: "Copy on Select",
-          checked: copyOnSelect,
-          action: () => setCopyOnSelect(!copyOnSelect),
-        },
         {
           // Every line of a paste after the first runs as its own command,
           // so a paste that holds several is confirmed first (issue #63).
