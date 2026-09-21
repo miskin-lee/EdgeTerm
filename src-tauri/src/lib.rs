@@ -4,6 +4,8 @@ mod file_promise;
 mod fonts;
 mod fs_local;
 mod model;
+#[cfg(target_os = "linux")]
+mod nvidia_quirk;
 mod remote_edit;
 mod session;
 mod ssh_config;
@@ -247,6 +249,12 @@ pub fn run() {
             std::env::set_var("WEBVIEW2_USER_DATA_FOLDER", dir.join("webview"));
         }
     }
+    // Linux + NVIDIA Wayland startup crash: same spirit as the block above —
+    // detect the crashing combination before GTK/WebKit are initialised and
+    // inject the escape variable ourselves. See the module docs for the
+    // upstream tickets.
+    #[cfg(target_os = "linux")]
+    nvidia_quirk::apply();
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
