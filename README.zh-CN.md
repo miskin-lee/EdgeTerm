@@ -75,6 +75,8 @@ XMODEM 没有可供检测的握手，需要从 **Session → File Transfer** 菜
 
 Windows 和 Linux 下右键按控制台惯例来：有选区时复制、没有选区时粘贴，和 conhost、PuTTY、Xshell 一致。想要菜单可在 **Edit → Right Click** 改为 *Show Menu*——弹出 Copy / Paste / Select All / Clear Buffer / Reveal Working Directory in Filer，并先选中指针所在的单词。macOS 始终使用菜单。中键在所有平台都是粘贴。vim、tmux（开启鼠标）、htop 等接管了鼠标的程序会收到这些点击；Windows / Linux 下按住 `Shift` 可绕过它们。
 
+**Edit → Copy on Select** 打开后，鼠标松开的那一刻选区就进了剪贴板，和 PuTTY、Xshell、X11 终端的习惯一致；Windows 和 Linux 默认打开，macOS 默认关闭。打开时 *Copy or Paste* 右键只负责粘贴（选区已经在剪贴板里了），和 PuTTY 一样；键盘或菜单里的 Select All 不会触发它。
+
 粘贴内容不止一行（或者是一行长到根本没看完的文本）时，会先把要粘的内容列出来确认：剪贴板里万一是六条命令，就不会直接在生产机上跑掉六条。`Enter` 粘贴、`Esc` 取消，**Edit → Warn Before Multi-line Paste** 可以关掉这个提醒。
 
 **快捷键**

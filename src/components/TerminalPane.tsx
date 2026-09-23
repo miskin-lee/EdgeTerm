@@ -104,6 +104,7 @@ function TerminalHost({
   const cursorBlink = useStore((s) => s.cursorBlink);
   const suggestionsEnabled = useStore((s) => s.suggestionsEnabled);
   const pasteWarning = useStore((s) => s.pasteWarning);
+  const copyOnSelect = useStore((s) => s.copyOnSelect);
   const rightClickAction = useStore((s) => s.rightClickAction);
   const [menu, setMenu] = useState<TerminalMenu | null>(null);
   const closeMenu = useCallback(() => setMenu(null), []);
@@ -135,6 +136,13 @@ function TerminalHost({
     if (!controller) return;
     event.preventDefault();
     if (rightClickAction === "copyPaste") {
+      // PuTTY: with Copy on Select the selection is on the clipboard
+      // already, so the right button only ever pastes — copying it again
+      // would take a second right click to paste (issue #66).
+      if (copyOnSelect) {
+        controller.pasteFromClipboard();
+        return;
+      }
       // conhost / Windows Terminal: the selection is consumed by the copy.
       if (controller.copySelection()) controller.clearSelection();
       else controller.pasteFromClipboard();
@@ -259,6 +267,10 @@ function TerminalHost({
   useEffect(() => {
     terminal?.setPasteWarning(pasteWarning);
   }, [terminal, pasteWarning]);
+
+  useEffect(() => {
+    terminal?.setCopyOnSelect(copyOnSelect);
+  }, [terminal, copyOnSelect]);
 
   useEffect(() => {
     terminal?.setRightClickAction(rightClickAction);
