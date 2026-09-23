@@ -77,6 +77,8 @@ Windows 和 Linux 下右键按控制台惯例来：有选区时复制、没有�
 
 **Edit → Copy on Select** 打开后，鼠标松开的那一刻选区就进了剪贴板，和 PuTTY、Xshell、X11 终端的习惯一致；Windows 和 Linux 默认打开，macOS 默认关闭。打开时 *Copy or Paste* 右键只负责粘贴（选区已经在剪贴板里了），和 PuTTY 一样；键盘或菜单里的 Select All 不会触发它。
 
+**Edit → Programs Can Set Clipboard** 决定终端里的程序用 OSC 52 复制时怎么办——tmux、vim / Neovim 和各种 TUI agent 都这样复制，SSH 远端也一样。*Ask*（默认）在每个会话第一次复制时询问，允许后该会话不再问；*Allow* 从不询问；*Deny* 一律丢弃。程序永远读不到剪贴板的内容。
+
 粘贴内容不止一行（或者是一行长到根本没看完的文本）时，会先把要粘的内容列出来确认：剪贴板里万一是六条命令，就不会直接在生产机上跑掉六条。`Enter` 粘贴、`Esc` 取消，**Edit → Warn Before Multi-line Paste** 可以关掉这个提醒。
 
 **快捷键**

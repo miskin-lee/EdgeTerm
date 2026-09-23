@@ -603,6 +603,14 @@ export const readClipboardText = (): Promise<string> =>
   invoke("read_clipboard_text");
 
 /**
+ * Puts text on the clipboard from the process: what a program's OSC 52 write
+ * uses on macOS and Windows, where it arrives outside any user gesture (see
+ * `write_clipboard_text`).
+ */
+export const writeClipboardText = (text: string): Promise<void> =>
+  invoke("write_clipboard_text", { text });
+
+/**
  * Brings the mouse pointer back before a native dialog opens. macOS hides it
  * while the user types and only restores it once this process sees the mouse
  * move, which never happens while a file panel is up — so `rz`, whose panel

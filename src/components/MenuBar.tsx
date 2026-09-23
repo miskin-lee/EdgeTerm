@@ -25,6 +25,10 @@ import {
 } from "../dataTransfer";
 import { commandHistory } from "../history";
 import { ask } from "../nativeDialog";
+import {
+  PROGRAM_CLIPBOARD_LABELS,
+  type ProgramClipboardMode,
+} from "../osc52";
 import { IS_MAC } from "../platform";
 import { chordLabel, type ShortcutCommand } from "../shortcuts";
 import { tabTitle, useActiveTab, useStore } from "../store";
@@ -269,6 +273,8 @@ export function MenuBar(props: Props) {
   const copyOnSelect = useStore((s) => s.copyOnSelect);
   const setPasteWarning = useStore((s) => s.setPasteWarning);
   const setCopyOnSelect = useStore((s) => s.setCopyOnSelect);
+  const programClipboard = useStore((s) => s.programClipboard);
+  const setProgramClipboard = useStore((s) => s.setProgramClipboard);
   const resetSettings = useStore((s) => s.resetSettings);
   // The accelerators as the user has bound them (see shortcuts.ts); only
   // the tab-number keys are fixed.
@@ -325,6 +331,13 @@ export function MenuBar(props: Props) {
     checked: rightClickAction === action,
     mark: "radio",
     action: () => setRightClickAction(action),
+  });
+
+  const programClipboardEntry = (mode: ProgramClipboardMode): Entry => ({
+    label: PROGRAM_CLIPBOARD_LABELS[mode],
+    checked: programClipboard === mode,
+    mark: "radio",
+    action: () => setProgramClipboard(mode),
   });
 
   const menus: Menu[] = [
@@ -450,6 +463,16 @@ export function MenuBar(props: Props) {
           label: "Warn Before Multi-line Paste",
           checked: pasteWarning,
           action: () => setPasteWarning(!pasteWarning),
+        },
+        {
+          // OSC 52: tmux, vim and TUI agents copy through the terminal
+          // (issue #65). Reading the clipboard back is never allowed.
+          label: "Programs Can Set Clipboard",
+          children: [
+            programClipboardEntry("ask"),
+            programClipboardEntry("allow"),
+            programClipboardEntry("deny"),
+          ],
         },
         // Mouse copy / paste is a Windows / Linux choice; macOS terminals
         // always open the menu, so the submenu is left out there.

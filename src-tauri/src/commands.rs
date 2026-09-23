@@ -784,6 +784,40 @@ pub fn read_clipboard_text() -> Result<String> {
     }
 }
 
+/// Puts text on the clipboard from the process, for a program in a terminal
+/// that set it with OSC 52 (#65). That write arrives with the program's
+/// output, never inside a click or key press, and WebKit lets a page write
+/// the pasteboard only from inside a user gesture; WebView2 wants the page
+/// focused. On Linux the page writes it itself: `enable_clipboard_access`
+/// sets WebKitGTK's javascript-can-access-clipboard, which lifts the
+/// gesture requirement there.
+#[tauri::command]
+pub fn write_clipboard_text(text: String) -> Result<()> {
+    #[cfg(windows)]
+    {
+        clipboard_win::set_clipboard_string(&text).map_err(err)
+    }
+    #[cfg(target_os = "macos")]
+    {
+        use objc2_app_kit::{NSPasteboard, NSPasteboardTypeString};
+        use objc2_foundation::NSString;
+        let pasteboard = NSPasteboard::generalPasteboard();
+        pasteboard.clearContents();
+        if pasteboard.setString_forType(&NSString::from_str(&text), unsafe {
+            NSPasteboardTypeString
+        }) {
+            Ok(())
+        } else {
+            Err("the pasteboard refused the text".into())
+        }
+    }
+    #[cfg(not(any(windows, target_os = "macos")))]
+    {
+        let _ = text;
+        Err("the page writes the clipboard on this platform".into())
+    }
+}
+
 /// Brings the mouse pointer back, for the moment before a native dialog
 /// opens.
 ///

@@ -85,6 +85,8 @@ On Windows and Linux a right click follows the console convention — it copies 
 
 **Edit → Copy on Select** puts a selection on the clipboard as soon as the mouse button comes up, the way PuTTY, Xshell and X11 terminals do; it is on by default on Windows and Linux and off on macOS. While it is on, the *Copy or Paste* right click only pastes, as in PuTTY, since the selection is on the clipboard already. A Select All made from the keyboard or a menu is left alone.
 
+**Edit → Programs Can Set Clipboard** decides what happens when a program copies through the terminal with OSC 52 — tmux, vim / Neovim and TUI agents do, including over SSH. *Ask* (the default) confirms the first copy of each session and lets the rest of that session through; *Allow* never asks; *Deny* drops them. A program can never read the clipboard back.
+
 A paste that would submit more than one command — or a single line too long to have been read — is shown first, with the lines it holds, so a clipboard that turns out to be six commands does not run six commands on a production host. `Enter` pastes, `Esc` cancels, and **Edit → Warn Before Multi-line Paste** turns the check off.
 
 **Keyboard shortcuts**

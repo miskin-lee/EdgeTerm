@@ -105,6 +105,7 @@ function TerminalHost({
   const suggestionsEnabled = useStore((s) => s.suggestionsEnabled);
   const pasteWarning = useStore((s) => s.pasteWarning);
   const copyOnSelect = useStore((s) => s.copyOnSelect);
+  const programClipboard = useStore((s) => s.programClipboard);
   const rightClickAction = useStore((s) => s.rightClickAction);
   const [menu, setMenu] = useState<TerminalMenu | null>(null);
   const closeMenu = useCallback(() => setMenu(null), []);
@@ -271,6 +272,10 @@ function TerminalHost({
   useEffect(() => {
     terminal?.setCopyOnSelect(copyOnSelect);
   }, [terminal, copyOnSelect]);
+
+  useEffect(() => {
+    terminal?.setProgramClipboard(programClipboard);
+  }, [terminal, programClipboard]);
 
   useEffect(() => {
     terminal?.setRightClickAction(rightClickAction);

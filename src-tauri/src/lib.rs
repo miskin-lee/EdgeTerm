@@ -372,6 +372,7 @@ pub fn run() {
             commands::set_startup_theme,
             commands::show_main_window,
             commands::read_clipboard_text,
+            commands::write_clipboard_text,
             commands::show_pointer,
             window_control,
         ])

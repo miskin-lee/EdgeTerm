@@ -128,6 +128,12 @@ export async function ensureController(id: string): Promise<TerminalController> 
   controller.setRightClickAction(useStore.getState().rightClickAction);
   controller.setPasteWarning(useStore.getState().pasteWarning);
   controller.setCopyOnSelect(useStore.getState().copyOnSelect);
+  controller.setProgramClipboard(useStore.getState().programClipboard);
+  // A program's first clipboard write of the session asks (OSC 52); a later
+  // one replaces the text of a prompt still open.
+  controller.onConfirmClipboardWrite((text) =>
+    useStore.getState().setClipboardPrompt({ sessionId: id, text }),
+  );
   // A paste that would submit several commands stops here and asks; App
   // renders the dialog and pastes it once the user agrees.
   controller.onConfirmPaste((text) =>

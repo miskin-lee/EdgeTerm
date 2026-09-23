@@ -11,6 +11,10 @@ import {
   type LayoutNode,
   type Side,
 } from "./layout";
+import {
+  parseProgramClipboardMode,
+  type ProgramClipboardMode,
+} from "./osc52";
 import { IS_MAC } from "./platform";
 import {
   DEFAULT_SHORTCUTS,
@@ -118,6 +122,15 @@ export interface PastePrompt {
   text: string;
 }
 
+/**
+ * A program's OSC 52 write waiting for the user's yes; see
+ * `TerminalController.programClipboardWrite`.
+ */
+export interface ClipboardPrompt {
+  sessionId: string;
+  text: string;
+}
+
 export type PanelName = "filer" | "sessions" | "sender";
 
 export const PANEL_FONT_SIZE = { min: 9, max: 18, default: 12 } as const;
@@ -150,6 +163,7 @@ const CURSOR_STYLE_KEY = "edgeterm.cursorStyle";
 const CURSOR_BLINK_KEY = "edgeterm.cursorBlink";
 const PASTE_WARNING_KEY = "edgeterm.pasteWarning";
 const COPY_ON_SELECT_KEY = "edgeterm.copyOnSelect";
+const PROGRAM_CLIPBOARD_KEY = "edgeterm.programClipboard";
 
 // On by default: a paste that would run several commands is confirmed first
 // (see `TerminalController.paste`). Only an explicit "off" turns it off, so a
@@ -177,6 +191,19 @@ const loadCopyOnSelect = (): boolean => {
       : defaultCopyOnSelect();
   } catch {
     return defaultCopyOnSelect();
+  }
+};
+
+// Ask by default (WindTerm): anything on the far end of a session can send
+// OSC 52, and the clipboard is what the user pastes into the next shell.
+const loadProgramClipboard = (): ProgramClipboardMode => {
+  try {
+    return (
+      parseProgramClipboardMode(localStorage.getItem(PROGRAM_CLIPBOARD_KEY)) ??
+      "ask"
+    );
+  } catch {
+    return "ask";
   }
 };
 
@@ -451,6 +478,8 @@ export interface AppSettings {
   pasteWarning: boolean;
   /** Put a mouse selection on the clipboard as soon as it is made. */
   copyOnSelect: boolean;
+  /** What a program's OSC 52 clipboard write does. */
+  programClipboard: ProgramClipboardMode;
   /** Windows / Linux only; macOS always opens the menu. */
   rightClickAction: RightClickAction;
   /** Only the key bindings that differ from the platform defaults. */
@@ -499,6 +528,10 @@ interface AppStore {
   copyOnSelect: boolean;
   /** The paste waiting for the user's yes, or null. */
   pastePrompt: PastePrompt | null;
+  /** Whether programs may set the clipboard with OSC 52; see osc52.ts. */
+  programClipboard: ProgramClipboardMode;
+  /** A program's clipboard write waiting for the user's yes, or null. */
+  clipboardPrompt: ClipboardPrompt | null;
   /** What a right click in the terminal does; see `RightClickAction`. */
   rightClickAction: RightClickAction;
   /** The chord each app command answers; see `shortcuts.ts`. */
@@ -631,6 +664,8 @@ interface AppStore {
   setPasteWarning: (enabled: boolean) => void;
   setPastePrompt: (prompt: PastePrompt | null) => void;
   setCopyOnSelect: (enabled: boolean) => void;
+  setProgramClipboard: (mode: ProgramClipboardMode) => void;
+  setClipboardPrompt: (prompt: ClipboardPrompt | null) => void;
   setRightClickAction: (action: RightClickAction) => void;
   setShortcuts: (bindings: ShortcutBindings) => void;
   resetSettings: () => void;
@@ -787,6 +822,8 @@ export const useStore = create<AppStore>((set, get) => ({
   pasteWarning: loadPasteWarning(),
   copyOnSelect: loadCopyOnSelect(),
   pastePrompt: null,
+  programClipboard: loadProgramClipboard(),
+  clipboardPrompt: null,
   rightClickAction: loadRightClickAction(),
   shortcuts: initialShortcuts,
   panels: loadPanels(),
@@ -932,6 +969,10 @@ export const useStore = create<AppStore>((set, get) => ({
         current.hostKeyPrompt?.sessionId === id ? null : current.hostKeyPrompt,
       pastePrompt:
         current.pastePrompt?.sessionId === id ? null : current.pastePrompt,
+      clipboardPrompt:
+        current.clipboardPrompt?.sessionId === id
+          ? null
+          : current.clipboardPrompt,
       authPrompts: current.authPrompts.filter(
         (prompt) => prompt.sessionId !== id,
       ),
@@ -1236,6 +1277,15 @@ export const useStore = create<AppStore>((set, get) => ({
     set({ pastePrompt: prompt });
   },
 
+  setProgramClipboard(mode) {
+    set({ programClipboard: mode });
+    saveSetting(PROGRAM_CLIPBOARD_KEY, mode);
+  },
+
+  setClipboardPrompt(prompt) {
+    set({ clipboardPrompt: prompt });
+  },
+
   setSuggestionsEnabled(enabled) {
     set({ suggestionsEnabled: enabled });
     // The history is only fetched once someone opts in (load() is a no-op on
@@ -1284,6 +1334,7 @@ export const useStore = create<AppStore>((set, get) => ({
       suggestionsEnabled: false,
       pasteWarning: true,
       copyOnSelect: defaultCopyOnSelect(),
+      programClipboard: "ask",
       rightClickAction: defaultRightClickAction(),
     });
     try {
@@ -1300,6 +1351,7 @@ export const useStore = create<AppStore>((set, get) => ({
       localStorage.removeItem(SUGGESTIONS_KEY);
       localStorage.removeItem(PASTE_WARNING_KEY);
       localStorage.removeItem(COPY_ON_SELECT_KEY);
+      localStorage.removeItem(PROGRAM_CLIPBOARD_KEY);
       localStorage.removeItem(RIGHT_CLICK_KEY);
       localStorage.removeItem(SHORTCUTS_KEY);
     } catch {
@@ -1323,6 +1375,7 @@ export const useStore = create<AppStore>((set, get) => ({
       suggestionsEnabled: state.suggestionsEnabled,
       pasteWarning: state.pasteWarning,
       copyOnSelect: state.copyOnSelect,
+      programClipboard: state.programClipboard,
       rightClickAction: state.rightClickAction,
       shortcuts: shortcutOverrides(state.shortcuts),
     };
@@ -1372,6 +1425,8 @@ export const useStore = create<AppStore>((set, get) => ({
     if (typeof values.copyOnSelect === "boolean") {
       state.setCopyOnSelect(values.copyOnSelect);
     }
+    const programClipboard = parseProgramClipboardMode(values.programClipboard);
+    if (programClipboard) state.setProgramClipboard(programClipboard);
     const rightClickAction = parseRightClickAction(values.rightClickAction);
     if (rightClickAction) state.setRightClickAction(rightClickAction);
     const shortcuts = parseShortcuts(values.shortcuts, state.shortcuts);

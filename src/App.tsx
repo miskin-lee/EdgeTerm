@@ -20,6 +20,7 @@ import {
 } from "./actions";
 import * as api from "./api";
 import { AuthPromptDialog } from "./components/AuthPromptDialog";
+import { ClipboardWriteDialog } from "./components/ClipboardWriteDialog";
 import { CloseSessionDialog } from "./components/CloseSessionDialog";
 import { QuitConfirmDialog } from "./components/QuitConfirmDialog";
 import { FontSizeDialog } from "./components/FontSizeDialog";
@@ -42,7 +43,7 @@ import { SessionPanel } from "./components/panels/SessionPanel";
 import { applyFonts, symbolFallbacks } from "./fonts";
 import { commandHistory } from "./history";
 import { matchAppShortcut } from "./shortcuts";
-import { useActiveTab, useStore } from "./store";
+import { tabTitle, useActiveTab, useStore } from "./store";
 import { allControllers, getController } from "./terminalRegistry";
 import { isFileSession, type SessionProfile, type SessionState } from "./types";
 import { useUpdater } from "./updater";
@@ -110,6 +111,14 @@ export default function App() {
   const pastePrompt = useStore((s) => s.pastePrompt);
   const setPastePrompt = useStore((s) => s.setPastePrompt);
   const setPasteWarning = useStore((s) => s.setPasteWarning);
+  const clipboardPrompt = useStore((s) => s.clipboardPrompt);
+  const setClipboardPrompt = useStore((s) => s.setClipboardPrompt);
+  const setProgramClipboard = useStore((s) => s.setProgramClipboard);
+  const clipboardTab = useStore((s) =>
+    clipboardPrompt
+      ? s.tabs.find((tab) => tab.info.id === clipboardPrompt.sessionId)
+      : undefined,
+  );
   const tabs = useStore((s) => s.tabs);
   const closingTabs = useMemo(
     () =>
@@ -526,6 +535,26 @@ export default function App() {
             getController(pastePrompt.sessionId)?.writePaste(pastePrompt.text);
           }}
           onCancel={() => setPastePrompt(null)}
+        />
+      )}
+
+      {clipboardPrompt && (
+        <ClipboardWriteDialog
+          key={clipboardPrompt.sessionId}
+          session={clipboardTab ? tabTitle(clipboardTab) : "a session"}
+          text={clipboardPrompt.text}
+          onAllow={(always) => {
+            const { sessionId, text } = clipboardPrompt;
+            setClipboardPrompt(null);
+            if (always) setProgramClipboard("allow");
+            const controller = getController(sessionId);
+            controller?.allowProgramClipboard(text);
+            controller?.focus();
+          }}
+          onDeny={() => {
+            setClipboardPrompt(null);
+            getController(clipboardPrompt.sessionId)?.focus();
+          }}
         />
       )}
 

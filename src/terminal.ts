@@ -14,11 +14,12 @@ import {
 } from "@xterm/xterm";
 
 import { isAiSessionCommand } from "./aiTools";
-import { readClipboardText } from "./api";
+import { readClipboardText, writeClipboardText } from "./api";
 import { createOutputDecoder } from "./encodings";
 import { MONO_FONT_FAMILY } from "./fonts";
 import type { CommandSuggestion } from "./history";
 import { patchImeInput } from "./imePatch";
+import { parseOsc52, type ProgramClipboardMode } from "./osc52";
 import { IS_MAC, IS_WINDOWS } from "./platform";
 import { matchAppShortcut } from "./shortcuts";
 import { SEARCH_HIGHLIGHT_LIMIT } from "./terminalSearch";
@@ -424,6 +425,11 @@ export class TerminalController {
   /** The selection changed since that button went down. */
   private selectionChanged = false;
   private confirmPaste: ((text: string) => void) | null = null;
+  /** Edit → Programs Can Set Clipboard; see `programClipboardWrite`. */
+  private programClipboard: ProgramClipboardMode = "ask";
+  /** The user allowed this session's OSC 52 writes when asked. */
+  private programClipboardAllowed = false;
+  private confirmClipboardWrite: ((text: string) => void) | null = null;
   private inputAnchor: InputAnchor | null = null;
   /** Marker and prompt signature for detecting when the submitted command returns. */
   private commandMarker: IMarker | null = null;
@@ -577,6 +583,14 @@ export class TerminalController {
     this.term.parser.registerOscHandler(7, report(parseOsc7));
     this.term.parser.registerOscHandler(1337, report(parseOsc1337));
     this.term.parser.registerOscHandler(9, report(parseOsc9));
+    // tmux, vim and TUI agents copy with OSC 52 (issue #65). Always claimed,
+    // so a request that is not written (a `?` read, a denied write) is not
+    // passed on to anything else.
+    this.term.parser.registerOscHandler(52, (data) => {
+      const text = parseOsc52(data);
+      if (text !== null) this.programClipboardWrite(text);
+      return true;
+    });
     // FinalTerm/iTerm shell integration brackets commands with OSC 133. It
     // is the authoritative completion signal when available; prompt matching
     // below covers ordinary bash/zsh/fish/cmd/PowerShell installations.
@@ -1281,6 +1295,60 @@ export class TerminalController {
   /** Edit → Copy on Select; see `onSelectionMouseUp`. */
   setCopyOnSelect(enabled: boolean) {
     this.copyOnSelect = enabled;
+  }
+
+  /** Edit → Programs Can Set Clipboard. */
+  setProgramClipboard(mode: ProgramClipboardMode) {
+    this.programClipboard = mode;
+  }
+
+  /**
+   * Where an OSC 52 write that needs the user's yes goes; the dialog calls
+   * `allowProgramClipboard` once it is given.
+   */
+  onConfirmClipboardWrite(confirm: (text: string) => void) {
+    this.confirmClipboardWrite = confirm;
+  }
+
+  /**
+   * The user said yes to this session's program setting the clipboard:
+   * writes the text that asked and lets later writes through without asking
+   * again, since a program that copies once (an agent, tmux) copies on every
+   * selection and one prompt each time would be unusable.
+   */
+  allowProgramClipboard(text: string) {
+    this.programClipboardAllowed = true;
+    this.writeProgramClipboard(text);
+  }
+
+  /**
+   * A program's OSC 52 write. In "ask" mode the first one of the session
+   * waits for the user; without a confirmer (a test, a pane still wiring up)
+   * it is dropped, since the clipboard is the user's and a program has no
+   * claim on it that has not been granted.
+   */
+  private programClipboardWrite(text: string) {
+    if (this.disposed || this.programClipboard === "deny") return;
+    if (this.programClipboard === "allow" || this.programClipboardAllowed) {
+      this.writeProgramClipboard(text);
+    } else {
+      this.confirmClipboardWrite?.(text);
+    }
+  }
+
+  /**
+   * The write arrives with the program's output, outside any user gesture,
+   * so on macOS and Windows the process does it (`write_clipboard_text`);
+   * WebKitGTK lets the page write it (see `enable_clipboard_access`).
+   */
+  private writeProgramClipboard(text: string) {
+    const write =
+      IS_MAC || IS_WINDOWS
+        ? writeClipboardText(text)
+        : navigator.clipboard.writeText(text);
+    void write.catch((error: unknown) => {
+      this.showTransferNotice(`Copy failed: ${errorMessage(error)}`, "error");
+    });
   }
 
   /**
