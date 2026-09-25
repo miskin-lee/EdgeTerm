@@ -229,10 +229,16 @@ export function reconnectSession(id: string): Promise<string | null> {
  * The one-button behaviour of a tab's power toggle: a live session is
  * disconnected, an ended one is reconnected, and a session still connecting
  * is left alone.
+ *
+ * Keyboard focus goes back to the terminal: the Session panel's power button
+ * would otherwise keep it (and drop it to the body once it disables itself
+ * while connecting), so the reconnected shell needed another click before it
+ * took keys (issue #67).
  */
 export function toggleSessionConnection(id: string): void {
   const tab = useStore.getState().tabs.find((item) => item.info.id === id);
   if (!tab) return;
+  getController(id)?.focus();
   if (tab.state === "connected") void disconnectSession(id);
   else if (tab.state !== "connecting") void reconnectSession(id);
 }
