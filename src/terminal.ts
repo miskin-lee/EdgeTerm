@@ -1209,16 +1209,12 @@ export class TerminalController {
 
   /**
    * Copies the selection to the clipboard; false when there is none. A write
-   * the browser refuses is reported in the pane rather than swallowed: with
-   * Copy on Select there is no other sign that nothing was copied.
+   * that fails is reported in the pane rather than swallowed: with Copy on
+   * Select there is no other sign that nothing was copied.
    */
   copySelection(): boolean {
     if (!this.term.hasSelection()) return false;
-    void navigator.clipboard
-      .writeText(this.term.getSelection())
-      .catch((error: unknown) => {
-        this.showTransferNotice(`Copy failed: ${errorMessage(error)}`, "error");
-      });
+    this.writeClipboard(this.term.getSelection());
     return true;
   }
 
@@ -1318,7 +1314,7 @@ export class TerminalController {
    */
   allowProgramClipboard(text: string) {
     this.programClipboardAllowed = true;
-    this.writeProgramClipboard(text);
+    this.writeClipboard(text);
   }
 
   /**
@@ -1330,18 +1326,21 @@ export class TerminalController {
   private programClipboardWrite(text: string) {
     if (this.disposed || this.programClipboard === "deny") return;
     if (this.programClipboard === "allow" || this.programClipboardAllowed) {
-      this.writeProgramClipboard(text);
+      this.writeClipboard(text);
     } else {
       this.confirmClipboardWrite?.(text);
     }
   }
 
   /**
-   * The write arrives with the program's output, outside any user gesture,
-   * so on macOS and Windows the process does it (`write_clipboard_text`);
-   * WebKitGTK lets the page write it (see `enable_clipboard_access`).
+   * Puts text on the clipboard. On macOS and Windows the process does it
+   * (`write_clipboard_text`): a program's OSC 52 write arrives with its
+   * output, outside any user gesture, and WKWebView does not count the mouse
+   * up that ends a selection drag as one either, so Copy on Select copied
+   * nothing on macOS (issue #63). WebKitGTK lets the page write it (see
+   * `enable_clipboard_access`).
    */
-  private writeProgramClipboard(text: string) {
+  private writeClipboard(text: string) {
     const write =
       IS_MAC || IS_WINDOWS
         ? writeClipboardText(text)
