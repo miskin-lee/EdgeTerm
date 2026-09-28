@@ -42,6 +42,17 @@ function selectionChanges(controller: TerminalController) {
     true;
 }
 
+/**
+ * How xterm reports a drag in practice: it adds a document mouse up listener
+ * at the press (so after the controller's) and fires the selection change
+ * from there, not while the pointer moves (issue #70).
+ */
+function selectionChangesOnRelease(controller: TerminalController) {
+  document.addEventListener("mouseup", () => selectionChanges(controller), {
+    once: true,
+  });
+}
+
 const press = (target: HTMLElement, button = 0) =>
   target.dispatchEvent(new MouseEvent("mousedown", { bubbles: true, button }));
 
@@ -77,6 +88,17 @@ describe("copy on select", () => {
 
     // A second release without a new selection must not copy again.
     release(host);
+    expect(controller.copySelection).toHaveBeenCalledTimes(1);
+  });
+
+  it("copies a selection xterm reports only as the button comes up", () => {
+    const { controller, host } = createController();
+    controller.setCopyOnSelect(true);
+
+    press(host);
+    selectionChangesOnRelease(controller);
+    release(host);
+
     expect(controller.copySelection).toHaveBeenCalledTimes(1);
   });
 

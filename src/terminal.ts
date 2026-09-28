@@ -700,12 +700,17 @@ export class TerminalController {
     this.term.onSelectionChange(() => {
       this.selectionChanged = true;
     });
-    // Copy on select (see `onSelectionMouseUp`). The buttons are watched on
-    // the document rather than the host: a selection drag routinely ends
-    // outside the terminal, and the mouse up that finishes it is then
-    // delivered to whatever is under the pointer.
+    // Copy on select (see `onSelectionMouseUp`). The buttons are watched
+    // above the host: a selection drag routinely ends outside the terminal,
+    // and the mouse up that finishes it is then delivered to whatever is
+    // under the pointer. The mouse up is watched on the window, not the
+    // document: xterm reports a mouse selection only from its own document
+    // mouse up listener, added at each press and so after ours, and on the
+    // document ours ran first, saw no selection yet and never copied
+    // (issue #70). The window hears the bubbling event after every document
+    // listener.
     document.addEventListener("mousedown", this.onSelectionMouseDown);
-    document.addEventListener("mouseup", this.onSelectionMouseUp);
+    window.addEventListener("mouseup", this.onSelectionMouseUp);
 
     this.lineTimes.push(Date.now());
   }
@@ -1592,7 +1597,7 @@ export class TerminalController {
   dispose() {
     this.disposed = true;
     document.removeEventListener("mousedown", this.onSelectionMouseDown);
-    document.removeEventListener("mouseup", this.onSelectionMouseUp);
+    window.removeEventListener("mouseup", this.onSelectionMouseUp);
     this.dropAnchor();
     this.resetTrimMarker();
     this.resetCommandTracking();
