@@ -385,6 +385,33 @@ impl Store {
         Ok(profile)
     }
 
+    /// Saves a copy of a profile under a new id and a free "(copy)" name,
+    /// listed right after the original. Its stored password / passphrase is
+    /// copied here because the webview never sees them; the Sender commands
+    /// scoped to the original stay with the original.
+    pub fn duplicate(&self, id: &str) -> Result<SessionProfile> {
+        let copy = {
+            let mut profiles = self.profiles.lock();
+            let index = profiles
+                .iter()
+                .position(|p| p.id == id)
+                .ok_or_else(|| AppError::new("the session no longer exists"))?;
+            let mut copy = profiles[index].clone();
+            copy.id = uuid::Uuid::new_v4().to_string();
+            copy.name = copy_name(&copy.name, |name| profiles.iter().any(|p| p.name == name));
+            profiles.insert(index + 1, copy.clone());
+            copy
+        };
+        {
+            let mut credentials = self.credentials.lock();
+            if let Some(secrets) = credentials.get(id).cloned() {
+                credentials.insert(copy.id.clone(), secrets);
+            }
+        }
+        self.persist()?;
+        Ok(copy)
+    }
+
     /// Removes a profile together with everything that belongs to it: its
     /// stored credentials and the Sender commands scoped to it alone.
     pub fn delete(&self, id: &str) -> Result<()> {
@@ -911,6 +938,28 @@ pub fn validate_app_data(data: &AppData) -> Result<()> {
         )));
     }
     Ok(())
+}
+
+/// "web (copy)", then "web (copy 2)", … — the first that `taken` refuses.
+/// Copying a copy counts on from the original's name instead of stacking
+/// another "(copy)".
+fn copy_name(name: &str, taken: impl Fn(&str) -> bool) -> String {
+    let base = name
+        .strip_suffix(')')
+        .and_then(|rest| rest.rsplit_once(" (copy"))
+        .filter(|(_, n)| {
+            n.is_empty()
+                || n.strip_prefix(' ')
+                    .is_some_and(|n| n.parse::<u32>().is_ok())
+        })
+        .map_or(name, |(base, _)| base);
+    (1..)
+        .map(|n| match n {
+            1 => format!("{base} (copy)"),
+            n => format!("{base} (copy {n})"),
+        })
+        .find(|candidate| !taken(candidate))
+        .expect("an unbounded range always has a free name")
 }
 
 /// Strips the secrets a profile may carry; every profile that leaves the

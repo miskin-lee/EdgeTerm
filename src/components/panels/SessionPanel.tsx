@@ -112,6 +112,7 @@ export function SessionPanel({ onEditProfile, onNewSession }: Props) {
   const profiles = useStore((s) => s.profiles);
   const groups = useStore((s) => s.groups);
   const removeProfile = useStore((s) => s.removeProfile);
+  const duplicateProfile = useStore((s) => s.duplicateProfile);
   const moveProfileToGroup = useStore((s) => s.moveProfileToGroup);
   const upsertGroup = useStore((s) => s.upsertGroup);
   const removeGroup = useStore((s) => s.removeGroup);
@@ -363,6 +364,16 @@ export function SessionPanel({ onEditProfile, onNewSession }: Props) {
     return [
       connect,
       { label: "Edit…", icon: "edit", action: () => onEditProfile(profile) },
+      {
+        label: "Duplicate",
+        icon: "copy",
+        // Most copies differ from the original in the host or the name, so
+        // the copy opens in the editor straight away.
+        action: () =>
+          void duplicateProfile(profile.id).then(onEditProfile, (error) =>
+            report("Failed to duplicate session", error),
+          ),
+      },
       { label: "Move to Group", icon: "move", children: choices },
       "separator",
       {

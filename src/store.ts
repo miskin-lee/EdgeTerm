@@ -578,6 +578,8 @@ interface AppStore {
   /** Fetches saved profiles and their groups together. */
   loadProfiles: () => Promise<void>;
   upsertProfile: (profile: SessionProfile) => Promise<SessionProfile>;
+  /** Saves a copy of a profile right after it; resolves to the copy. */
+  duplicateProfile: (id: string) => Promise<SessionProfile>;
   /** Deletes a saved profile with everything that belongs to it. */
   removeProfile: (id: string) => Promise<void>;
   /** Moves a saved profile into a group (null = its kind's root). */
@@ -862,6 +864,16 @@ export const useStore = create<AppStore>((set, get) => ({
           : profiles.map((p) => (p.id === saved.id ? saved : p)),
     });
     return saved;
+  },
+
+  async duplicateProfile(id) {
+    const copy = await api.duplicateProfile(id);
+    // The backend lists the copy right after the original; mirror that.
+    const profiles = get().profiles.filter((p) => p.id !== copy.id);
+    const index = profiles.findIndex((p) => p.id === id);
+    profiles.splice(index === -1 ? profiles.length : index + 1, 0, copy);
+    set({ profiles });
+    return copy;
   },
 
   async removeProfile(id) {

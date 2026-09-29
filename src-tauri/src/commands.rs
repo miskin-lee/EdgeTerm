@@ -49,6 +49,12 @@ pub fn save_profile(state: State<'_, AppState>, profile: SessionProfile) -> Resu
     state.store.save(profile)
 }
 
+/// Saves a copy of a saved session, stored credentials included.
+#[tauri::command]
+pub fn duplicate_profile(state: State<'_, AppState>, id: String) -> Result<SessionProfile> {
+    state.store.duplicate(&id)
+}
+
 /// Deletes a saved session with its credentials and the Sender commands
 /// scoped to it.
 #[tauri::command]

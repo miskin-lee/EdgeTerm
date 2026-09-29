@@ -304,6 +304,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             commands::list_profiles,
             commands::save_profile,
+            commands::duplicate_profile,
             commands::delete_profile,
             commands::list_session_groups,
             commands::save_session_group,

@@ -340,6 +340,48 @@ fn windows_shell_command_line_keeps_backslashes_and_single_quotes() {
 }
 
 #[test]
+fn store_duplicates_profiles_with_their_credentials() {
+    let dir = temp_dir("store-duplicate");
+    let store = Store::load_from(dir.join("sessions.json"));
+
+    let mut web = profile(SessionKind::Ssh);
+    web.name = "web".into();
+    web.host = Some("10.0.0.1".into());
+    web.password = Some("hunter2".into());
+    let web = store.save(web).expect("save");
+    let mut db = profile(SessionKind::Ssh);
+    db.name = "db".into();
+    let db = store.save(db).expect("save");
+
+    let copy = store.duplicate(&web.id).expect("duplicate");
+    assert_ne!(copy.id, web.id);
+    assert_eq!(copy.name, "web (copy)");
+    assert_eq!(copy.host.as_deref(), Some("10.0.0.1"));
+    assert_eq!(copy.password, None, "the returned copy carries no secret");
+    let ids: Vec<_> = store.list().into_iter().map(|p| p.id).collect();
+    assert_eq!(ids, [web.id.clone(), copy.id.clone(), db.id.clone()]);
+    assert_eq!(
+        store.get(&copy.id).expect("get").and_then(|p| p.password),
+        Some("hunter2".into())
+    );
+
+    // Copies count on from the original's name, and the copies' secrets are
+    // their own: deleting one leaves the others intact.
+    let again = store.duplicate(&web.id).expect("duplicate");
+    assert_eq!(again.name, "web (copy 2)");
+    let of_copy = store.duplicate(&copy.id).expect("duplicate");
+    assert_eq!(of_copy.name, "web (copy 3)");
+    store.delete(&copy.id).expect("delete");
+    assert_eq!(
+        store.get(&again.id).expect("get").and_then(|p| p.password),
+        Some("hunter2".into())
+    );
+
+    assert!(store.duplicate("missing").is_err());
+    std::fs::remove_dir_all(&dir).ok();
+}
+
+#[test]
 fn store_assigns_ids_and_round_trips_profiles() {
     let dir = temp_dir("store");
     let path = dir.join("sessions.json");

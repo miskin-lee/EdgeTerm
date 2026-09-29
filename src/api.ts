@@ -49,6 +49,10 @@ export const listProfiles = () => invoke<SessionProfile[]>("list_profiles");
 export const saveProfile = (profile: SessionProfile) =>
   invoke<SessionProfile>("save_profile", { profile });
 
+/** Saves a copy of a profile, stored credentials included. */
+export const duplicateProfile = (id: string) =>
+  invoke<SessionProfile>("duplicate_profile", { id });
+
 /** Deletes a profile with its credentials and the Sender commands scoped to it. */
 export const deleteProfile = (id: string) =>
   invoke<void>("delete_profile", { id });
