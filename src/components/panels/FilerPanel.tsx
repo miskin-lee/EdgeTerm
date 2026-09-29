@@ -106,11 +106,19 @@ const dropPoint = (position: PhysicalPosition): { x: number; y: number } =>
 export function FilerPanel() {
   const tab = useActiveTab();
   const theme = useStore((s) => s.theme);
-  const remote = Boolean(
-    tab?.info.kind === "ssh" &&
-      tab.info.supportsRemoteFiles &&
-      tab.state === "connected",
+  const sshFiles = Boolean(
+    tab?.info.kind === "ssh" && tab.info.supportsRemoteFiles,
   );
+  const remote = sshFiles && tab?.state === "connected";
+  // An SSH session that is still connecting or has dropped shows no files at
+  // all. Falling back to the local home made a drop meant for the server copy
+  // into this machine instead (issue #71).
+  const offline = sshFiles && !remote;
+  const offlineReason = offline
+    ? tab?.state === "connecting"
+      ? "Connecting…"
+      : "Session disconnected — reconnect to browse and upload files"
+    : null;
   // Null for every session without remote files, so switching between local tabs does not
   // count as a source change and reset where the user was browsing.
   const remoteId = remote ? (tab?.info.id ?? null) : null;
@@ -148,6 +156,7 @@ export function FilerPanel() {
   const [dragOut, setDragOut] = useState<DragOutState | null>(null);
   const panelRef = useRef<HTMLDivElement>(null);
   const remoteIdRef = useRef(remoteId);
+  const offlineReasonRef = useRef(offlineReason);
   const pathRef = useRef(path);
   const busyRef = useRef(busy);
   const dropFilesRef = useRef<(paths: string[]) => void>(() => {});
@@ -170,6 +179,7 @@ export function FilerPanel() {
   const activeTransfer = useRef<ActiveTransfer | null>(null);
 
   remoteIdRef.current = remoteId;
+  offlineReasonRef.current = offlineReason;
   pathRef.current = path;
   busyRef.current = busy;
 
@@ -296,6 +306,7 @@ export function FilerPanel() {
 
   const load = useCallback(
     async (target: string) => {
+      if (offline) return;
       setBusy(true);
       setError(null);
       try {
@@ -312,7 +323,7 @@ export function FilerPanel() {
         setBusy(false);
       }
     },
-    [remoteId],
+    [remoteId, offline],
   );
 
   /**
@@ -329,6 +340,15 @@ export function FilerPanel() {
   };
 
   useEffect(() => {
+    if (offline) {
+      setPath("");
+      setDraft("");
+      setEntries([]);
+      setSelected(null);
+      setCreating(null);
+      setError(null);
+      return;
+    }
     let cancelled = false;
     (async () => {
       try {
@@ -345,7 +365,7 @@ export function FilerPanel() {
     return () => {
       cancelled = true;
     };
-  }, [remoteId, load]);
+  }, [remoteId, offline, load]);
 
   useEffect(() => {
     const target = claimTarget();
@@ -462,7 +482,13 @@ export function FilerPanel() {
    * remote session, and this is the local half of the same gesture.
    */
   const copyPaths = async (sources: string[]) => {
-    if (remoteIdRef.current || !path || busyRef.current || sources.length === 0) {
+    if (
+      remoteIdRef.current ||
+      offlineReasonRef.current ||
+      !path ||
+      busyRef.current ||
+      sources.length === 0
+    ) {
       return;
     }
     const destination = path;
@@ -516,6 +542,9 @@ export function FilerPanel() {
    */
   const dropVerdict = (): DropVerdict => {
     if (dragOutRef.current) return { accept: false, reason: null };
+    if (offlineReasonRef.current) {
+      return { accept: false, reason: offlineReasonRef.current };
+    }
     if (!pathRef.current) {
       return { accept: false, reason: "No folder is open yet" };
     }
@@ -1120,7 +1149,7 @@ export function FilerPanel() {
           <Icon name="folder" />
           Filer
           <span className="panel-badge">
-            {remote ? tab?.info.protocol : "local"}
+            {remote || offline ? tab?.info.protocol : "local"}
           </span>
         </div>
       </div>
@@ -1177,7 +1206,7 @@ export function FilerPanel() {
           onClick={() => void load(path)}
           title="Refresh"
           aria-label="Refresh"
-          disabled={busy}
+          disabled={busy || offline}
         >
           <Icon name="refresh" />
         </button>
@@ -1217,7 +1246,7 @@ export function FilerPanel() {
           onClick={goUp}
           title="Parent folder"
           aria-label="Parent folder"
-          disabled={busy || atDrivesRoot}
+          disabled={busy || !path || atDrivesRoot}
         >
           <Icon name="arrow-up" />
         </button>
@@ -1254,6 +1283,9 @@ export function FilerPanel() {
             : "Local file list. Drop files or folders here to copy them into this folder, or drag an entry out of the window."
         }
       >
+        {offlineReason && !error && (
+          <div className="panel-empty">{offlineReason}</div>
+        )}
         {error && <div className="panel-empty">{error}</div>}
         {creating !== null && (
           <div className="row filer-new-entry">
