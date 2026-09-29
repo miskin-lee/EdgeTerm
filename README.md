@@ -9,6 +9,9 @@
 
 A small, fast terminal, SSH, SFTP, FTP and serial client built with **Rust + Tauri**. Installers are about 4–5 MB.
 
+> [!TIP]
+> <a href="https://github.com/miskin-lee/serialX"><img src="https://raw.githubusercontent.com/miskin-lee/serialX/main/assets/icons/png/serialx-64.png" alt="serialX" width="20" height="20" align="top"></a> Doing embedded work and debugging devices over a serial port? Try **[serialX](https://github.com/miskin-lee/serialX)** from the same author, a workspace built for serial debugging.
+
 <img src="docs/screenshot-dark.png" alt="EdgeTerm dark theme: split panes, colored log and switch output, Session tree, Filer and Sender" width="100%">
 
 <img src="docs/screenshot-light.png" alt="EdgeTerm light theme: the same workspace" width="100%">
@@ -70,3 +73,5 @@ All except the tab numbers can be changed in **View → Keyboard Shortcuts…**.
 EdgeTerm is licensed under the [GNU General Public License v3.0](LICENSE).
 
 The interface icons are [Codicons](https://github.com/microsoft/vscode-codicons) by Microsoft, used under the Creative Commons Attribution 4.0 license.
+
+The name “EdgeTerm” and its icon are not covered by the open-source license above. Copyright © 2026 miskin. All rights reserved.

@@ -9,6 +9,9 @@
 
 小巧、快速的终端 / SSH / SFTP / FTP / 串口客户端，基于 **Rust + Tauri**，安装包约 4–5 MB。
 
+> [!TIP]
+> <a href="https://github.com/miskin-lee/serialX"><img src="https://raw.githubusercontent.com/miskin-lee/serialX/main/assets/icons/png/serialx-64.png" alt="serialX" width="20" height="20" align="top"></a> 做嵌入式开发、需要用串口调试设备？推荐使用同一作者的 **[serialX](https://github.com/miskin-lee/serialX)**，一款专为串口调试打造的工作台。
+
 <img src="docs/screenshot-dark.png" alt="EdgeTerm 深色主题：分栏、着色的日志与交换机输出、会话树、Filer 与 Sender" width="100%">
 
 <img src="docs/screenshot-light.png" alt="EdgeTerm 浅色主题：同一工作区" width="100%">
@@ -70,3 +73,5 @@
 EdgeTerm 采用 [GNU General Public License v3.0](LICENSE) 授权。
 
 界面图标来自 Microsoft 的 [Codicons](https://github.com/microsoft/vscode-codicons)，依据 Creative Commons Attribution 4.0 许可使用。
+
+应用名称“EdgeTerm”及其图标不在上述开源许可范围内，版权 © 2026 miskin，保留所有权利。
