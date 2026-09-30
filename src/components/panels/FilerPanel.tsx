@@ -103,6 +103,26 @@ interface DropVerdict {
 const dropPoint = (position: PhysicalPosition): { x: number; y: number } =>
   IS_WINDOWS ? position.toLogical(window.devicePixelRatio) : position;
 
+/** `lastPaths` key for the local file system, which every local tab shares. */
+const LOCAL_SOURCE = "";
+
+/**
+ * The directory last shown for each source (a remote session id, or
+ * `LOCAL_SOURCE`), so switching back to a session returns to where the user
+ * was browsing instead of its home (issue #74). Module level so hiding the
+ * panel keeps it too; entries for closed sessions are pruned as others are
+ * recorded.
+ */
+const lastPaths = new Map<string, string>();
+
+const rememberPath = (source: string, path: string) => {
+  const open = new Set(useStore.getState().tabs.map((tab) => tab.info.id));
+  for (const key of lastPaths.keys()) {
+    if (key !== LOCAL_SOURCE && !open.has(key)) lastPaths.delete(key);
+  }
+  lastPaths.set(source, path);
+};
+
 export function FilerPanel() {
   const tab = useActiveTab();
   const theme = useStore((s) => s.theme);
@@ -304,21 +324,31 @@ export function FilerPanel() {
 
   const closeMenu = useCallback(() => setMenu(null), []);
 
+  /**
+   * Lists `target` and shows it. Resolves false if the listing failed; the
+   * error is shown unless `quiet`, for a caller that has a fallback.
+   */
   const load = useCallback(
-    async (target: string) => {
-      if (offline) return;
+    async (target: string, quiet = false): Promise<boolean> => {
+      if (offline) return false;
       setBusy(true);
       setError(null);
       try {
         const listing = remoteId
           ? await api.sftpList(remoteId, target)
           : await api.localList(target);
+        // The user switched sessions while this was listing; showing it now
+        // would put the previous session's files under the new one.
+        if (remoteIdRef.current !== remoteId) return false;
         setPath(listing.path);
         setDraft(listing.path);
         setEntries(listing.entries);
         setSelected(null);
+        rememberPath(remoteId ?? LOCAL_SOURCE, listing.path);
+        return true;
       } catch (e) {
-        setError(String(e));
+        if (!quiet) setError(String(e));
+        return false;
       } finally {
         setBusy(false);
       }
@@ -354,10 +384,20 @@ export function FilerPanel() {
       try {
         // Revealing with the panel hidden shows it: start at the requested
         // directory rather than loading home first and racing it.
-        const start =
-          claimTarget() ??
-          (remoteId ? await api.sftpHome(remoteId) : await api.localHome());
-        if (!cancelled) await load(start);
+        const target = claimTarget();
+        if (target !== null) {
+          await load(target);
+          return;
+        }
+        // Coming back to a session resumes where it was browsed; home only
+        // the first time, or when that directory no longer lists.
+        const last = lastPaths.get(remoteId ?? LOCAL_SOURCE);
+        if (last !== undefined && (await load(last, true))) return;
+        if (cancelled) return;
+        const home = remoteId
+          ? await api.sftpHome(remoteId)
+          : await api.localHome();
+        if (!cancelled) await load(home);
       } catch (e) {
         if (!cancelled) setError(String(e));
       }
