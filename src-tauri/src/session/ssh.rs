@@ -46,6 +46,9 @@ const TRANSFER_CHUNK_SIZE: usize = 1024 * 1024;
 /// How often an SFTP-only session, which has no channel to read from, checks
 /// that its transport is still alive so a dropped connection is reported.
 const SFTP_HEALTH_INTERVAL: Duration = Duration::from_secs(5);
+/// How long a server gets to accept or refuse the sftp subsystem; see
+/// `ensure_sftp`. Servers answer at once, so this only bounds a stuck one.
+const SFTP_SUBSYSTEM_TIMEOUT: Duration = Duration::from_secs(5);
 /// Most keyboard-interactive rounds one authentication attempt will answer.
 /// RFC 4256 puts no limit on them, and a server that keeps asking would
 /// otherwise keep the connection — and the user — busy forever.
@@ -1209,8 +1212,35 @@ async fn ensure_sftp(
     if let Some(existing) = slot {
         return Ok(existing.clone());
     }
-    let channel = handle.channel_open_session().await?;
+    let mut channel = handle.channel_open_session().await?;
     channel.request_subsystem(true, "sftp").await?;
+    // `request_subsystem` only sends the request. Wait for the server's
+    // answer before speaking SFTP: a server without the subsystem refuses at
+    // once, while the SFTP handshake would wait out russh-sftp's request
+    // timeout for a version that never comes — and this runs inside a shell
+    // session's loop, so its terminal froze for that long on every Filer
+    // request (found with several tabs on one connection, issue #73).
+    let answer = tokio::time::timeout(SFTP_SUBSYSTEM_TIMEOUT, async {
+        loop {
+            match channel.wait().await {
+                Some(ChannelMsg::Success) => return true,
+                Some(ChannelMsg::Failure)
+                | Some(ChannelMsg::Close)
+                | Some(ChannelMsg::Eof)
+                | None => return false,
+                Some(_) => {}
+            }
+        }
+    })
+    .await;
+    if answer != Ok(true) {
+        // A plain `Channel` is not closed on drop; left open, every retry
+        // would leave another session channel on the server.
+        let _ = channel.close().await;
+        return Err(AppError::new(
+            "the server does not offer the sftp subsystem",
+        ));
+    }
     let session = SftpSession::new(channel.into_stream())
         .await
         .map_err(|e| AppError::new(format!("the server refused the sftp subsystem: {e}")))?;
