@@ -58,6 +58,7 @@ function pendingSessionInfo(
     recording: null,
     // Known once the backend has connected.
     legacyAlgorithms: [],
+    sharedConnection: false,
   };
 }
 
@@ -147,17 +148,44 @@ export async function ensureController(id: string): Promise<TerminalController> 
  * Opens a session. The id is minted here and the terminal is created *before*
  * the backend connects, so output emitted during login (an SSH banner, a
  * shell's first prompt) always has somewhere to land.
+ *
+ * `reuseSessionId` puts the new session on that session's SSH connection
+ * instead of dialling one of its own; see `duplicateSshChannel`.
  */
 export async function openSession(
   profile: SessionProfile,
+  reuseSessionId?: string,
 ): Promise<string | null> {
   const id = newSessionId();
   useStore
     .getState()
     .addTab(pendingSessionInfo(id, profile), profile, "connecting");
   if (!isFileSession(profile.kind)) await ensureController(id);
-  return connectSession(id, profile);
+  return connectSession(id, profile, reuseSessionId);
 }
+
+/**
+ * Duplicate SSH Channel (a tab's context menu, WindTerm's name for it):
+ * another shell on the connection this SSH tab already runs on, in the same
+ * pane. Nothing is logged in to again — the password, passphrase, one-time
+ * code or push was spent on the connection, not on the tab, so a server
+ * behind MFA takes one code however many channels are opened (issues #63,
+ * #73). The tabs sharing a connection go down together if it does. Only an
+ * explicit choice: opening a saved session or splitting still logs in anew.
+ */
+export async function duplicateSshChannel(id: string): Promise<string | null> {
+  const store = useStore.getState();
+  const tab = store.tabs.find((item) => item.info.id === id);
+  if (!tab || !canDuplicateSshChannel(tab)) return null;
+  // The duplicate belongs beside its original, which need not be in the pane
+  // the user last worked in; openSession opens into the active one.
+  store.setActivePane(tab.paneId);
+  return openSession(tab.profile, tab.info.id);
+}
+
+/** Whether `tab` has a live SSH connection to open another channel on. */
+export const canDuplicateSshChannel = (tab: Tab): boolean =>
+  tab.info.kind === "ssh" && tab.state === "connected";
 
 /**
  * Split Right / Split Down: opens another session of the tab's profile in
@@ -252,6 +280,7 @@ export function toggleSessionConnection(id: string): void {
 async function connectSession(
   id: string,
   profile: SessionProfile,
+  reuseSessionId?: string,
 ): Promise<string | null> {
   const store = useStore.getState();
   const pending = store.tabs.find((item) => item.info.id === id);
@@ -270,7 +299,7 @@ async function connectSession(
 
   pendingConnects.add(id);
   try {
-    const outcome = await api.openSession(profile, id);
+    const outcome = await api.openSession(profile, id, reuseSessionId);
 
     // The user may close the optimistic tab while SSH is still negotiating.
     // In that case close the newly-created backend session immediately.
@@ -296,7 +325,9 @@ async function connectSession(
     connectedStore.updateTabInfo(id, info);
     connectedStore.applyState(id, "connected");
     connectedStore.setStatus(
-      `Connected to ${tabTitle({ info, ordinal: tab.ordinal })}`,
+      info.sharedConnection
+        ? `Connected to ${tabTitle({ info, ordinal: tab.ordinal })} on the same connection`
+        : `Connected to ${tabTitle({ info, ordinal: tab.ordinal })}`,
     );
 
     // The pane was fitted while the backend was still connecting, so its

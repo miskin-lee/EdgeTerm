@@ -135,6 +135,12 @@ export interface SessionInfo {
    * on algorithms kept for old devices; empty when none did.
    */
   legacyAlgorithms: LegacyAlgorithms[];
+  /**
+   * Whether the session runs on another tab's SSH connection instead of one
+   * of its own (Duplicate SSH Channel): the login was not repeated, and the tabs
+   * sharing the connection go down together.
+   */
+  sharedConnection: boolean;
 }
 
 /** The legacy algorithms one SSH server was connected with (issue #60). */
