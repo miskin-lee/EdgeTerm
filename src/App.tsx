@@ -532,9 +532,16 @@ export default function App() {
             // terminal that is about to receive the paste.
             setPastePrompt(null);
             if (remember) setPasteWarning(false);
-            getController(pastePrompt.sessionId)?.writePaste(pastePrompt.text);
+            // The dialog took focus from the terminal; hand it back so typing
+            // continues after the pasted lines (issue #73).
+            const controller = getController(pastePrompt.sessionId);
+            controller?.writePaste(pastePrompt.text);
+            controller?.focus();
           }}
-          onCancel={() => setPastePrompt(null)}
+          onCancel={() => {
+            setPastePrompt(null);
+            getController(pastePrompt.sessionId)?.focus();
+          }}
         />
       )}
 
