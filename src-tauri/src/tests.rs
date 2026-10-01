@@ -1407,6 +1407,47 @@ fn ftp_and_sftp_share_one_group_namespace() {
 }
 
 #[test]
+fn telnet_shares_the_ssh_groups_and_keeps_no_secrets() {
+    let dir = temp_dir("telnet-groups");
+    let path = dir.join("sessions.json");
+    let store = Store::load_from(path.clone());
+
+    let site = store
+        .save_group(group("site", SessionKind::Ssh, None))
+        .expect("save ssh group");
+
+    let mut telnet = profile(SessionKind::Telnet);
+    telnet.group_id = Some(site.id.clone());
+    telnet.host = Some("switch.lan".into());
+    // Left over from the SSH form before the protocol was switched; telnet
+    // logs in at the server's prompt and stores no password.
+    telnet.password = Some("secret".into());
+    let telnet = store.save(telnet).expect("save telnet member");
+    assert_eq!(telnet.group_id.as_deref(), Some(site.id.as_str()));
+    assert_eq!(telnet.address(), "switch.lan:23");
+
+    let saved = store.get(&telnet.id).expect("get").expect("telnet saved");
+    assert_eq!(saved.password, None);
+
+    // A telnet profile is no SSH transport, so it can be neither a jump
+    // host nor use one.
+    let mut via_telnet = profile(SessionKind::Ssh);
+    via_telnet.jump_profile_id = Some(telnet.id.clone());
+    assert_eq!(store.save(via_telnet).expect("save ssh").jump_profile_id, None);
+
+    let reloaded = Store::load_from(path);
+    let persisted = reloaded
+        .list()
+        .into_iter()
+        .find(|p| p.id == telnet.id)
+        .expect("telnet persisted");
+    assert_eq!(persisted.kind, SessionKind::Telnet);
+    assert_eq!(persisted.group_id.as_deref(), Some(site.id.as_str()));
+
+    std::fs::remove_dir_all(dir).ok();
+}
+
+#[test]
 fn store_rejects_invalid_group_shapes() {
     let dir = temp_dir("groups-invalid");
     let store = Store::load_from(dir.join("sessions.json"));

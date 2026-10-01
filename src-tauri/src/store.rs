@@ -972,12 +972,15 @@ pub fn redact_profile(mut profile: SessionProfile) -> SessionProfile {
 
 /// The grouping namespace a session kind belongs to. FTP and SFTP are both
 /// remote-file sessions that share one Session-panel section and therefore one
-/// set of folders: a group can hold servers of either protocol. Group
-/// membership and nesting are compared by category rather than exact kind.
+/// set of folders: a group can hold servers of either protocol. SSH and
+/// Telnet likewise share the remote-shell section, so a site's folder holds
+/// its devices whichever way they are reached. Group membership and nesting
+/// are compared by category rather than exact kind.
 /// Mirrors `groupCategory` in the frontend's `sessionGroups.ts`.
 fn group_category(kind: SessionKind) -> SessionKind {
     match kind {
         SessionKind::Sftp => SessionKind::Ftp,
+        SessionKind::Telnet => SessionKind::Ssh,
         other => other,
     }
 }

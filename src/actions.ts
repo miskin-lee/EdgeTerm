@@ -31,6 +31,9 @@ function pendingSessionInfo(
   if (profile.kind === "ssh") {
     protocol = "ssh";
     address = `${profile.host || "localhost"}:${profile.port ?? 22}`;
+  } else if (profile.kind === "telnet") {
+    protocol = "telnet";
+    address = `${profile.host || "localhost"}:${profile.port ?? 23}`;
   } else if (profile.kind === "sftp") {
     protocol = "sftp";
     address = `${profile.host || "localhost"}:${profile.port ?? 22}`;

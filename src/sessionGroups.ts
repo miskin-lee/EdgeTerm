@@ -8,6 +8,7 @@ import type { SessionGroup, SessionKind, SessionProfile } from "./types";
  */
 export const KIND_LABELS: Record<SessionKind, string> = {
   ssh: "SSH Sessions",
+  telnet: "Telnet Sessions",
   sftp: "SFTP Sessions",
   ftp: "FTP Sessions",
   serial: "Serial Sessions",
@@ -17,13 +18,17 @@ export const KIND_LABELS: Record<SessionKind, string> = {
 /**
  * The grouping namespace a session kind belongs to. FTP and SFTP are both
  * remote-file sessions that share one panel section, so they share one set of
- * folders: a group can hold servers of either protocol. Groups are always
- * stored under the category's canonical kind (`ftp`), and membership and
- * nesting are compared by category rather than by exact kind — both here and
- * in the Rust store's `group_category`.
+ * folders: a group can hold servers of either protocol. SSH and Telnet share
+ * the remote-shell section the same way, so a site's folder holds its devices
+ * whichever way they are reached. Groups are always stored under the
+ * category's canonical kind (`ftp`, `ssh`), and membership and nesting are
+ * compared by category rather than by exact kind — both here and in the Rust
+ * store's `group_category`.
  */
 export function groupCategory(kind: SessionKind): SessionKind {
-  return kind === "sftp" ? "ftp" : kind;
+  if (kind === "sftp") return "ftp";
+  if (kind === "telnet") return "ssh";
+  return kind;
 }
 
 /** A top-level Session-panel heading, covering one or more session kinds. */
@@ -37,7 +42,7 @@ export interface SessionSection {
 
 /** Top-level headings of the Session panel, in display order. */
 export const SESSION_SECTIONS: readonly SessionSection[] = [
-  { kind: "ssh", kinds: ["ssh"], label: "SSH Sessions" },
+  { kind: "ssh", kinds: ["ssh", "telnet"], label: "SSH / Telnet Sessions" },
   { kind: "ftp", kinds: ["ftp", "sftp"], label: "(S)FTP Sessions" },
   { kind: "serial", kinds: ["serial"], label: "Serial Sessions" },
   { kind: "local", kinds: ["local"], label: "Shell Sessions" },

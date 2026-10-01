@@ -1,4 +1,5 @@
-export type SessionKind = "local" | "ssh" | "ftp" | "sftp" | "serial";
+export type SessionKind =
+  "local" | "ssh" | "telnet" | "ftp" | "sftp" | "serial";
 export type AuthKind = "password" | "publicKey" | "agent";
 
 /**

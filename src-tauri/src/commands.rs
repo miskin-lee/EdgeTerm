@@ -306,6 +306,19 @@ pub async fn open_session(
                 recorder,
             )?)
         }
+        SessionKind::Telnet => {
+            let stream = session::telnet::connect(&profile).await?;
+            let recorder = start_recording(&mut info)?;
+            session::telnet::spawn(
+                app.clone(),
+                id.clone(),
+                stream,
+                profile.port.unwrap_or(session::telnet::DEFAULT_PORT),
+                rx,
+                recorder,
+            );
+            None
+        }
         SessionKind::Ssh => {
             // A connection to share, when one was asked for and is still up.
             // A live one that will not take another channel is an error, not

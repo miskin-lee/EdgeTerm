@@ -8,6 +8,7 @@ pub enum SessionKind {
     Ftp,
     Sftp,
     Serial,
+    Telnet,
 }
 
 /// The colour theme of the user interface. It is a front-end setting kept in
@@ -61,7 +62,7 @@ pub struct SessionProfile {
     #[serde(default)]
     pub group_id: Option<String>,
 
-    // --- terminal text (local / ssh / serial) ---
+    // --- terminal text (local / ssh / telnet / serial) ---
     /// Character encoding of the terminal byte stream, as a WHATWG label
     /// (`gbk`, `big5`, `shift_jis`, …); absent or unknown means UTF-8.
     /// Output is decoded in the frontend right before it reaches xterm —
@@ -91,7 +92,7 @@ pub struct SessionProfile {
     #[serde(default)]
     pub cwd: Option<String>,
 
-    // --- ssh / ftp ---
+    // --- ssh / ftp / telnet (host and port only) ---
     #[serde(default)]
     pub host: Option<String>,
     #[serde(default)]
@@ -175,6 +176,11 @@ impl SessionProfile {
                 self.host.as_deref().unwrap_or("localhost"),
                 self.port.unwrap_or(22)
             ),
+            SessionKind::Telnet => format!(
+                "{}:{}",
+                self.host.as_deref().unwrap_or("localhost"),
+                self.port.unwrap_or(23)
+            ),
             SessionKind::Serial => format!(
                 "{}@{}",
                 self.port_name.as_deref().unwrap_or("-"),
@@ -190,6 +196,7 @@ impl SessionProfile {
             SessionKind::Ftp => "ftp",
             SessionKind::Sftp => "sftp",
             SessionKind::Serial => "serial",
+            SessionKind::Telnet => "telnet",
         }
     }
 }

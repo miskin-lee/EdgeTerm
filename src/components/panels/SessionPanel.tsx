@@ -56,6 +56,8 @@ function describeProfile(
       return `${profile.username ?? ""}@${profile.host ?? ""}:${profile.port ?? 22}${via}`;
     case "sftp":
       return `${profile.username ?? ""}@${profile.host ?? ""}:${profile.port ?? 22}${via}`;
+    case "telnet":
+      return `telnet ${profile.host ?? ""}:${profile.port ?? 23}`;
     case "ftp":
       return `${profile.username || "anonymous"}@${profile.host ?? ""}:${profile.port ?? 21}`;
     case "serial":
@@ -405,6 +407,8 @@ export function SessionPanel({ onEditProfile, onNewSession }: Props) {
         }}
       />
       <span className="row-label">{profile.name}</span>
+      {/* SSH and Telnet share a section; the rarer protocol is marked. */}
+      {profile.kind === "telnet" && <span className="row-meta">telnet</span>}
       {profile.id && (
         <>
           <button

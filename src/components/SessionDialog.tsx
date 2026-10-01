@@ -64,13 +64,16 @@ const defaultPort = (kind: SessionKind, current?: number | null) =>
     ? (current ?? 22)
     : kind === "ftp"
       ? (current ?? 21)
-      : current;
+      : kind === "telnet"
+        ? (current ?? 23)
+        : current;
 
 /**
- * Protocol picker entries. FTP and SFTP share one "(S)FTP" choice, mirroring
- * the Session panel's merged section; a sub-toggle inside the connection
- * section picks the actual protocol. `kinds[0]` is the default when the choice
- * is selected fresh — SFTP, since it is the encrypted one. The icon and the
+ * Protocol picker entries. FTP and SFTP share one "(S)FTP" choice, and SSH
+ * and Telnet one "SSH / Telnet" choice, mirroring the Session panel's merged
+ * sections; a sub-toggle inside the connection section picks the actual
+ * protocol. `kinds[0]` is the default when the choice is selected fresh — the
+ * encrypted one (SFTP, SSH). The icon and the
  * one-word hint are what the picker cards show under the name.
  */
 const PROTOCOL_OPTIONS: {
@@ -79,7 +82,12 @@ const PROTOCOL_OPTIONS: {
   icon: IconName;
   kinds: SessionKind[];
 }[] = [
-  { label: "SSH", hint: "Remote shell", icon: "server", kinds: ["ssh"] },
+  {
+    label: "SSH / Telnet",
+    hint: "Remote shell",
+    icon: "server",
+    kinds: ["ssh", "telnet"],
+  },
   {
     label: "(S)FTP",
     hint: "File transfer",
@@ -103,6 +111,7 @@ const protocolIcon = (kind: SessionKind): IconName =>
 /** How a kind is named in the header line, where the protocol is spelled out. */
 const PROTOCOL_NAMES: Record<SessionKind, string> = {
   ssh: "SSH",
+  telnet: "Telnet",
   sftp: "SFTP",
   ftp: "FTP",
   local: "Shell",
@@ -244,6 +253,7 @@ export function SessionDialog({ initial, onClose }: Props) {
 
   const defaultName = () => {
     if (profile.kind === "ssh") return profile.host ?? "ssh";
+    if (profile.kind === "telnet") return profile.host ?? "telnet";
     if (profile.kind === "sftp") return profile.host ?? "sftp";
     if (profile.kind === "ftp") return profile.host ?? "ftp";
     if (profile.kind === "serial") return profile.portName ?? "serial";
@@ -252,6 +262,17 @@ export function SessionDialog({ initial, onClose }: Props) {
 
   const normalized = (): SessionProfile => ({
     ...profile,
+    // Telnet logs in at the server's prompt: whatever the SSH form held
+    // before the protocol was switched is not kept, the password least of all.
+    ...(profile.kind === "telnet"
+      ? {
+          username: null,
+          auth: null,
+          password: null,
+          privateKeyPath: null,
+          passphrase: null,
+        }
+      : {}),
     name: profile.name.trim() || defaultName(),
     // A jump host only means something on an SSH transport; drop one left
     // over from before the protocol was switched.
@@ -292,7 +313,8 @@ export function SessionDialog({ initial, onClose }: Props) {
     }
     const host = profile.host?.trim();
     if (!host) return `${name} · no host yet`;
-    const user = profile.username?.trim();
+    // Telnet logs in at the server's own prompt; there is no user to show.
+    const user = profile.kind === "telnet" ? "" : profile.username?.trim();
     return `${name} · ${user ? `${user}@` : ""}${host}:${profile.port ?? defaultPort(profile.kind)}`;
   };
 
@@ -781,20 +803,56 @@ export function SessionDialog({ initial, onClose }: Props) {
             </div>
           </section>
 
-          {profile.kind === "ssh" && (
+          {(profile.kind === "ssh" || profile.kind === "telnet") && (
             <section className="session-section">
               <div className="session-section-heading">
                 <Icon name="server" />
-                <span>SSH connection</span>
-                <small>Server and authentication</small>
+                <span>
+                  {profile.kind === "ssh"
+                    ? "SSH connection"
+                    : "Telnet connection"}
+                </span>
+                <small>
+                  {profile.kind === "ssh"
+                    ? "Server and authentication"
+                    : "Telnet · log in at the server's prompt · unencrypted"}
+                </small>
               </div>
               <div className="session-form-grid">
+                <div className="session-field is-wide">
+                  <span className="session-field-label">Protocol</span>
+                  <div className="kind-picker">
+                    {(["ssh", "telnet"] as SessionKind[]).map((sub) => (
+                      <button
+                        key={sub}
+                        className={`kind-option${profile.kind === sub ? " is-active" : ""}`}
+                        onClick={() =>
+                          patch({
+                            kind: sub,
+                            // Swap the default port when it is still the old
+                            // default; keep a custom port untouched. The group
+                            // survives — SSH and Telnet share one category.
+                            port:
+                              profile.port === defaultPort(profile.kind)
+                                ? defaultPort(sub)
+                                : profile.port,
+                          })
+                        }
+                      >
+                        {sub === "ssh" ? "SSH" : "Telnet"}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
                 <label className="session-field">
                   <span className="session-field-label">Host</span>
                   <input
                     {...RAW_TEXT_INPUT}
                     value={profile.host ?? ""}
-                    placeholder="example.com"
+                    placeholder={
+                      profile.kind === "ssh" ? "example.com" : "192.168.1.1"
+                    }
                     onChange={(event) => patch({ host: event.target.value })}
                   />
                 </label>
@@ -805,26 +863,58 @@ export function SessionDialog({ initial, onClose }: Props) {
                     type="number"
                     min={1}
                     max={65535}
-                    value={profile.port ?? 22}
+                    value={profile.port ?? (profile.kind === "ssh" ? 22 : 23)}
                     onChange={(event) =>
-                      patch({ port: Number(event.target.value) || 22 })
+                      patch({
+                        port:
+                          Number(event.target.value) ||
+                          (profile.kind === "ssh" ? 22 : 23),
+                      })
                     }
                   />
                 </label>
 
-                <label className="session-field">
-                  <span className="session-field-label">Username</span>
-                  <input
-                    {...RAW_TEXT_INPUT}
-                    value={profile.username ?? ""}
-                    placeholder="user"
-                    onChange={(event) => patch({ username: event.target.value })}
-                  />
-                </label>
+                {profile.kind === "ssh" ? (
+                  <>
+                    <label className="session-field">
+                      <span className="session-field-label">Username</span>
+                      <input
+                        {...RAW_TEXT_INPUT}
+                        value={profile.username ?? ""}
+                        placeholder="user"
+                        onChange={(event) =>
+                          patch({ username: event.target.value })
+                        }
+                      />
+                    </label>
 
-                {renderServerAuthFields()}
-                {renderJumpHostField()}
-                {renderTextFields(true)}
+                    {renderServerAuthFields()}
+                    {renderJumpHostField()}
+                    {renderTextFields(true)}
+                  </>
+                ) : (
+                  <>
+                    {renderTextFields(false)}
+                    <div className="session-note is-wide">
+                      <Icon name="info" />
+                      <span>
+                        Port 23 opens with the usual telnet negotiation. On
+                        any other port the connection stays plain until the
+                        server negotiates, so text services such as HTTP or
+                        SMTP can be tested too; lines are edited and echoed
+                        locally until the server echoes them itself.
+                      </span>
+                    </div>
+                    <div className="session-note is-warning is-wide">
+                      <Icon name="warning" />
+                      <span>
+                        Telnet sends everything you type, passwords included,
+                        without encryption. Use it only on a trusted network —
+                        choose SSH when the device supports it.
+                      </span>
+                    </div>
+                  </>
+                )}
               </div>
             </section>
           )}

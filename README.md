@@ -7,7 +7,7 @@
 
 [English](README.md) | [简体中文](README.zh-CN.md)
 
-A small, fast terminal, SSH, SFTP, FTP and serial client built with **Rust + Tauri**. Installers are about 4–5 MB.
+A small, fast terminal, SSH, Telnet, SFTP, FTP and serial client built with **Rust + Tauri**. Installers are about 4–5 MB.
 
 > [!TIP]
 > <a href="https://github.com/miskin-lee/serialX"><img src="https://raw.githubusercontent.com/miskin-lee/serialX/main/assets/icons/png/serialx-64.png" alt="serialX" width="20" height="20" align="top"></a> Doing embedded work and debugging devices over a serial port? Try **[serialX](https://github.com/miskin-lee/serialX)** from the same author, a workspace built for serial debugging.
@@ -18,7 +18,7 @@ A small, fast terminal, SSH, SFTP, FTP and serial client built with **Rust + Tau
 
 ## Features
 
-- **Sessions**: local shell, SSH, SFTP, FTP and serial port, saved in a grouped tree you can filter, duplicate and import from `~/.ssh/config`.
+- **Sessions**: local shell, SSH, Telnet, SFTP, FTP and serial port, saved in a grouped tree you can filter, duplicate and import from `~/.ssh/config`.
 - **SSH**: password, public key, ssh-agent and keyboard-interactive (MFA / one-time codes), jump hosts, and older network gear that only speaks legacy algorithms.
 - **Readable output**: a timestamp and line-number gutter, and semantic coloring of IPs, URLs, log levels, HTTP methods, paths, sizes and more.
 - **Split panes and tabs**: split right or down, drag tabs between panes, and see at a glance which background tab is busy or done.

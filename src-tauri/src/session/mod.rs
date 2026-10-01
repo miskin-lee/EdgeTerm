@@ -7,6 +7,7 @@ pub mod locale;
 pub mod recording;
 pub mod serial;
 pub mod ssh;
+pub mod telnet;
 pub mod transfer;
 
 use std::collections::HashMap;
