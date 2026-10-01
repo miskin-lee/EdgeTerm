@@ -126,6 +126,7 @@ export async function ensureController(id: string): Promise<TerminalController> 
       "mono",
       useStore.getState().bufferFontFamily,
       useStore.getState().symbolFontFamilies,
+      useStore.getState().systemMonoFamily,
     ),
   );
   controller.setSuggestions(useStore.getState().suggestionsEnabled);

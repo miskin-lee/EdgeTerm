@@ -51,6 +51,39 @@ pub fn system_font_families() -> Vec<FontFamily> {
     }))
 }
 
+/// The face fontconfig gives for the generic `monospace` family on Linux,
+/// by name; `None` elsewhere or when `fc-match` cannot answer.
+///
+/// The terminal stack names it explicitly (see `fontStack` in `fonts.ts`)
+/// because WebKitGTK does not resolve the stack's generic tail the same
+/// way everywhere: xterm.js measures its cell on an `OffscreenCanvas`
+/// while the DOM draws the text, and when the two land on different faces
+/// the cell is as wide as a proportional `W` and the monospaced letters
+/// sit spread out inside it (issue #78). A family named outright is the
+/// same face in both.
+pub fn system_monospace_family() -> Option<String> {
+    #[cfg(target_os = "linux")]
+    {
+        let output = std::process::Command::new("fc-match")
+            .args(["--format=%{family[0]}", "monospace"])
+            .output()
+            .ok()
+            .filter(|output| output.status.success())?;
+        parse_fc_family(&output.stdout)
+    }
+    #[cfg(not(target_os = "linux"))]
+    {
+        None
+    }
+}
+
+/// `fc-match`'s answer, trimmed; nothing when it printed nothing usable.
+#[cfg_attr(not(any(target_os = "linux", test)), allow(dead_code))]
+fn parse_fc_family(stdout: &[u8]) -> Option<String> {
+    let name = String::from_utf8_lossy(stdout).trim().to_string();
+    (!name.is_empty() && !name.contains(['"', '\\', '\n'])).then_some(name)
+}
+
 /// Whether the face draws Latin letters, digits and punctuation at one
 /// advance. The `post` table's fixed-pitch flag is what `fontdb` reports,
 /// and it is not to be trusted on its own: Monaco and Courier both leave it
@@ -116,7 +149,18 @@ fn collect<'a>(faces: impl Iterator<Item = (Option<&'a str>, bool, bool)>) -> Ve
 
 #[cfg(test)]
 mod tests {
-    use super::{collect, FontFamily};
+    use super::{collect, parse_fc_family, FontFamily};
+
+    #[test]
+    fn fc_match_answer_is_one_family_name() {
+        assert_eq!(
+            parse_fc_family(b"Ubuntu Sans Mono\n").as_deref(),
+            Some("Ubuntu Sans Mono")
+        );
+        assert_eq!(parse_fc_family(b"  \n"), None);
+        // Nothing that would break out of the quoted CSS name.
+        assert_eq!(parse_fc_family(b"Evil\", serif"), None);
+    }
 
     #[test]
     fn faces_fold_into_sorted_families() {

@@ -83,6 +83,7 @@ export default function App() {
   const panelFontFamily = useStore((s) => s.panelFontFamily);
   const bufferFontFamily = useStore((s) => s.bufferFontFamily);
   const symbolFontFamilies = useStore((s) => s.symbolFontFamilies);
+  const systemMonoFamily = useStore((s) => s.systemMonoFamily);
   const setPanelFontSize = useStore((s) => s.setPanelFontSize);
   const setBufferFontSize = useStore((s) => s.setBufferFontSize);
   const setPanelFontFamily = useStore((s) => s.setPanelFontFamily);
@@ -162,6 +163,19 @@ export default function App() {
     void api.showMainWindow().catch(() => {});
   }, []);
 
+  // The Linux terminal stack leads with the face fontconfig calls
+  // `monospace` (see `fontStack`, issue #78). Asked right away rather than
+  // with the font scan below, so the first session measures its cells in
+  // that face; the answer is null on the other platforms.
+  useEffect(() => {
+    void api
+      .systemMonospaceFamily()
+      .then((family) => {
+        if (family) useStore.getState().setSystemMonoFamily(family);
+      })
+      .catch(() => {});
+  }, []);
+
   // xterm is loaded with the first session (see `ensureController`), which
   // leaves the start-up bundle small but would make that first session wait
   // for it. Fetch it in the quiet moment after the window is up instead. The
@@ -197,8 +211,13 @@ export default function App() {
   // two CSS variables in step with later changes. Live terminals get theirs
   // from TerminalPane, which owns the xterm instance.
   useEffect(() => {
-    applyFonts(bufferFontFamily, panelFontFamily, symbolFontFamilies);
-  }, [bufferFontFamily, panelFontFamily, symbolFontFamilies]);
+    applyFonts(
+      bufferFontFamily,
+      panelFontFamily,
+      symbolFontFamilies,
+      systemMonoFamily,
+    );
+  }, [bufferFontFamily, panelFontFamily, symbolFontFamilies, systemMonoFamily]);
 
   useEffect(() => {
     const unlisten = api.onSessionOutput(({ id, data }) => {

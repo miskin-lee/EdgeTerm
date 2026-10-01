@@ -554,6 +554,12 @@ interface AppStore {
    * saved or exported: another machine has its own fonts.
    */
   symbolFontFamilies: string[];
+  /**
+   * The face fontconfig resolves `monospace` to, which the Linux terminal
+   * stack names outright (see `fontStack`); empty elsewhere. Asked at
+   * start-up, never saved.
+   */
+  systemMonoFamily: string;
   terminalScrollback: number;
   /** The terminal cursor's shape and whether it blinks. */
   cursorStyle: CursorStyle;
@@ -708,6 +714,7 @@ interface AppStore {
   setPanelFontFamily: (family: string) => void;
   setBufferFontFamily: (family: string) => void;
   setSymbolFontFamilies: (families: string[]) => void;
+  setSystemMonoFamily: (family: string) => void;
   setTerminalScrollback: (rows: number) => void;
   setCursorStyle: (style: CursorStyle) => void;
   setCursorBlink: (blink: boolean) => void;
@@ -866,6 +873,7 @@ export const useStore = create<AppStore>((set, get) => ({
   panelFontFamily: loadFontFamily(PANEL_FONT_FAMILY_KEY),
   bufferFontFamily: loadFontFamily(BUFFER_FONT_FAMILY_KEY),
   symbolFontFamilies: [],
+  systemMonoFamily: "",
   terminalScrollback: loadScrollback(),
   cursorStyle: loadCursorStyle(),
   cursorBlink: loadCursorBlink(),
@@ -1322,6 +1330,10 @@ export const useStore = create<AppStore>((set, get) => ({
       return;
     }
     set({ symbolFontFamilies: families });
+  },
+
+  setSystemMonoFamily(systemMonoFamily) {
+    set({ systemMonoFamily });
   },
 
   setTerminalScrollback(rows) {

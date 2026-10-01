@@ -112,20 +112,29 @@ const quote = (family: string) => `"${family.replace(/["\\]/g, "")}"`;
  * without them a prompt theme's icons are boxes even on a machine that has
  * the font (issue #56).
  * They come last so they only ever draw what every face before them lacks.
+ *
+ * `systemMono` is the face fontconfig resolves `monospace` to on Linux (see
+ * `system_monospace_family`), empty elsewhere. It leads the default faces:
+ * WebKitGTK can resolve the stack's tail to different faces for xterm's
+ * canvas measurement and for the DOM text, which spreads every letter out
+ * in a cell as wide as a proportional `W` (issue #78).
  */
 export const fontStack = (
   role: FontRole,
   family: string,
   symbols: readonly string[] = [],
+  systemMono = "",
 ): string => {
   const chosen = family.trim();
   const front = chosen ? `${quote(chosen)}, ` : "";
   if (role === "ui") return `${front}${UI_FONT_FAMILY}`;
+  const system = systemMono.trim();
+  const named = system && system !== chosen ? `${quote(system)}, ` : "";
   const fallbacks = symbols
-    .filter((name) => name !== chosen)
+    .filter((name) => name !== chosen && name !== system)
     .map((name) => `, ${quote(name)}`)
     .join("");
-  return `${front}${MONO_FACES}${fallbacks}, monospace`;
+  return `${front}${named}${MONO_FACES}${fallbacks}, monospace`;
 };
 
 /** Publishes both stacks as CSS variables; xterm reads its own from here. */
@@ -133,11 +142,12 @@ export function applyFonts(
   monoFamily = "",
   uiFamily = "",
   symbols: readonly string[] = [],
+  systemMono = "",
   root: HTMLElement = document.documentElement,
 ) {
   root.style.setProperty(
     "--font-mono",
-    fontStack("mono", monoFamily, symbols),
+    fontStack("mono", monoFamily, symbols, systemMono),
   );
   root.style.setProperty("--font-ui", fontStack("ui", uiFamily));
 }

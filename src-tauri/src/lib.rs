@@ -364,6 +364,7 @@ pub fn run() {
             commands::start_promised_file_drag,
             commands::finish_promised_file,
             commands::list_system_fonts,
+            commands::system_monospace_family,
             commands::open_local_path,
             commands::open_with_dialog,
             commands::remote_edit_path,

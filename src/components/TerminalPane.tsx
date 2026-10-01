@@ -99,6 +99,7 @@ function TerminalHost({
   const bufferFontSize = useStore((s) => s.bufferFontSize);
   const bufferFontFamily = useStore((s) => s.bufferFontFamily);
   const symbolFontFamilies = useStore((s) => s.symbolFontFamilies);
+  const systemMonoFamily = useStore((s) => s.systemMonoFamily);
   const terminalScrollback = useStore((s) => s.terminalScrollback);
   const cursorStyle = useStore((s) => s.cursorStyle);
   const cursorBlink = useStore((s) => s.cursorBlink);
@@ -249,9 +250,14 @@ function TerminalHost({
 
   useEffect(() => {
     terminal?.setFontFamily(
-      fontStack("mono", bufferFontFamily, symbolFontFamilies),
+      fontStack(
+        "mono",
+        bufferFontFamily,
+        symbolFontFamilies,
+        systemMonoFamily,
+      ),
     );
-  }, [bufferFontFamily, symbolFontFamilies, terminal]);
+  }, [bufferFontFamily, symbolFontFamilies, systemMonoFamily, terminal]);
 
   useEffect(() => {
     terminal?.setScrollback(terminalScrollback);

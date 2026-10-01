@@ -463,6 +463,17 @@ pub async fn list_system_fonts() -> Vec<FontFamily> {
         .unwrap_or_default()
 }
 
+/// The family the Linux terminal stack leads with; see
+/// `fonts::system_monospace_family`. `fc-match` is a process, so it runs off
+/// the async runtime too.
+#[tauri::command]
+pub async fn system_monospace_family() -> Option<String> {
+    tauri::async_runtime::spawn_blocking(fonts::system_monospace_family)
+        .await
+        .ok()
+        .flatten()
+}
+
 /// Keyboard and paste input, which xterm.js hands us as a UTF-8 string; it
 /// goes out in the session's own encoding.
 #[tauri::command]

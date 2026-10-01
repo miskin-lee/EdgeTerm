@@ -311,6 +311,7 @@ function FontFamilyField({
   onChange: (family: string) => void;
 }) {
   const listId = `${id}-list`;
+  const systemMonoFamily = useStore((s) => s.systemMonoFamily);
   return (
     <label className="font-size-setting">
       <span>
@@ -326,7 +327,7 @@ function FontFamilyField({
         autoComplete="off"
         placeholder="System default"
         value={value}
-        style={{ fontFamily: fontStack(role, value) }}
+        style={{ fontFamily: fontStack(role, value, [], systemMonoFamily) }}
         onChange={(event) => onChange(event.target.value)}
       />
       <datalist id={listId}>

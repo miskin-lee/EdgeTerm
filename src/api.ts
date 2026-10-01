@@ -193,6 +193,10 @@ export interface FontFamily {
 /** Every family in the machine's font directories, sorted by name. */
 export const listSystemFonts = () => invoke<FontFamily[]>("list_system_fonts");
 
+/** The face fontconfig gives for `monospace`; null off Linux. */
+export const systemMonospaceFamily = () =>
+  invoke<string | null>("system_monospace_family");
+
 export const writeSession = (id: string, data: string) =>
   invoke<void>("write_session", { id, data });
 
