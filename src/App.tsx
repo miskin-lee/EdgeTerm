@@ -26,6 +26,7 @@ import { QuitConfirmDialog } from "./components/QuitConfirmDialog";
 import { FontSizeDialog } from "./components/FontSizeDialog";
 import { HostKeyDialog } from "./components/HostKeyDialog";
 import { MenuBar } from "./components/MenuBar";
+import { DockArea, PanelDropOverlay } from "./components/PanelDocks";
 import { PasteWarningDialog } from "./components/PasteWarningDialog";
 import {
   SearchOverlay,
@@ -42,8 +43,9 @@ import { SenderPanel } from "./components/panels/SenderPanel";
 import { SessionPanel } from "./components/panels/SessionPanel";
 import { applyFonts, symbolFallbacks } from "./fonts";
 import { commandHistory } from "./history";
+import type { PanelDock } from "./panelDock";
 import { matchAppShortcut } from "./shortcuts";
-import { tabTitle, useActiveTab, useStore } from "./store";
+import { type PanelName, tabTitle, useActiveTab, useStore } from "./store";
 import { allControllers, getController } from "./terminalRegistry";
 import { isFileSession, type SessionProfile, type SessionState } from "./types";
 import { useUpdater } from "./updater";
@@ -70,6 +72,7 @@ export default function App() {
   const updater = useUpdater();
   const activeId = useStore((s) => s.activeId);
   const panels = useStore((s) => s.panels);
+  const panelDocks = useStore((s) => s.panelDocks);
   const togglePanel = useStore((s) => s.togglePanel);
   const loadProfiles = useStore((s) => s.loadProfiles);
   const sshConfigImport = useStore((s) => s.sshConfigImport);
@@ -140,7 +143,7 @@ export default function App() {
 
   const [leftWidth, setLeftWidth] = useState(220);
   const [rightWidth, setRightWidth] = useState(220);
-  const [senderHeight, setSenderHeight] = useState(160);
+  const [bottomHeight, setBottomHeight] = useState(160);
 
   // --- backend events -------------------------------------------------------
 
@@ -392,10 +395,27 @@ export default function App() {
 
   // --- layout ---------------------------------------------------------------
 
-  // Session panel docks on the left, Filer on the right; FTP and SFTP tabs
-  // bring their own dual-pane file manager, so the Filer stays hidden there.
-  const showLeft = panels.sessions;
-  const showRight = panels.filer && !fileMode;
+  // Each panel sits in the dock the user put it in (see panelDock.ts);
+  // FTP and SFTP tabs bring their own dual-pane file manager, so the Filer
+  // stays hidden there.
+  const shown = (dock: PanelDock) =>
+    panelDocks[dock].filter(
+      (panel) => panels[panel] && !(panel === "filer" && fileMode),
+    );
+  const left = shown("left");
+  const right = shown("right");
+  const bottom = shown("bottom");
+  const renderPanel = (panel: PanelName) =>
+    panel === "sessions" ? (
+      <SessionPanel
+        onNewSession={newSession}
+        onEditProfile={(profile) => setDialog({ profile })}
+      />
+    ) : panel === "filer" ? (
+      <FilerPanel />
+    ) : (
+      <SenderPanel />
+    );
 
   return (
     <div
@@ -417,68 +437,71 @@ export default function App() {
         onAbout={() => setAboutOpen(true)}
       />
 
-      <div className="main">
-        {showLeft && (
-          <>
-            <div
-              className="sidebar sidebar-left"
-              style={{ width: leftWidth, flex: `0 0 ${leftWidth}px` }}
-            >
-              <SessionPanel
-                onNewSession={newSession}
-                onEditProfile={(profile) => setDialog({ profile })}
+      <div className="app-body">
+        <div className="main">
+          {left.length > 0 && (
+            <>
+              <DockArea
+                dock="left"
+                panels={left}
+                size={leftWidth}
+                render={renderPanel}
               />
-            </div>
-            <Splitter
-              orientation="vertical"
-              onResize={(delta) =>
-                setLeftWidth((width) => clamp(width + delta, 150, 520))
-              }
-            />
-          </>
-        )}
+              <Splitter
+                orientation="vertical"
+                onResize={(delta) =>
+                  setLeftWidth((width) => clamp(width + delta, 150, 720))
+                }
+              />
+            </>
+          )}
 
-        <div className="center">
-          <Workspace onNewSession={newSession} />
-          {searchOpen && (
-            <SearchOverlay
-              ref={searchRef}
-              onClose={() => setSearchOpen(false)}
-            />
+          <div className="center">
+            <Workspace onNewSession={newSession} />
+            {searchOpen && (
+              <SearchOverlay
+                ref={searchRef}
+                onClose={() => setSearchOpen(false)}
+              />
+            )}
+          </div>
+
+          {right.length > 0 && (
+            <>
+              <Splitter
+                orientation="vertical"
+                onResize={(delta) =>
+                  setRightWidth((width) => clamp(width - delta, 150, 720))
+                }
+              />
+              <DockArea
+                dock="right"
+                panels={right}
+                size={rightWidth}
+                render={renderPanel}
+              />
+            </>
           )}
         </div>
 
-        {showRight && (
+        {bottom.length > 0 && (
           <>
             <Splitter
-              orientation="vertical"
+              orientation="horizontal"
               onResize={(delta) =>
-                setRightWidth((width) => clamp(width - delta, 150, 520))
+                setBottomHeight((height) => clamp(height - delta, 80, 600))
               }
             />
-            <div
-              className="sidebar sidebar-right"
-              style={{ width: rightWidth, flex: `0 0 ${rightWidth}px` }}
-            >
-              <FilerPanel />
-            </div>
+            <DockArea
+              dock="bottom"
+              panels={bottom}
+              size={bottomHeight}
+              render={renderPanel}
+            />
           </>
         )}
+        <PanelDropOverlay />
       </div>
-
-      {panels.sender && (
-        <>
-          <Splitter
-            orientation="horizontal"
-            onResize={(delta) =>
-              setSenderHeight((height) => clamp(height - delta, 80, 400))
-            }
-          />
-          <div className="bottom-dock" style={{ height: senderHeight }}>
-            <SenderPanel />
-          </div>
-        </>
-      )}
 
       <StatusBar />
 

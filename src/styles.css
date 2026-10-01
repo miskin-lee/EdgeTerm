@@ -810,16 +810,91 @@ textarea:focus {
   font-size: var(--panel-font-size);
 }
 
+/* The terminal area with the docks around it; the drop overlay of a panel
+   drag is measured against it. */
+.app-body {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
 /* The sidebars and the dock draw no edge of their own: the splitter between
-   them and the centre is the 1px divider (see the splitters section). */
+   them and the centre is the 1px divider (see the splitters section). Panels
+   sharing a dock are stacked in a side dock and side by side in the bottom
+   one, each in a slot divided off by a splitter of its own. */
 .bottom-dock {
   flex: 0 0 auto;
   display: flex;
-  flex-direction: column;
+  flex-direction: row;
   min-height: 0;
   overflow: hidden;
   background: var(--bg-panel);
   font-size: var(--panel-font-size);
+}
+
+.dock-slot {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+
+/* A panel is moved by dragging its header (see PanelDocks.tsx). */
+.dock-slot.is-dragging {
+  opacity: 0.55;
+}
+
+.app:has(.dock-slot.is-dragging),
+.app:has(.dock-slot.is-dragging) * {
+  cursor: grabbing !important;
+}
+
+.panel-drop-area,
+.panel-drop-line {
+  position: fixed;
+  z-index: 120;
+  pointer-events: none;
+}
+
+.panel-drop-area {
+  border: 1px solid color-mix(in srgb, var(--accent) 70%, transparent);
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+}
+
+.panel-drop-line {
+  background: var(--accent);
+}
+
+/* Sender laid out for a narrow side dock: its rows wrap instead of running
+   off the edge. */
+.sidebar .sender-header {
+  flex: 0 0 auto;
+  height: auto;
+  min-height: 36px;
+  flex-wrap: wrap;
+  row-gap: 4px;
+  padding-top: 6px;
+  padding-bottom: 6px;
+}
+
+.sidebar .sender-options {
+  flex-wrap: wrap;
+  row-gap: 4px;
+}
+
+.sidebar .sender-compose {
+  flex-wrap: wrap;
+}
+
+.sidebar .sender-compose-divider {
+  display: none;
+}
+
+.sidebar .sender-command {
+  flex-basis: 100%;
+  min-width: 0;
 }
 
 /* --- panels --------------------------------------------------------------- */

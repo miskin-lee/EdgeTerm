@@ -29,6 +29,13 @@ import {
   PROGRAM_CLIPBOARD_LABELS,
   type ProgramClipboardMode,
 } from "../osc52";
+import {
+  DOCK_LABELS,
+  DOCK_NAMES,
+  dockOf,
+  PANEL_LABELS,
+  PANEL_NAMES,
+} from "../panelDock";
 import { IS_MAC } from "../platform";
 import { chordLabel, type ShortcutCommand } from "../shortcuts";
 import { tabTitle, useActiveTab, useStore } from "../store";
@@ -221,7 +228,7 @@ interface Entry {
   /** The control shape a checkable entry draws; a box by default. */
   mark?: MenuMark;
   action?: () => void;
-  children?: Entry[];
+  children?: (Entry | "separator")[];
 }
 
 interface Menu {
@@ -261,6 +268,9 @@ export function MenuBar(props: Props) {
   }, [windowTitle]);
   const panels = useStore((s) => s.panels);
   const togglePanel = useStore((s) => s.togglePanel);
+  const panelDocks = useStore((s) => s.panelDocks);
+  const movePanel = useStore((s) => s.movePanel);
+  const resetPanelLayout = useStore((s) => s.resetPanelLayout);
   const gutterMode = useStore((s) => s.gutterMode);
   const setGutterMode = useStore((s) => s.setGutterMode);
   const theme = useStore((s) => s.theme);
@@ -332,6 +342,21 @@ export function MenuBar(props: Props) {
     mark: "radio",
     action: () => setRightClickAction(action),
   });
+
+  // One radio group per panel: each sits in exactly one dock.
+  const panelLayoutEntries = (): (Entry | "separator")[] => [
+    ...PANEL_NAMES.flatMap((panel, index): (Entry | "separator")[] => [
+      ...(index > 0 ? ["separator" as const] : []),
+      ...DOCK_NAMES.map((dock): Entry => ({
+        label: `${PANEL_LABELS[panel]} on ${DOCK_LABELS[dock]}`,
+        checked: dockOf(panelDocks, panel) === dock,
+        mark: "radio",
+        action: () => movePanel(panel, dock),
+      })),
+    ]),
+    "separator",
+    { label: "Reset Panel Layout", action: resetPanelLayout },
+  ];
 
   const programClipboardEntry = (mode: ProgramClipboardMode): Entry => ({
     label: PROGRAM_CLIPBOARD_LABELS[mode],
@@ -566,6 +591,7 @@ export function MenuBar(props: Props) {
           checked: panels.sender,
           action: () => togglePanel("sender"),
         },
+        { label: "Panel Layout", children: panelLayoutEntries() },
         "separator",
         {
           // A split opens the active session's profile again beside it; see
@@ -616,7 +642,7 @@ export function MenuBar(props: Props) {
           action: () => {
             void (async () => {
               const confirmed = await ask(
-                "Restore panel visibility, timestamp and line display, theme, font sizes, scrollback, command suggestions, keyboard shortcuts, and mouse copy / paste to their defaults?",
+                "Restore panel visibility and layout, timestamp and line display, theme, font sizes, scrollback, command suggestions, keyboard shortcuts, and mouse copy / paste to their defaults?",
                 {
                   title: "Restore Default Settings",
                   kind: "warning",
@@ -786,26 +812,30 @@ function MenuDropdown({
                 </span>
               </div>
               <div className="menu-dropdown menu-submenu">
-                {children.map((child) => (
-                  <button
-                    key={child.label}
-                    className={`menu-entry${child.checked ? " is-checked" : ""}`}
-                    role={menuRole(child)}
-                    aria-checked={
-                      child.checked !== undefined ? child.checked : undefined
-                    }
-                    onMouseDown={(event) => {
-                      event.stopPropagation();
-                      onClose();
-                      child.action?.();
-                    }}
-                  >
-                    {showChildCheck && (
-                      <MenuCheck checked={child.checked} mark={child.mark} />
-                    )}
-                    <span className="menu-entry-label">{child.label}</span>
-                  </button>
-                ))}
+                {children.map((child, childIndex) =>
+                  child === "separator" ? (
+                    <div key={childIndex} className="menu-separator" />
+                  ) : (
+                    <button
+                      key={child.label}
+                      className={`menu-entry${child.checked ? " is-checked" : ""}`}
+                      role={menuRole(child)}
+                      aria-checked={
+                        child.checked !== undefined ? child.checked : undefined
+                      }
+                      onMouseDown={(event) => {
+                        event.stopPropagation();
+                        onClose();
+                        child.action?.();
+                      }}
+                    >
+                      {showChildCheck && (
+                        <MenuCheck checked={child.checked} mark={child.mark} />
+                      )}
+                      <span className="menu-entry-label">{child.label}</span>
+                    </button>
+                  ),
+                )}
               </div>
             </div>
           );

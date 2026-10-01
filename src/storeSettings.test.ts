@@ -59,3 +59,44 @@ describe("cursor settings", () => {
     expect(useStore.getState().cursorBlink).toBe(false);
   });
 });
+
+describe("panel layout", () => {
+  it("stores only a layout that differs from the default", () => {
+    const store = useStore.getState();
+    store.movePanel("filer", "bottom", "sender");
+    expect(useStore.getState().panelDocks).toEqual({
+      left: ["sessions"],
+      right: [],
+      bottom: ["filer", "sender"],
+    });
+    expect(
+      JSON.parse(localStorage.getItem("edgeterm.panelDocks") ?? "null"),
+    ).toEqual(useStore.getState().panelDocks);
+
+    useStore.getState().resetPanelLayout();
+    expect(localStorage.getItem("edgeterm.panelDocks")).toBeNull();
+  });
+
+  it("shows a hidden panel that is given a place", () => {
+    expect(useStore.getState().panels.filer).toBe(false);
+    useStore.getState().movePanel("filer", "left");
+    expect(useStore.getState().panels.filer).toBe(true);
+  });
+
+  it("travels with a data export and is reset with the defaults", () => {
+    useStore.getState().movePanel("sessions", "right");
+    const exported = useStore.getState().exportSettings();
+    expect(exported.panelDocks.right).toEqual(["filer", "sessions"]);
+
+    useStore.getState().resetSettings();
+    expect(useStore.getState().panelDocks.left).toEqual(["sessions"]);
+    expect(localStorage.getItem("edgeterm.panelDocks")).toBeNull();
+
+    useStore.getState().applySettings(exported);
+    expect(useStore.getState().panelDocks.right).toEqual(["filer", "sessions"]);
+
+    // A file without the field leaves the layout alone.
+    useStore.getState().applySettings({ panelDocks: "left" });
+    expect(useStore.getState().panelDocks.right).toEqual(["filer", "sessions"]);
+  });
+});

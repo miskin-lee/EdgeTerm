@@ -15,6 +15,14 @@ import {
   parseProgramClipboardMode,
   type ProgramClipboardMode,
 } from "./osc52";
+import {
+  defaultPanelDocks,
+  movePanel as placePanel,
+  type PanelDock,
+  type PanelDocks,
+  parsePanelDocks,
+  samePanelDocks,
+} from "./panelDock";
 import { IS_MAC } from "./platform";
 import {
   DEFAULT_SHORTCUTS,
@@ -155,6 +163,7 @@ const BUFFER_FONT_FAMILY_KEY = "edgeterm.bufferFontFamily";
 const TERMINAL_SCROLLBACK_KEY = "edgeterm.terminalScrollback";
 const GUTTER_MODE_KEY = "edgeterm.gutterMode";
 const PANELS_KEY = "edgeterm.panels";
+const PANEL_DOCKS_KEY = "edgeterm.panelDocks";
 const THEME_KEY = "edgeterm.theme";
 const SUGGESTIONS_KEY = "edgeterm.suggestions";
 const RIGHT_CLICK_KEY = "edgeterm.rightClick";
@@ -299,6 +308,33 @@ const loadPanels = (): Record<PanelName, boolean> => {
 const savePanels = (panels: Record<PanelName, boolean>) => {
   try {
     localStorage.setItem(PANELS_KEY, JSON.stringify(panels));
+  } catch {
+    // The setting still applies for this run when storage is unavailable.
+  }
+};
+
+const loadPanelDocks = (): PanelDocks => {
+  try {
+    const stored = localStorage.getItem(PANEL_DOCKS_KEY);
+    if (stored) {
+      const docks = parsePanelDocks(JSON.parse(stored));
+      if (docks) return docks;
+    }
+  } catch {
+    // Use the defaults when storage is unavailable or malformed.
+  }
+  return defaultPanelDocks();
+};
+
+// Only a layout that differs from the default is stored, like the shortcut
+// overrides, so a later change of the default reaches untouched installs.
+const savePanelDocks = (docks: PanelDocks) => {
+  try {
+    if (samePanelDocks(docks, defaultPanelDocks())) {
+      localStorage.removeItem(PANEL_DOCKS_KEY);
+    } else {
+      localStorage.setItem(PANEL_DOCKS_KEY, JSON.stringify(docks));
+    }
   } catch {
     // The setting still applies for this run when storage is unavailable.
   }
@@ -462,6 +498,8 @@ const saveShortcuts = (bindings: ShortcutBindings) => {
  */
 export interface AppSettings {
   panels: Record<PanelName, boolean>;
+  /** Which dock each panel sits in, and in what order; see panelDock.ts. */
+  panelDocks: PanelDocks;
   gutterMode: GutterMode;
   theme: ThemeMode;
   panelFontSize: number;
@@ -537,6 +575,7 @@ interface AppStore {
   /** The chord each app command answers; see `shortcuts.ts`. */
   shortcuts: ShortcutBindings;
   panels: Record<PanelName, boolean>;
+  panelDocks: PanelDocks;
   status: string;
   error: string | null;
   errorSessionId: string | null;
@@ -652,6 +691,16 @@ interface AppStore {
   setSize: (id: string, cols: number, rows: number) => void;
 
   togglePanel: (panel: PanelName) => void;
+  /**
+   * Docks `panel` in `dock` in front of `before` (last when null) and shows
+   * it: picking a place for a hidden panel means the user wants to see it.
+   */
+  movePanel: (
+    panel: PanelName,
+    dock: PanelDock,
+    before?: PanelName | null,
+  ) => void;
+  resetPanelLayout: () => void;
   setGutterMode: (mode: GutterMode) => void;
   setTheme: (theme: ThemeMode) => void;
   setPanelFontSize: (size: number) => void;
@@ -829,6 +878,7 @@ export const useStore = create<AppStore>((set, get) => ({
   rightClickAction: loadRightClickAction(),
   shortcuts: initialShortcuts,
   panels: loadPanels(),
+  panelDocks: loadPanelDocks(),
   status: "Ready",
   error: null,
   errorSessionId: null,
@@ -1203,6 +1253,22 @@ export const useStore = create<AppStore>((set, get) => ({
     savePanels(nextPanels);
   },
 
+  movePanel(panel, dock, before = null) {
+    const { panelDocks, panels } = get();
+    const nextDocks = placePanel(panelDocks, panel, dock, before);
+    if (!samePanelDocks(panelDocks, nextDocks)) {
+      set({ panelDocks: nextDocks });
+      savePanelDocks(nextDocks);
+    }
+    if (!panels[panel]) get().togglePanel(panel);
+  },
+
+  resetPanelLayout() {
+    const panelDocks = defaultPanelDocks();
+    set({ panelDocks });
+    savePanelDocks(panelDocks);
+  },
+
   setGutterMode(mode) {
     set({ gutterMode: mode });
     try {
@@ -1334,6 +1400,7 @@ export const useStore = create<AppStore>((set, get) => ({
     set({
       shortcuts,
       panels: { ...DEFAULT_PANELS },
+      panelDocks: defaultPanelDocks(),
       gutterMode: "both",
       theme: "dark",
       panelFontSize: PANEL_FONT_SIZE.default,
@@ -1351,6 +1418,7 @@ export const useStore = create<AppStore>((set, get) => ({
     });
     try {
       localStorage.removeItem(PANELS_KEY);
+      localStorage.removeItem(PANEL_DOCKS_KEY);
       localStorage.removeItem(GUTTER_MODE_KEY);
       localStorage.removeItem(THEME_KEY);
       localStorage.removeItem(PANEL_FONT_SIZE_KEY);
@@ -1375,6 +1443,11 @@ export const useStore = create<AppStore>((set, get) => ({
     const state = get();
     return {
       panels: { ...state.panels },
+      panelDocks: {
+        left: [...state.panelDocks.left],
+        right: [...state.panelDocks.right],
+        bottom: [...state.panelDocks.bottom],
+      },
       gutterMode: state.gutterMode,
       theme: state.theme,
       panelFontSize: state.panelFontSize,
@@ -1407,6 +1480,11 @@ export const useStore = create<AppStore>((set, get) => ({
     if (panels) {
       set({ panels });
       savePanels(panels);
+    }
+    const panelDocks = parsePanelDocks(values.panelDocks);
+    if (panelDocks) {
+      set({ panelDocks });
+      savePanelDocks(panelDocks);
     }
     if (typeof values.panelFontSize === "number") {
       state.setPanelFontSize(values.panelFontSize);
