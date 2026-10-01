@@ -3,6 +3,7 @@ import ReactDOM from "react-dom/client";
 
 import App from "./App";
 import { applyFonts } from "./fonts";
+import { installOverflowTooltip } from "./overflowTooltip";
 import { useStore } from "./store";
 import "./styles.css";
 
@@ -32,6 +33,8 @@ document.addEventListener(
   },
   { capture: true },
 );
+
+installOverflowTooltip();
 
 ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
   <React.StrictMode>

@@ -2944,6 +2944,38 @@ textarea:focus {
   font-size: calc(var(--panel-font-size) - 2px);
 }
 
+/* Full text of a label cut with an ellipsis (overflowTooltip.ts). Wraps
+   anywhere: the long ones are paths and host names without spaces. */
+.overflow-tooltip {
+  position: fixed;
+  z-index: 300;
+  display: none;
+  max-width: min(520px, calc(100vw - 16px));
+  padding: 5px 8px;
+  border: 1px solid var(--border-menu);
+  border-radius: 6px;
+  color: var(--fg);
+  background: var(--bg-app);
+  box-shadow: var(--shadow-pop);
+  font-family: var(--font-ui);
+  font-size: 12px;
+  line-height: 1.4;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  pointer-events: none;
+}
+
+.overflow-tooltip.is-visible {
+  display: block;
+}
+
+.overflow-tooltip span {
+  display: block;
+  margin-top: 2px;
+  color: var(--fg-faint);
+  font-size: 11px;
+}
+
 /* --- status bar ----------------------------------------------------------- */
 
 .statusbar {

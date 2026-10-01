@@ -827,6 +827,7 @@ export function SenderPanel() {
                 <button
                   className="sender-command-load"
                   type="button"
+                  data-own-tooltip
                   aria-label={`Send ${command.name}: ${command.text}`}
                   disabled={running}
                   onMouseEnter={(event) =>
