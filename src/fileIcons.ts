@@ -12,22 +12,26 @@ import {
 
 import { isLightTheme, type ThemeMode } from "./types";
 
-// Every SVG in the theme, keyed by icon name (the `.clone` suffix marks
-// generated colour variants and is not part of the icon name). The Filer is a
-// flat list, so the expanded "-open" folder variants are never shown.
-const iconUrls: Record<string, string> = {};
-for (const [path, url] of Object.entries(
+// Keep the SVGs in this lazy-loaded module instead of emitting one asset per
+// icon. Each icon used by a file list gets one blob URL, shared by its rows;
+// <img> keeps the SVG's IDs isolated from those in other icons.
+// The `.clone` suffix marks generated colour variants, not part of the name.
+// The Filer is a flat list, so expanded "-open" folders are never shown.
+const iconMarkup: Record<string, string> = {};
+for (const [path, svg] of Object.entries(
   import.meta.glob(
     [
       "/node_modules/material-icon-theme/icons/*.svg",
       "!/node_modules/material-icon-theme/icons/*-open.svg",
     ],
-    { eager: true, query: "?url", import: "default" },
+    { eager: true, query: "?raw", import: "default" },
   ) as Record<string, string>,
 )) {
   const base = path.slice(path.lastIndexOf("/") + 1);
-  iconUrls[base.replace(/\.svg$/, "").replace(/\.clone$/, "")] = url;
+  iconMarkup[base.replace(/\.svg$/, "").replace(/\.clone$/, "")] = svg;
 }
+
+const iconSources = new Map<string, string>();
 
 // VS Code matches names case-insensitively, so lower-case the mapping keys
 // once instead of on every lookup.
@@ -90,14 +94,20 @@ function resolveIconName(
   );
 }
 
-/** URL of the Material icon for a file or folder entry. */
-export function fileIconUrl(
+/** Blob URL of the Material icon for a file or folder entry. */
+export function fileIconSource(
   name: string,
   isDir: boolean,
   theme: ThemeMode,
 ): string {
-  return (
-    iconUrls[resolveIconName(name, isDir, theme)] ??
-    iconUrls[isDir ? defaultFolderIcon : defaultFileIcon]
-  );
+  const icon = resolveIconName(name, isDir, theme);
+  const key = iconMarkup[icon] ? icon : isDir ? defaultFolderIcon : defaultFileIcon;
+  let source = iconSources.get(key);
+  if (!source) {
+    source = URL.createObjectURL(
+      new Blob([iconMarkup[key]], { type: "image/svg+xml" }),
+    );
+    iconSources.set(key, source);
+  }
+  return source;
 }

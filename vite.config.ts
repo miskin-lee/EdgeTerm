@@ -22,13 +22,6 @@ export default defineConfig(async () => ({
     __EDGETERM_WINDOWS__: JSON.stringify(targetIsWindows),
   },
 
-  build: {
-    // The Material file icons are ~1000 small SVGs; emit them as files instead of
-    // inlining a megabyte of base64 into the main bundle.
-    assetsInlineLimit: (filePath: string) =>
-      filePath.includes("material-icon-theme") ? false : undefined,
-  },
-
   // Vite options tailored for Tauri development and only applied in `tauri dev` or `tauri build`
   //
   // 1. prevent Vite from obscuring rust errors
