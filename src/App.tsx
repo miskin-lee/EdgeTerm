@@ -44,6 +44,7 @@ import { SessionPanel } from "./components/panels/SessionPanel";
 import { applyFonts, symbolFallbacks } from "./fonts";
 import { commandHistory } from "./history";
 import type { PanelDock } from "./panelDock";
+import { IS_WINDOWS } from "./platform";
 import { matchAppShortcut } from "./shortcuts";
 import { type PanelName, tabTitle, useActiveTab, useStore } from "./store";
 import { allControllers, getController } from "./terminalRegistry";
@@ -157,10 +158,21 @@ export default function App() {
   // The window is hidden until there is an interface to show, so the
   // application opens on the UI rather than on an empty frame (issue #35).
   // A hidden window never paints, and `requestAnimationFrame` never fires
-  // with it, so the reveal goes out as soon as this first render is
-  // committed: the frame the window opens with is drawn from that DOM.
+  // with it. On Windows the native window remains cloaked for two visible
+  // frames, giving WebView2 time to replace its solid startup background.
   useEffect(() => {
-    void api.showMainWindow().catch(() => {});
+    void api
+      .showMainWindow()
+      .then(() => {
+        if (IS_WINDOWS) {
+          requestAnimationFrame(() => {
+            requestAnimationFrame(() => {
+              void api.finishMainWindow().catch(() => {});
+            });
+          });
+        }
+      })
+      .catch(() => {});
   }, []);
 
   // The Linux terminal stack leads with the face fontconfig calls

@@ -615,6 +615,7 @@ export const setStartupTheme = (theme: ThemeMode): Promise<void> =>
  * arrives.
  */
 export const showMainWindow = (): Promise<void> => invoke("show_main_window");
+export const finishMainWindow = (): Promise<void> => invoke("finish_main_window");
 
 /**
  * The clipboard's text as the process reads it. The paste path on macOS,

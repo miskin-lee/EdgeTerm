@@ -829,17 +829,39 @@ pub fn set_startup_theme(theme: Theme) -> Result<()> {
     store::save_startup_theme(theme)
 }
 
-/// Reveals the main window, which is created hidden so that the first thing
-/// on screen is the painted interface rather than an empty frame. Called by
-/// the front end as soon as it has painted; `create_main_window` shows the
-/// window anyway if that call never comes.
+/// Shows the main window once the frontend has committed its first render.
+/// Windows keeps it DWM-cloaked until two animation frames have run; the
+/// native timeouts still reveal it if the frontend never acknowledges.
 #[tauri::command]
 pub fn show_main_window(window: tauri::WebviewWindow) -> Result<()> {
     window.show().map_err(err)?;
-    // The window was hidden while the application started, so on Windows it
-    // would otherwise appear behind whatever the user looked at meanwhile.
-    let _ = window.set_focus();
-    Ok(())
+    #[cfg(target_os = "windows")]
+    {
+        // A cloaked HWND is visible to WebView2, which can now paint and
+        // drive requestAnimationFrame without exposing the bare background.
+        // Some WebView2/DWM combinations may throttle cloaked windows, so
+        // never make the JS acknowledgement the only way to reveal it.
+        std::thread::spawn(move || {
+            std::thread::sleep(std::time::Duration::from_millis(500));
+            crate::reveal_main_window(&window);
+        });
+        return Ok(());
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        let _ = window.set_focus();
+        Ok(())
+    }
+}
+
+/// Windows: reveal the painted WebView2 window after two visible animation
+/// frames. The native timeout above covers a stalled compositor or JS error.
+#[tauri::command]
+pub fn finish_main_window(window: tauri::WebviewWindow) {
+    #[cfg(target_os = "windows")]
+    crate::reveal_main_window(&window);
+    #[cfg(not(target_os = "windows"))]
+    let _ = window;
 }
 
 /// The clipboard's text, read by the process rather than the page. On macOS

@@ -88,7 +88,9 @@ objc2-app-kit = { version = "0.3", features = ["block2", "NSApplication", "NSCur
 # registry MachineGuid the credential key is bound to, and the WM_SYSCOMMAND
 # route behind the menubar's window controls (see `window_control`).
 [target."cfg(windows)".dependencies]
-windows-sys = { version = "0.59", features = ["Win32_Storage_FileSystem", "Win32_System_WindowsProgramming", "Win32_System_Registry", "Win32_UI_WindowsAndMessaging"] }
+windows-sys = { version = "0.59", features = ["Win32_Graphics_Dwm", "Win32_Storage_FileSystem", "Win32_System_WindowsProgramming", "Win32_System_Registry", "Win32_UI_WindowsAndMessaging"] }
+# Keep 2.4.5's Windows focus handoff when a second process launches.
+tauri-plugin-single-instance = "=2.4.5"
 
 # Reads the clipboard for a paste that WebView2 refuses the page: a profile
 # that once blocked its clipboard-read prompt keeps refusing (see

@@ -19,6 +19,8 @@ mod tests;
 
 use commands::AppState;
 use model::Theme;
+#[cfg(target_os = "windows")]
+use std::sync::atomic::{AtomicBool, Ordering};
 use tauri::Manager;
 use window_state::{Observation, WindowMemory};
 
@@ -35,15 +37,66 @@ const LIGHT_BACKGROUND: tauri::window::Color = tauri::window::Color(0xf8, 0xf8, 
 const SERIALX_DARK_BACKGROUND: tauri::window::Color = tauri::window::Color(0x0f, 0x11, 0x16, 0xff);
 const SERIALX_LIGHT_BACKGROUND: tauri::window::Color = tauri::window::Color(0xf4, 0xf4, 0xf2, 0xff);
 
+#[cfg(target_os = "windows")]
+static STARTUP_REVEALED: AtomicBool = AtomicBool::new(false);
+
+/// Keep the HWND visible to WebView2, but out of the desktop composition
+/// until it has rendered. A hidden HWND does not run animation frames, while
+/// showing it directly exposes the bare background for a couple of frames.
+#[cfg(target_os = "windows")]
+fn set_startup_cloak(
+    window: &tauri::WebviewWindow,
+    cloaked: bool,
+) -> std::result::Result<(), String> {
+    use windows_sys::Win32::Graphics::Dwm::{DwmSetWindowAttribute, DWMWA_CLOAK};
+
+    let hwnd =
+        window.hwnd().map_err(|error| error.to_string())?.0 as windows_sys::Win32::Foundation::HWND;
+    let value: i32 = i32::from(cloaked);
+    // SAFETY: hwnd belongs to this live window; DWM only reads the BOOL
+    // during the call. A failed request leaves the normal window path usable.
+    let result = unsafe {
+        DwmSetWindowAttribute(
+            hwnd,
+            DWMWA_CLOAK as u32,
+            &value as *const i32 as *const std::ffi::c_void,
+            std::mem::size_of_val(&value) as u32,
+        )
+    };
+    if result < 0 {
+        return Err(format!(
+            "DwmSetWindowAttribute(DWMWA_CLOAK) failed: {result:#x}"
+        ));
+    }
+    Ok(())
+}
+
+#[cfg(target_os = "windows")]
+fn reveal_main_window(window: &tauri::WebviewWindow) {
+    if STARTUP_REVEALED
+        .compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst)
+        .is_err()
+    {
+        return;
+    }
+    if set_startup_cloak(window, false).is_err() {
+        STARTUP_REVEALED.store(false, Ordering::SeqCst);
+        return;
+    }
+    let _ = window.set_focus();
+}
+
 /// Build the main window from `tauri.conf.json` (`create: false` there keeps
 /// Tauri from creating it first), at the size it had when it last changed
 /// (`store::startup_window`, maximized again if it was) rather than the
 /// configured one; the configured size is only the first launch's.
 ///
-/// It is created hidden and revealed by the front end once the interface has
-/// painted (`show_main_window`), so an empty frame is never on screen: the
-/// window colours below only paint what a webview has not drawn yet, and
-/// WKWebView paints its own white over them regardless (issue #35).
+/// It is created hidden and shown when the front end commits its first render
+/// (`show_main_window`). Windows keeps the shown window DWM-cloaked until two
+/// animation frames or the native timeout, so WebView2 can replace its bare
+/// background before it is presented. The window colours below paint what
+/// the webview has not drawn yet; WKWebView
+/// paints its own white over them regardless (issue #35).
 ///
 /// The menubar is the title bar: it is the drag region and shares its row
 /// with the window controls (see `MenuBar.tsx`), the VS Code arrangement.
@@ -104,13 +157,19 @@ fn create_main_window(app: &tauri::App) -> tauri::Result<()> {
         builder = builder.decorations(false);
     }
     let window = builder.visible(false).build()?;
+    #[cfg(target_os = "windows")]
+    let _ = set_startup_cloak(&window, true);
 
     // The guard for a front end that never reaches its first paint: without
     // it a page that fails to load would leave the application running with
     // no window to close it from.
     std::thread::spawn(move || {
         std::thread::sleep(std::time::Duration::from_secs(4));
-        let _ = window.show();
+        if !window.is_visible().unwrap_or(false) {
+            let _ = window.show();
+        }
+        #[cfg(target_os = "windows")]
+        reveal_main_window(&window);
     });
     Ok(())
 }
@@ -257,7 +316,20 @@ pub fn run() {
     // upstream tickets.
     #[cfg(target_os = "linux")]
     nvidia_quirk::apply();
-    tauri::Builder::default()
+    let builder = tauri::Builder::default();
+    // This must run before the other plugins and before setup creates the
+    // WebView2 window. During the first launch's hidden phase, leave reveal
+    // to the normal startup path; its command will focus the window.
+    #[cfg(target_os = "windows")]
+    let builder = builder.plugin(tauri_plugin_single_instance::init(|app, _, _| {
+        if let Some(window) = app.get_webview_window("main") {
+            if STARTUP_REVEALED.load(Ordering::SeqCst) {
+                let _ = window.unminimize();
+                let _ = window.set_focus();
+            }
+        }
+    }));
+    builder
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_process::init())
@@ -374,6 +446,7 @@ pub fn run() {
             commands::portable_mode,
             commands::set_startup_theme,
             commands::show_main_window,
+            commands::finish_main_window,
             commands::read_clipboard_text,
             commands::write_clipboard_text,
             commands::show_pointer,
