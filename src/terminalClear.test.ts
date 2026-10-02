@@ -194,13 +194,4 @@ describe("clearing the screen in the normal buffer", () => {
     expect(row(controller, 0)).toBe("alice@server:~$ vim");
     expect(controller.term.buffer.active.baseY).toBe(0);
   });
-
-  it("drops the semantic colors when a program takes the alternate screen", async () => {
-    const controller = createController();
-    const internals = controller as unknown as { disposeAllSemanticColors: () => void };
-    const dispose = vi.spyOn(internals, "disposeAllSemanticColors");
-
-    await write(controller, "\x1b[?1049h");
-    expect(dispose).toHaveBeenCalled();
-  });
 });

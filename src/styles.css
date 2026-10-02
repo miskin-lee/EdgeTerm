@@ -2400,14 +2400,6 @@ textarea:focus {
   background-clip: content-box;
 }
 
-/* Semantic link underline: the decoration element is an empty overlay sized
-   to the span, so its bottom border draws the line in the span's color. */
-.term-host .xterm-decoration.semantic-underline {
-  box-sizing: border-box;
-  border-bottom: 1px solid transparent;
-  pointer-events: none;
-}
-
 .transfer-notice {
   position: absolute;
   top: 10px;

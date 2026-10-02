@@ -6,9 +6,9 @@ import { WebLinksAddon } from "@xterm/addon-web-links";
 import { WebglAddon } from "@xterm/addon-webgl";
 import {
   Terminal,
+  type IBuffer,
   type IBufferCell,
   type IBufferLine,
-  type IDecoration,
   type IMarker,
   type ITheme,
 } from "@xterm/xterm";
@@ -28,8 +28,19 @@ import {
   semanticLine,
   setSemanticColorTheme,
   shellPromptEnd,
-  type SemanticRange,
 } from "./semanticColors";
+import {
+  canPaint,
+  internalLine,
+  paintable,
+  paintBackground,
+  paintForeground,
+  rgb,
+  rowIsBlank,
+  rowSignature,
+  unpaint,
+  type PaintLine,
+} from "./semanticPaint";
 import { needsPasteWarning } from "./terminalPaste";
 import { errorMessage, type TransferNoticeKind } from "./terminalTransfer";
 import type { ThemeMode } from "./types";
@@ -102,6 +113,14 @@ const AI_QUIET_MS = 2000;
  * against 20 000 for splicing the front off on every one of them.
  */
 const LINE_TIME_SLACK = 4096;
+
+/**
+ * How long output must pause before the backlog pass colors the rows a
+ * flood scrolled past (see `scheduleBacklog`), and how long one slice of
+ * that pass may run before yielding to input and rendering.
+ */
+const BACKLOG_QUIET_MS = 200;
+const BACKLOG_SLICE_MS = 8;
 
 /**
  * Data xterm sends back on the terminal's own behalf rather than the user's:
@@ -353,14 +372,6 @@ interface InputAnchor {
   col: number;
 }
 
-interface SemanticRow {
-  /** Tracks the row across scrolling and scrollback trimming. */
-  marker: IMarker;
-  /** The row's text when it was last processed; a change forces a recolor. */
-  text: string;
-  decorations: IDecoration[];
-}
-
 /**
  * Owns one xterm.js instance plus the WindTerm-style gutter that runs down the
  * left edge showing a timestamp and line number for every row.
@@ -458,16 +469,18 @@ export class TerminalController {
   /** A viewport pass is queued for the end of the current task; see onScroll. */
   private viewportSyncQueued = false;
   /**
-   * Semantic coloring is viewport-driven: only rows in and around the
-   * viewport are colored, on the frame they become visible or change. Three
-   * hooks feed it, each timed to run before the paint it affects: new output
-   * via `onWriteParsed`, scrolling via `onScroll`, and `onRender` as the
-   * after-paint catch-all. Keeping the live
-   * marker count near the viewport size (instead of one per scrollback line)
-   * is what keeps write throughput flat — xterm walks every live marker each
-   * time the buffer trims a line.
+   * Each colored row's `rowSignature` when it was last colored, keyed by
+   * xterm's line object (see refreshSemanticColors). A WeakMap, so rows
+   * trimmed off the buffer take their records with them; a recycled line
+   * object no longer matches its record and is colored again.
    */
-  private semanticRows: SemanticRow[] = [];
+  private paintRecords = new WeakMap<PaintLine, number>();
+  /** Whether xterm's buffer layout allows painting; null until checked. */
+  private paintSupported: boolean | null = null;
+  /** The backlog pass's next slice or its quiet wait; see scheduleBacklog. */
+  private backlogTimer: number | null = null;
+  /** Where the backlog walk resumes, walking up; null starts at the bottom. */
+  private backlogRow: number | null = null;
   /** Reused cell for buffer walks, to avoid per-cell allocation. */
   private workCell: IBufferCell | undefined;
   /** The shell's latest OSC directory report; see `reportedCwd`. */
@@ -629,16 +642,9 @@ export class TerminalController {
       }
       return false;
     });
-    this.term.buffer.onBufferChange((buffer) => {
-      // Decorations are matched to viewport rows by marker line alone, so
-      // the normal buffer's colors would show through the alternate screen
-      // of a full-screen program. The rows are recolored on the way back.
-      if (buffer.type === "alternate") this.disposeAllSemanticColors();
-    });
     this.term.onWriteParsed(() => {
       // New output: xterm has updated the buffer and queued its repaint but
-      // not painted yet, so decorations registered here land in that same
-      // frame. Coloring only from `onRender` (which fires *after* the
+      // not painted yet, so cells painted here show in that same frame. Coloring only from `onRender` (which fires *after* the
       // renderer has drawn) showed every freshly written row plain for one
       // frame before it was recolored — a visible flash on `ls -la`.
       //
@@ -650,6 +656,7 @@ export class TerminalController {
       // work (~0.5 ms); a throttle would bring back a half-viewport flash
       // when a listing arrives split across slices, so there is none.
       this.refreshSemanticColors();
+      this.scheduleBacklog();
       this.detectReturnedPrompt();
       // The shell's echo of a keystroke lands here; recompute the suggestions
       // from the buffer only while the user is composing a command.
@@ -661,9 +668,9 @@ export class TerminalController {
 
     this.term.onResize(({ cols, rows }) => {
       this.callbacks.onResize(cols, rows);
-      // Line bands span the column count they were created with; drop
-      // everything so the next render rebuilds decorations at the new width.
-      this.disposeAllSemanticColors();
+      // Reflow regroups rows, and a band ends at the width it was painted
+      // at; everything is colored again.
+      this.recolorAll();
       // Reflow moves lines between rows; the parked marker's count means
       // nothing across it, so the next pass starts from a fresh one.
       this.resetTrimMarker();
@@ -686,7 +693,7 @@ export class TerminalController {
       // Fires synchronously while xterm handles the scroll (wheel, scrollbar
       // drag, or its own scrollTop during an output flood), before the
       // repaint it queues. The work is deferred to a microtask: that still
-      // runs before the paint, so the decorations land in the same frame,
+      // runs before the paint, so the colors land in the same frame,
       // but an output flood, which scrolls once per line and fires this
       // thousands of times per parse slice, pays for one viewport pass per
       // slice instead of one per line (per line it throttled `seq 1 300000`
@@ -922,17 +929,19 @@ export class TerminalController {
   setVisible(visible: boolean) {
     if (this.visible === visible) return;
     this.visible = visible;
-    if (visible) this.loadWebgl();
+    if (visible) {
+      this.loadWebgl();
+      this.scheduleBacklog();
+    } else {
+      this.stopBacklog();
+    }
   }
 
   /**
    * WebGL is a large win on heavy output but is unavailable in some
    * environments; the DOM renderer remains a working fallback. The fallback
-   * must not be permanent, though: with the semantic decorations in place,
-   * a selection drag on the DOM renderer repaints the whole viewport at
-   * ~6 fps (issue #14). A lost context is recreated on the recovery budget,
-   * and while the DOM renderer is active semantic coloring stays off (see
-   * refreshSemanticColors).
+   * should not be permanent, so a lost context is recreated on the recovery
+   * budget. Semantic colors live in the buffer cells and render on either.
    */
   private loadWebgl() {
     if (this.disposed || !this.host) return;
@@ -1018,12 +1027,7 @@ export class TerminalController {
     }, WEBGL_RECOVERY_DELAY_MS);
   }
 
-  /**
-   * Records a renderer switch. Semantic state is dropped either way: rows
-   * recorded under one renderer would compare as "unchanged" and never be
-   * recolored under the next, and decorations must not linger on the DOM
-   * renderer.
-   */
+  /** Records a renderer switch. */
   private setWebgl(webgl: WebglAddon | null) {
     this.webgl = webgl;
     if (webgl) {
@@ -1032,8 +1036,6 @@ export class TerminalController {
       const index = webglTerminals.indexOf(this);
       if (index >= 0) webglTerminals.splice(index, 1);
     }
-    this.disposeAllSemanticColors();
-    if (webgl) this.refreshSemanticColors();
   }
 
   /** Moves this terminal to the front of the holders, evicting past the limit. */
@@ -1447,7 +1449,7 @@ export class TerminalController {
   /**
    * ED 3 in the normal buffer: xterm is about to drop the lines above the
    * viewport and keep the screen. The line metadata follows, so the top row
-   * becomes line 1; the semantic markers move with xterm's own trim.
+   * becomes line 1.
    */
   private scrollbackErased() {
     const dropped = this.term.buffer.active.length - this.term.rows;
@@ -1463,11 +1465,6 @@ export class TerminalController {
   }
 
   private clearBufferAndMetadata() {
-    // Dispose our decorations while their markers still hold valid lines.
-    // term.clear()'s own mass marker disposal invalidates the marker first,
-    // which corrupts the decoration service's sorted-by-line lookups whenever
-    // decorated markers die out of line order.
-    this.disposeAllSemanticColors();
     this.dropAnchor();
     this.term.clear();
     this.resetLineMetadata();
@@ -1520,11 +1517,9 @@ export class TerminalController {
     }
   }
 
-  /** Cell size and the pixel-sized decorations both follow the font. */
+  /** The cell size follows the font. */
   private refreshFontMetrics() {
     this.cellHeight = 0;
-    // Underline elements are sized in pixels at creation time.
-    this.disposeAllSemanticColors();
     this.fit();
   }
 
@@ -1533,9 +1528,9 @@ export class TerminalController {
     this.themeMode = theme;
     setSemanticColorTheme(theme);
     this.term.options.theme = XTERM_THEMES[theme];
-    // Decorations baked the previous palette's colors; drop them so the next
-    // render recolors the viewport with the palette matching the new theme.
-    this.disposeAllSemanticColors();
+    // The cells hold the previous palette's colors (and, between WindTerm and
+    // serialX, the other engine's spans).
+    this.recolorAll();
     this.refreshSearch();
     if (this.term.rows > 0) this.term.refresh(0, this.term.rows - 1);
   }
@@ -1617,7 +1612,7 @@ export class TerminalController {
     this.host = null;
     this.gutter = null;
     this.rowPool = [];
-    this.semanticRows = [];
+    this.stopBacklog();
   }
 
   // --- internals ------------------------------------------------------------
@@ -2247,97 +2242,105 @@ export class TerminalController {
 
   /**
    * WindTerm-style semantic coloring for output that did not set its own ANSI
-   * foreground color. Decorations keep the byte stream untouched, so cursor
-   * movement, copying and full-screen applications continue to behave normally.
-   */
-  /**
-   * Recolors the viewport. Rows keep their state (marker, last-seen text,
-   * decorations) while they stay near the viewport; a row is only
-   * re-processed when its text changes, so calling this from several hooks
-   * per frame is cheap: an idle screen costs a few string compares per call
-   * and a full-speed flood costs one viewport of regex work per frame
-   * instead of per line.
+   * colors, painted into the buffer cells (see semanticPaint.ts) so a row
+   * keeps its colors into the scrollback, through trimming and reflow, on
+   * either renderer (issue #80). `paintRecords` holds each row's signature
+   * from its last coloring, keyed by xterm's line object, so a row is only
+   * read again once its text or its paint has changed.
+   *
+   * This pass covers the viewport and runs from the write, scroll and render
+   * hooks, each timed before the paint it affects; an idle screen costs one
+   * signature per row. Rows an output flood scrolls away before they are
+   * ever on screen are left to the backlog pass (`scheduleBacklog`).
    */
   private refreshSemanticColors() {
-    // Semantic colors ride on decorations, which the DOM renderer repaints
-    // so slowly during a selection drag that the terminal drops to ~6 fps
-    // (issue #14). Plain text is the better trade while WebGL is off; a
-    // hidden terminal without it is recolored when it is shown.
-    if (!this.webgl) return;
+    if (this.term.rows === 0 || !this.semanticPaintReady()) return;
     const buf = this.term.buffer.active;
-    if (buf.type !== "normal" || this.term.rows === 0) return;
-
     const top = buf.viewportY;
     const bottom = Math.min(top + this.term.rows - 1, buf.length - 1);
-    // A margin above and below the viewport keeps ordinary scrolling from
-    // dropping and recoloring the same rows frame after frame.
-    const keepFirst = top - this.term.rows;
-    const keepLast = bottom + this.term.rows;
-
-    const byLine = new Map<number, SemanticRow>();
-    for (const state of this.semanticRows) {
-      if (state.marker.isDisposed) continue;
-      const line = state.marker.line;
-      if (line < keepFirst || line > keepLast || byLine.has(line)) {
-        this.disposeSemanticRow(state);
-        continue;
-      }
-      byLine.set(line, state);
-    }
-
-    // The cursor's logical line is still being written (echoed keystrokes,
-    // prompt redraws); it is colored once the cursor has left it.
-    const cursorIndex = buf.baseY + buf.cursorY;
-    let cursorFirst = cursorIndex;
-    while (cursorFirst > 0 && buf.getLine(cursorFirst)?.isWrapped) {
-      cursorFirst -= 1;
-    }
-
+    let first = Infinity;
+    let last = -Infinity;
     let row = top;
     while (row <= bottom) {
-      // The logical line containing `row`: soft-wrapped rows join their
-      // neighbors so tokens split by wrapping are matched whole.
-      let first = row;
-      while (first > 0 && buf.getLine(first)?.isWrapped) first -= 1;
-      let last = row;
-      while (buf.getLine(last + 1)?.isWrapped) last += 1;
-      row = last + 1;
-
-      let changed = false;
-      for (let r = first; r <= last && !changed; r += 1) {
-        const state = byLine.get(r);
-        const text = buf.getLine(r)?.translateToString(true) ?? "";
-        changed = state ? state.text !== text : text.length > 0;
-      }
-      if (!changed) continue;
-
-      for (let r = first; r <= last; r += 1) {
-        const state = byLine.get(r);
-        if (state) {
-          this.disposeSemanticRow(state);
-          byLine.delete(r);
-        }
-      }
-      if (last < cursorFirst || first > cursorIndex) {
-        this.colorLogicalLine(first, last, byLine);
+      const [lo, hi] = this.logicalLine(buf, row);
+      row = hi + 1;
+      if (this.paintLogicalLine(buf, lo, hi)) {
+        first = Math.min(first, lo);
+        last = Math.max(last, hi);
       }
     }
-
-    this.semanticRows = [...byLine.values()];
+    this.refreshPaintedRows(first, last);
   }
 
   /**
-   * Colors one logical line (rows [first..last] joined across soft wraps) and
-   * records one SemanticRow per member row. The text is rebuilt from cells
-   * with a string-index → column map so decorations align across wide (CJK)
-   * glyphs and wrapped rows instead of assuming one column per code unit.
+   * Cell writes do not mark rows dirty, so painted rows in view are queued
+   * for a repaint (debounced by xterm to the next frame).
+   */
+  private refreshPaintedRows(first: number, last: number) {
+    const top = this.term.buffer.active.viewportY;
+    const start = Math.max(first - top, 0);
+    const end = Math.min(last - top, this.term.rows - 1);
+    if (start <= end) this.term.refresh(start, end);
+  }
+
+  /** Rows [first, last] of the logical line through `row`, across soft wraps. */
+  private logicalLine(buf: IBuffer, row: number): [number, number] {
+    let first = row;
+    while (first > 0 && buf.getLine(first)?.isWrapped) first -= 1;
+    let last = row;
+    while (buf.getLine(last + 1)?.isWrapped) last += 1;
+    return [first, last];
+  }
+
+  /**
+   * Recolors one logical line if any of its rows changed since it was last
+   * colored; returns whether any cell changed.
+   */
+  private paintLogicalLine(buf: IBuffer, first: number, last: number): boolean {
+    const lines: PaintLine[] = [];
+    const cursor = buf.baseY + buf.cursorY;
+    const onCursorLine = first <= cursor && cursor <= last;
+    let changed = false;
+    for (let row = first; row <= last; row += 1) {
+      const line = internalLine(buf.getLine(row));
+      if (!line) return false;
+      lines.push(line);
+      if (!changed) {
+        const recorded = this.paintRecords.get(line);
+        changed =
+          onCursorLine ||
+          (recorded === undefined ? !rowIsBlank(line) : recorded !== rowSignature(line));
+      }
+    }
+    if (!changed) return false;
+
+    let cleared = 0;
+    for (const line of lines) {
+      cleared += unpaint(line);
+      if (onCursorLine) this.paintRecords.delete(line);
+    }
+    // The cursor's logical line is still being written (echoed keystrokes,
+    // prompt redraws, a progress bar's `\r`); stale paint comes off now and
+    // the line is colored once the cursor has left it.
+    if (onCursorLine) return cleared > 0;
+
+    this.colorLogicalLine(buf, first, last, lines);
+    for (const line of lines) this.paintRecords.set(line, rowSignature(line));
+    return true;
+  }
+
+  /**
+   * Paints one logical line (rows [first..last] joined across soft wraps).
+   * The text is rebuilt from cells with a string-index → column map so spans
+   * align across wide (CJK) glyphs and wrapped rows instead of assuming one
+   * column per code unit.
    */
   private colorLogicalLine(
+    buf: IBuffer,
     first: number,
     last: number,
-    byLine: Map<number, SemanticRow>,
+    lines: PaintLine[],
   ) {
-    const buf = this.term.buffer.active;
     const work = (this.workCell ??= buf.getNullCell());
 
     let text = "";
@@ -2367,51 +2370,25 @@ export class TerminalController {
     }
     text = text.replace(/\s+$/, "");
     // Pathological logical lines (minified assets, base64 blobs) are not
-    // worth the regex cost; their rows are still recorded below so they are
-    // not re-examined every frame.
-    const { ranges, band }: { ranges: SemanticRange[]; band?: string } =
-      text && text.length <= 4000 ? semanticLine(text) : { ranges: [] };
+    // worth the regex cost; they are still recorded so they are not
+    // examined again.
+    if (!text || text.length > 4000) return;
+    const { ranges, band } = semanticLine(text);
 
-    const cursorIndex = buf.baseY + buf.cursorY;
-    const rowMarkers = new Map<number, IMarker>();
-    const rowDecorations = new Map<number, IDecoration[]>();
-    const markerFor = (row: number): IMarker | undefined => {
-      let marker = rowMarkers.get(row);
-      if (!marker) {
-        marker = this.term.registerMarker(row - cursorIndex) ?? undefined;
-        if (marker) rowMarkers.set(row, marker);
-      }
-      return marker;
-    };
-    const record = (row: number, decoration: IDecoration) => {
-      let list = rowDecorations.get(row);
-      if (!list) rowDecorations.set(row, (list = []));
-      list.push(decoration);
-    };
-
-    // A line band tints every row of the logical line behind the text. It is
-    // painted on the bottom layer so selection still shows through, and only
-    // on rows that carry no ANSI styling of their own, since a bottom-layer
-    // decoration background replaces the cell's own background.
-    if (band) {
-      for (let row = first; row <= last; row += 1) {
-        const line = buf.getLine(row);
-        if (!line || !isUnstyledSpan(line, 0, line.length, work)) continue;
-        const marker = markerFor(row);
-        if (!marker) continue;
-        const decoration = this.term.registerDecoration({
-          marker,
-          x: 0,
-          width: this.term.cols,
-          backgroundColor: band,
-          layer: "bottom",
-        });
-        if (decoration) record(row, decoration);
+    // A line band tints whole rows that carry no styling of their own. Not
+    // on the alternate screen: a full-screen program lays out its own rows,
+    // and a band behind one of them reads as part of its UI.
+    if (band && buf.type === "normal") {
+      const color = rgb(band);
+      for (const line of lines) {
+        if (canPaint(line, 0, line.length)) {
+          paintBackground(line, 0, line.length, color);
+        }
       }
     }
 
     for (const range of ranges) {
-      // A range that crosses a soft wrap becomes one decoration per row.
+      // A range that crosses a soft wrap is painted row by row.
       let start = range.start;
       while (start < range.end) {
         const row = rows[start];
@@ -2421,70 +2398,84 @@ export class TerminalController {
         const endCol = cols[end - 1] + widths[end - 1];
         start = end;
 
-        const line = buf.getLine(row);
-        if (!line || !isUnstyledSpan(line, startCol, endCol, work)) continue;
-
-        const marker = markerFor(row);
-        if (!marker) continue;
+        const line = lines[row - first];
+        if (!line || !canPaint(line, startCol, endCol)) continue;
+        // A pill's ground (serialX's HTTP methods).
         if (range.background) {
-          // A pill's ground goes on the bottom layer, like a band: a
-          // top-layer background would be painted over the glyphs it sits
-          // under. Only serialX's HTTP methods ask for one.
-          const ground = this.term.registerDecoration({
-            marker,
-            x: startCol,
-            width: endCol - startCol,
-            backgroundColor: range.background,
-            layer: "bottom",
-          });
-          if (ground) record(row, ground);
+          paintBackground(line, startCol, endCol, rgb(range.background));
         }
-        const decoration = this.term.registerDecoration({
-          marker,
-          x: startCol,
-          width: endCol - startCol,
-          foregroundColor: range.color,
-          layer: "top",
-        });
-        if (!decoration) continue;
-        if (range.underline) {
-          // The decoration element is an empty overlay sized to the span;
-          // a bottom border on it draws the underline.
-          const color = range.color;
-          decoration.onRender((element) => {
-            element.classList.add("semantic-underline");
-            element.style.borderBottomColor = color;
-          });
-        }
-        record(row, decoration);
+        paintForeground(line, startCol, endCol, rgb(range.color), !!range.underline);
       }
-    }
-
-    for (let row = first; row <= last; row += 1) {
-      const rowText = buf.getLine(row)?.translateToString(true) ?? "";
-      const decorations = rowDecorations.get(row) ?? [];
-      // Blank rows carry no state; they are skipped by the change check.
-      if (!rowText && decorations.length === 0) continue;
-      let marker = rowMarkers.get(row);
-      if (!marker) {
-        marker = this.term.registerMarker(row - cursorIndex);
-        if (!marker) continue;
-      }
-      byLine.set(row, { marker, text: rowText, decorations });
     }
   }
 
-  private disposeSemanticRow(state: SemanticRow) {
-    if (state.marker.isDisposed) return;
-    // Decorations first: the decoration service unindexes them by the
-    // marker's line, which the marker's own dispose() resets to -1.
-    for (const decoration of state.decorations) decoration.dispose();
-    state.marker.dispose();
+  /** Whether cells can be painted on this xterm; checked once. */
+  private semanticPaintReady(): boolean {
+    if (this.paintSupported === null) {
+      this.paintSupported = paintable(this.term);
+      if (!this.paintSupported) {
+        console.warn("xterm's buffer layout changed; semantic coloring is off");
+      }
+    }
+    return this.paintSupported;
   }
 
-  private disposeAllSemanticColors() {
-    for (const state of this.semanticRows) this.disposeSemanticRow(state);
-    this.semanticRows = [];
+  /**
+   * Drops every row's record, so every row is colored again: after a theme
+   * switch (new palette) or a resize (reflow rebuilds rows, and a band ends
+   * at the old width). The viewport is redone now, the rest in the backlog.
+   */
+  private recolorAll() {
+    this.paintRecords = new WeakMap();
+    this.refreshSemanticColors();
+    this.scheduleBacklog();
+  }
+
+  /**
+   * Colors the rest of the normal buffer once output has been quiet for
+   * BACKLOG_QUIET_MS: walking up from the newest row in slices of
+   * BACKLOG_SLICE_MS, so it never holds up input or rendering. Any new output
+   * restarts the walk from the bottom — rows already colored cost one
+   * signature each, so the restart only repeats the cheap part. Only a
+   * visible terminal runs it; showing one starts it.
+   */
+  private scheduleBacklog() {
+    this.backlogRow = null;
+    if (this.backlogTimer !== null) window.clearTimeout(this.backlogTimer);
+    this.backlogTimer = null;
+    if (this.disposed || !this.visible) return;
+    this.backlogTimer = window.setTimeout(() => this.runBacklog(), BACKLOG_QUIET_MS);
+  }
+
+  private runBacklog() {
+    this.backlogTimer = null;
+    if (this.disposed || !this.visible || !this.semanticPaintReady()) return;
+    const buf = this.term.buffer.normal;
+    const deadline = performance.now() + BACKLOG_SLICE_MS;
+    let row = Math.min(this.backlogRow ?? Infinity, buf.length - 1);
+    let first = Infinity;
+    let last = -Infinity;
+    while (row >= 0 && performance.now() < deadline) {
+      const [lo, hi] = this.logicalLine(buf, row);
+      if (this.paintLogicalLine(buf, lo, hi)) {
+        first = Math.min(first, lo);
+        last = Math.max(last, hi);
+      }
+      row = lo - 1;
+    }
+    if (this.term.buffer.active.type === "normal") this.refreshPaintedRows(first, last);
+    if (row < 0) {
+      this.backlogRow = null;
+      return;
+    }
+    this.backlogRow = row;
+    this.backlogTimer = window.setTimeout(() => this.runBacklog(), 0);
+  }
+
+  private stopBacklog() {
+    if (this.backlogTimer !== null) window.clearTimeout(this.backlogTimer);
+    this.backlogTimer = null;
+    this.backlogRow = null;
   }
 
   /**
@@ -2572,20 +2563,6 @@ export class TerminalController {
       }
     }
   }
-}
-
-/** Semantic colors must never repaint output that styled itself via ANSI. */
-function isUnstyledSpan(
-  line: IBufferLine,
-  start: number,
-  end: number,
-  work: IBufferCell,
-): boolean {
-  for (let x = start; x < end; x += 1) {
-    const cell = line.getCell(x, work);
-    if (!cell?.isFgDefault() || !cell.isBgDefault()) return false;
-  }
-  return true;
 }
 
 function formatTime(epochMs: number | undefined): string {
