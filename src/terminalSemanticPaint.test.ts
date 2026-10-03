@@ -155,7 +155,27 @@ describe("semantic colors painted into the cells (issue #80)", () => {
     expect(bg(controller, row, controller.term.cols - 1)).toBe("#3c2726");
   });
 
-  it("does not color the line the cursor is still on", async () => {
+  it("colors a live shell prompt without coloring the command being typed", async () => {
+    const controller = createController();
+    await write(controller, "PS C:\\Users\\pinery> dir");
+    expect(fg(controller, 0, 3)).toBe("#e6db74");
+    expect(fg(controller, 0, 18)).toBe("#ff6188");
+    expect(fg(controller, 0, 20)).toBeNull();
+    await write(controller, "\r\n");
+    expect(fg(controller, 0, 3)).toBe("#e6db74");
+  });
+
+  it("colors a live cmd prompt and stops when the line becomes dynamic output", async () => {
+    const controller = createController();
+    await write(controller, "C:\\Users\\pinery>");
+    expect(fg(controller, 0, 0)).toBe("#e6db74");
+    expect(fg(controller, 0, 15)).toBe("#ff6188");
+
+    await write(controller, "\r\x1b[2Kworking at 10.0.0.1");
+    expect(fg(controller, 0, 11)).toBeNull();
+  });
+
+  it("leaves a changing non-prompt line plain until the cursor leaves", async () => {
     const controller = createController();
     await write(controller, "host 10.0.0.1 up");
     expect(fg(controller, 0, 5)).toBeNull();

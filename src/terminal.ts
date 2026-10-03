@@ -66,9 +66,12 @@ export type CursorStyle = "block" | "underline" | "bar";
 type GutterView = {
   viewportY: number;
   cursorIndex: number;
+  contentEnd: number;
   rows: number;
   alternate: boolean;
 };
+
+type PaintRecord = { signature: number; cursor: boolean };
 
 /**
  * How many terminals hold a WebGL renderer at once, most recently shown
@@ -469,12 +472,11 @@ export class TerminalController {
   /** A viewport pass is queued for the end of the current task; see onScroll. */
   private viewportSyncQueued = false;
   /**
-   * Each colored row's `rowSignature` when it was last colored, keyed by
-   * xterm's line object (see refreshSemanticColors). A WeakMap, so rows
-   * trimmed off the buffer take their records with them; a recycled line
-   * object no longer matches its record and is colored again.
+   * Each visited row's signature and cursor state, keyed by xterm's line
+   * object (see refreshSemanticColors). A WeakMap lets trimmed rows take
+   * their records with them.
    */
-  private paintRecords = new WeakMap<PaintLine, number>();
+  private paintRecords = new WeakMap<PaintLine, PaintRecord>();
   /** Whether xterm's buffer layout allows painting; null until checked. */
   private paintSupported: boolean | null = null;
   /** The backlog pass's next slice or its quiet wait; see scheduleBacklog. */
@@ -508,6 +510,8 @@ export class TerminalController {
    * at their mutation sites instead of being compared here.
    */
   private gutterPainted: GutterView | null = null;
+  /** Output may have changed the last nonblank screen row without moving the cursor. */
+  private gutterContentDirty = true;
 
   constructor(
     readonly sessionId: string,
@@ -656,6 +660,7 @@ export class TerminalController {
       // work (~0.5 ms); a throttle would bring back a half-viewport flash
       // when a listing arrives split across slices, so there is none.
       this.refreshSemanticColors();
+      this.gutterContentDirty = true;
       this.scheduleBacklog();
       this.detectReturnedPrompt();
       // The shell's echo of a keystroke lands here; recompute the suggestions
@@ -2245,8 +2250,8 @@ export class TerminalController {
    * colors, painted into the buffer cells (see semanticPaint.ts) so a row
    * keeps its colors into the scrollback, through trimming and reflow, on
    * either renderer (issue #80). `paintRecords` holds each row's signature
-   * from its last coloring, keyed by xterm's line object, so a row is only
-   * read again once its text or its paint has changed.
+   * and cursor state, keyed by xterm's line object, so a row is only read
+   * again once its text, paint or cursor state has changed.
    *
    * This pass covers the viewport and runs from the write, scroll and render
    * hooks, each timed before the paint it affects; an idle screen costs one
@@ -2307,9 +2312,9 @@ export class TerminalController {
       lines.push(line);
       if (!changed) {
         const recorded = this.paintRecords.get(line);
-        changed =
-          onCursorLine ||
-          (recorded === undefined ? !rowIsBlank(line) : recorded !== rowSignature(line));
+        changed = recorded === undefined
+          ? onCursorLine || !rowIsBlank(line)
+          : recorded.cursor !== onCursorLine || recorded.signature !== rowSignature(line);
       }
     }
     if (!changed) return false;
@@ -2317,16 +2322,14 @@ export class TerminalController {
     let cleared = 0;
     for (const line of lines) {
       cleared += unpaint(line);
-      if (onCursorLine) this.paintRecords.delete(line);
     }
-    // The cursor's logical line is still being written (echoed keystrokes,
-    // prompt redraws, a progress bar's `\r`); stale paint comes off now and
-    // the line is colored once the cursor has left it.
-    if (onCursorLine) return cleared > 0;
-
-    this.colorLogicalLine(buf, first, last, lines);
-    for (const line of lines) this.paintRecords.set(line, rowSignature(line));
-    return true;
+    // A live shell prompt has a stable prefix worth coloring. Other cursor
+    // lines (echoed input, progress bars, full-screen redraws) stay plain.
+    const painted = this.colorLogicalLine(buf, first, last, lines, onCursorLine);
+    for (const line of lines) {
+      this.paintRecords.set(line, { signature: rowSignature(line), cursor: onCursorLine });
+    }
+    return cleared > 0 || painted;
   }
 
   /**
@@ -2340,7 +2343,8 @@ export class TerminalController {
     first: number,
     last: number,
     lines: PaintLine[],
-  ) {
+    onCursorLine: boolean,
+  ): boolean {
     const work = (this.workCell ??= buf.getNullCell());
 
     let text = "";
@@ -2372,13 +2376,18 @@ export class TerminalController {
     // Pathological logical lines (minified assets, base64 blobs) are not
     // worth the regex cost; they are still recorded so they are not
     // examined again.
-    if (!text || text.length > 4000) return;
+    if (!text || text.length > 4000) return false;
+    if (onCursorLine) {
+      const promptEnd = shellPromptEnd(text);
+      if (promptEnd < 0) return false;
+      text = text.slice(0, promptEnd);
+    }
     const { ranges, band } = semanticLine(text);
 
     // A line band tints whole rows that carry no styling of their own. Not
     // on the alternate screen: a full-screen program lays out its own rows,
     // and a band behind one of them reads as part of its UI.
-    if (band && buf.type === "normal") {
+    if (band && !onCursorLine && buf.type === "normal") {
       const color = rgb(band);
       for (const line of lines) {
         if (canPaint(line, 0, line.length)) {
@@ -2407,6 +2416,7 @@ export class TerminalController {
         paintForeground(line, startCol, endCol, rgb(range.color), !!range.underline);
       }
     }
+    return ranges.length > 0 || !!band;
   }
 
   /** Whether cells can be painted on this xterm; checked once. */
@@ -2515,16 +2525,31 @@ export class TerminalController {
     // line numbers and produced-at times are meaningless.
     const alternate = buf.type === "alternate";
     const painted = this.gutterPainted;
-    if (
+    const sameView = !!(
       painted &&
       painted.viewportY === viewportY &&
       painted.cursorIndex === cursorIndex &&
       painted.rows === rows &&
       painted.alternate === alternate
-    ) {
-      return;
+    );
+    if (sameView && !this.gutterContentDirty) return;
+    this.gutterContentDirty = false;
+
+    // A line feed can fill the timestamp array across untouched blank rows,
+    // and a program can move the cursor back after visiting a lower row.
+    // Keep meaningful blank lines inside the history, but hide only the
+    // blank suffix below both the cursor and the last visible text.
+    let contentEnd = cursorIndex;
+    if (!alternate) {
+      for (let index = buf.baseY + rows - 1; index > cursorIndex; index -= 1) {
+        if (buf.getLine(index)?.translateToString(true).length) {
+          contentEnd = index;
+          break;
+        }
+      }
     }
-    this.gutterPainted = { viewportY, cursorIndex, rows, alternate };
+    if (sameView && painted?.contentEnd === contentEnd) return;
+    this.gutterPainted = { viewportY, cursorIndex, contentEnd, rows, alternate };
 
     while (this.rowPool.length < rows) {
       const row = document.createElement("div");
@@ -2545,10 +2570,9 @@ export class TerminalController {
       const row = this.rowPool[i];
       const index = viewportY + i;
 
-      // `buf.length` always spans the whole viewport, so it cannot tell a
-      // written line from blank padding below the last one. A recorded
-      // timestamp can: only produced lines have one.
-      const written = !alternate && index < this.lineCount;
+      // `buf.length` spans the viewport, and line feeds can put timestamps
+      // on padding rows. The content limit keeps that blank suffix hidden.
+      const written = !alternate && index < this.lineCount && index <= contentEnd;
       row.classList.toggle("is-empty", !written);
       row.classList.toggle("is-cursor", written && index === cursorIndex);
 

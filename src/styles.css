@@ -2251,7 +2251,7 @@ textarea:focus {
 
 .gutter-row.is-cursor {
   background: color-mix(in srgb, var(--accent) 10%, transparent);
-  color: var(--accent);
+  color: var(--accent-bright);
 }
 
 .gutter-time {
@@ -2262,6 +2262,11 @@ textarea:focus {
   min-width: 32px;
   text-align: right;
   color: var(--gutter-line-fg);
+}
+
+.gutter-row.is-cursor .gutter-time,
+.gutter-row.is-cursor .gutter-line {
+  color: var(--accent-bright);
 }
 
 .term-gutter.no-time .gutter-time {

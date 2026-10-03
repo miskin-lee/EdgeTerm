@@ -35,6 +35,25 @@ function row(controller: TerminalController, index: number): string {
   return controller.term.buffer.active.getLine(index)?.translateToString(true) ?? "";
 }
 
+/** Paint the private DOM gutter without opening a renderer in jsdom. */
+function gutterRows(controller: TerminalController): HTMLElement[] {
+  const internals = controller as unknown as {
+    gutter: HTMLElement | null;
+    host: HTMLElement | null;
+    cellHeight: number;
+    syncGutter: () => void;
+  };
+  internals.gutter ??= document.createElement("div");
+  internals.host ??= document.createElement("div");
+  internals.cellHeight = 16;
+  internals.syncGutter();
+  return Array.from(internals.gutter.querySelectorAll<HTMLElement>(".gutter-row"));
+}
+
+function gutterLine(rows: HTMLElement[], index: number): string {
+  return rows[index]?.querySelector(".gutter-line")?.textContent ?? "";
+}
+
 /** `line 1` … `line n`, one per row, as a single chunk of output. */
 function lines(from: number, to: number): string {
   let out = "";
@@ -84,6 +103,35 @@ afterEach(() => {
 });
 
 describe("gutter line numbering", () => {
+  it("hides blank tail rows visited before the cursor moved up", async () => {
+    const controller = createController(100);
+    await write(controller, "\x1b[12;1H\n\x1b[5;1Hprompt>");
+    expect(metadata(controller).held).toBeGreaterThan(12);
+
+    let rows = gutterRows(controller);
+    expect(gutterLine(rows, 1)).toBe("2"); // blank inside the produced span
+    expect(gutterLine(rows, 4)).toBe("5"); // current cursor row
+    expect(gutterLine(rows, 5)).toBe("");
+    expect(gutterLine(rows, 12)).toBe("");
+    expect(rows[4].classList.contains("is-cursor")).toBe(true);
+
+    // Text below the cursor is still meaningful, even before it moves there.
+    await write(controller, "\x1b[9;1Hkept\x1b[5;1H");
+    rows = gutterRows(controller);
+    expect(gutterLine(rows, 8)).toBe("9");
+    expect(gutterLine(rows, 9)).toBe("");
+
+    // Erasing that text, without a line feed or cursor movement, hides it.
+    await write(controller, "\x1b[9;1H\x1b[2K\x1b[5;1H");
+    rows = gutterRows(controller);
+    expect(gutterLine(rows, 8)).toBe("");
+
+    controller.term.resize(80, 30);
+    rows = gutterRows(controller);
+    expect(gutterLine(rows, 4)).toBe("5");
+    expect(gutterLine(rows, 29)).toBe("");
+  });
+
   it("follows xterm's trimming once the scrollback is full", async () => {
     const controller = createController(5);
     const rows = controller.term.rows;
