@@ -29,6 +29,7 @@ import {
 } from "../../senderUnits";
 import { byName } from "../../sessionGroups";
 import { useStore } from "../../store";
+import { getController } from "../../terminalRegistry";
 import {
   isFileSession,
   type CommandScope,
@@ -74,7 +75,13 @@ const LINE_ENDINGS: [LineEnding, string][] = [
   ["crlf", "CRLF (\\r\\n)"],
 ];
 
-export function SenderPanel() {
+interface SenderPanelProps {
+  compact: boolean;
+  canCompact: boolean;
+  onExpandedChange: (expanded: boolean) => void;
+}
+
+export function SenderPanel({ compact, canCompact, onExpandedChange }: SenderPanelProps) {
   const tabs = useStore((s) => s.tabs);
   const activeId = useStore((s) => s.activeId);
   const profiles = useStore((s) => s.profiles);
@@ -98,8 +105,12 @@ export function SenderPanel() {
   // Save / Update open a picker for the scope; the last choice's level is
   // preselected in it.
   const [savePicker, setSavePicker] = useState<SavePicker | null>(null);
+  const [moreAnchor, setMoreAnchor] = useState<{ left: number; bottom: number } | null>(null);
+  const [moreQuery, setMoreQuery] = useState("");
   const [saveLevel, setSaveLevel] = useState<ScopeLevel>(loadSaveLevel);
   const saveButtonRef = useRef<HTMLButtonElement>(null);
+  const moreButtonRef = useRef<HTMLButtonElement>(null);
+  const moreMenuRef = useRef<HTMLDivElement>(null);
   const tooltipTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   // Repeat: the strip under the compose row and its settings. The schedule
   // itself lives outside the panel (`senderSchedule.ts`), so hiding the
@@ -126,10 +137,16 @@ export function SenderPanel() {
     if (!box) return;
     box.style.height = "auto";
     box.style.height = `${box.scrollHeight}px`;
-  }, [text]);
+  }, [text, compact]);
 
   // A manual send does not outlive the panel; a schedule does.
   useEffect(() => () => stopRef.current?.stop(), []);
+
+  const closeMore = useCallback(() => setMoreAnchor(null), []);
+
+  useEffect(() => {
+    if (!compact) closeMore();
+  }, [compact, closeMore]);
 
   // Loads the library on mount and again after it changed outside this
   // panel (a data import, a deleted profile or group); an edit in progress
@@ -159,8 +176,39 @@ export function SenderPanel() {
     if (tooltipTimer.current) clearTimeout(tooltipTimer.current);
   }, []);
 
+  useEffect(() => {
+    if (!moreAnchor) return;
+    const closeOutside = (event: MouseEvent) => {
+      const target = event.target as Node;
+      if (!moreMenuRef.current?.contains(target) && !moreButtonRef.current?.contains(target)) {
+        setMoreAnchor(null);
+      }
+    };
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        setMoreAnchor(null);
+        moreButtonRef.current?.focus();
+      }
+    };
+    document.addEventListener("mousedown", closeOutside, true);
+    window.addEventListener("keydown", closeOnEscape, true);
+    window.addEventListener("resize", closeMore);
+    return () => {
+      document.removeEventListener("mousedown", closeOutside, true);
+      window.removeEventListener("keydown", closeOnEscape, true);
+      window.removeEventListener("resize", closeMore);
+    };
+  }, [moreAnchor, closeMore]);
+
   const closeContextMenu = useCallback(() => setContextMenu(null), []);
   const closeSavePicker = useCallback(() => setSavePicker(null), []);
+
+  const openComposer = () => {
+    closeMore();
+    onExpandedChange(true);
+    requestAnimationFrame(() => commandRef.current?.focus());
+  };
 
   const activeTab = tabs.find((tab) => tab.info.id === activeId);
   const chain = useMemo(
@@ -188,6 +236,13 @@ export function SenderPanel() {
     (currentPage - 1) * COMMANDS_PER_PAGE,
     currentPage * COMMANDS_PER_PAGE,
   );
+  const moreMatches = moreAnchor
+    ? visibleCommands.filter((command) =>
+        `${command.name}\n${command.text}\n${labelOf(command.scope)}`
+          .toLocaleLowerCase()
+          .includes(moreQuery.toLocaleLowerCase().trim()),
+      )
+    : [];
 
   const hideCommandTooltip = () => {
     if (tooltipTimer.current) {
@@ -327,6 +382,8 @@ export function SenderPanel() {
   /** Loads a saved tag into the inputs; Save becomes Update until done. */
   const beginEdit = (command: SavedCommand) => {
     if (libraryBusy) return;
+    if (compact) onExpandedChange(true);
+    closeMore();
     // The first Edit remembers whatever was typed; switching tags mid-edit
     // keeps that original draft so Cancel still restores it.
     const draft = editing?.draft ?? { text, tagName, ending };
@@ -476,6 +533,133 @@ export function SenderPanel() {
 
   return (
     <>
+      {compact ? (
+        <div className="panel-header sender-quickbar">
+          <div className="panel-title is-sender sender-quick-title">
+            <Icon name="send" />
+            Sender
+          </div>
+          <div
+            className="sender-quick-tags"
+            aria-label="Saved commands"
+            onWheel={(event) => {
+              if (event.currentTarget.scrollWidth > event.currentTarget.clientWidth) {
+                event.currentTarget.scrollLeft += event.deltaY;
+              }
+            }}
+          >
+            {visibleCommands.length === 0 ? (
+              <span className="sender-quick-empty">{emptyMessage}</span>
+            ) : visibleCommands.map((command) => (
+              <div className="sender-command-tag sender-quick-tag" key={command.id}>
+                <button
+                  type="button"
+                  className="sender-command-load"
+                  data-own-tooltip
+                  aria-label={`Send ${command.name}: ${command.text}`}
+                  disabled={running}
+                  onMouseEnter={(event) => showCommandTooltip(command, event.currentTarget)}
+                  onMouseLeave={hideCommandTooltip}
+                  onMouseDown={(event) => event.preventDefault()}
+                  onClick={() => {
+                    setSelectedCommandId(command.id);
+                    void sendCommand(command.text, command.ending);
+                  }}
+                  onContextMenu={(event) => {
+                    event.preventDefault();
+                    hideCommandTooltip();
+                    setContextMenu({ commandId: command.id, x: event.clientX, y: event.clientY });
+                  }}
+                >
+                  <Icon name="run-compact" />
+                  <span>{command.name}</span>
+                </button>
+                <button
+                  type="button"
+                  className="sender-quick-options"
+                  aria-label={`Options for ${command.name}`}
+                  title={`Options for ${command.name}`}
+                  onClick={(event) => {
+                    hideCommandTooltip();
+                    const rect = event.currentTarget.getBoundingClientRect();
+                    setContextMenu({ commandId: command.id, x: rect.right, y: rect.top });
+                  }}
+                >
+                  <Icon name="ellipsis" />
+                </button>
+              </div>
+            ))}
+          </div>
+          <button
+            ref={moreButtonRef}
+            type="button"
+            className="sender-quick-button"
+            aria-expanded={moreAnchor !== null}
+            onClick={() => {
+              if (moreAnchor) return closeMore();
+              hideCommandTooltip();
+              const rect = moreButtonRef.current?.getBoundingClientRect();
+              if (!rect) return;
+              setMoreQuery("");
+              setMoreAnchor({
+                left: Math.max(8, Math.min(rect.left, window.innerWidth - 348)),
+                bottom: window.innerHeight - rect.top + 4,
+              });
+            }}
+          >
+            More <span className="sender-quick-count">{visibleCommands.length}</span>
+            <Icon name="chevron-down" />
+          </button>
+          {running && (
+            <button
+              type="button"
+              className="sender-quick-button is-stop"
+              title="Stop after the current line"
+              onClick={stopSending}
+            >
+              <Icon name="debug-stop" />
+              Stop sending
+            </button>
+          )}
+          {schedule && (
+            <button
+              type="button"
+              className="sender-quick-button is-running"
+              title={`Repeating ${firstLine(schedule.spec.text)} · click to stop`}
+              onClick={stopSchedule}
+            >
+              <Icon name="watch" />
+              Stop repeat
+            </button>
+          )}
+          <label className="sender-quick-target select-wrap">
+            <select
+              className="select"
+              value={target}
+              aria-label="Sender targets"
+              onChange={(event) => setTarget(event.target.value as Target)}
+            >
+              <option value="current">Current Session</option>
+              <option value="all">All Sessions ({tabs.length})</option>
+            </select>
+            <Icon name="chevron-down" className="select-chevron" />
+          </label>
+          <button type="button" className="sender-quick-button is-primary" onClick={openComposer}>
+            <Icon name="add" />
+            {editing ? "Continue editing" : "New"}
+          </button>
+          <button
+            type="button"
+            className="sender-quick-button is-icon"
+            title="Expand Sender"
+            aria-label="Expand Sender"
+            onClick={openComposer}
+          >
+            <Icon name="arrow-up" />
+          </button>
+        </div>
+      ) : (
+      <>
       <div className="panel-header sender-header">
         <div className="panel-title is-sender">
           <Icon name="send" />
@@ -515,6 +699,20 @@ export function SenderPanel() {
             </span>
           </label>
         </div>
+        {canCompact && (
+          <button
+            type="button"
+            className="sender-collapse"
+            title="Show saved commands in one row"
+            aria-label="Collapse Sender"
+            onClick={() => {
+              closeSavePicker();
+              onExpandedChange(false);
+            }}
+          >
+            <Icon name="arrow-down" />
+          </button>
+        )}
       </div>
 
       <div className="sender-compose">
@@ -853,6 +1051,54 @@ export function SenderPanel() {
           </div>
         )}
       </div>
+      </>
+      )}
+
+      {moreAnchor && (
+        <div
+          ref={moreMenuRef}
+          className="sender-more-menu"
+          role="dialog"
+          aria-label="Find saved command"
+          style={{ left: moreAnchor.left, bottom: moreAnchor.bottom }}
+        >
+          <div className="sender-more-search">
+            <Icon name="search" />
+            <input
+              autoFocus
+              type="search"
+              value={moreQuery}
+              placeholder="Find a saved command"
+              aria-label="Find a saved command"
+              onChange={(event) => setMoreQuery(event.target.value)}
+            />
+          </div>
+          <div className="sender-more-list">
+            {moreMatches.slice(0, 100).map((command) => (
+              <button
+                type="button"
+                key={command.id}
+                className="sender-more-item"
+                disabled={running}
+                onClick={() => {
+                  closeMore();
+                  setSelectedCommandId(command.id);
+                  void sendCommand(command.text, command.ending);
+                  if (activeId) getController(activeId)?.focus();
+                }}
+              >
+                <Icon name="run-compact" />
+                <span className="sender-more-name">{command.name}</span>
+                <span className="sender-more-scope">{labelOf(command.scope)}</span>
+              </button>
+            ))}
+            {moreMatches.length === 0 && <span className="sender-more-empty">No matching commands</span>}
+          </div>
+          {moreMatches.length > 100 && (
+            <div className="sender-more-foot">Showing 100 of {moreMatches.length}; type to narrow</div>
+          )}
+        </div>
+      )}
 
       {contextMenu && (() => {
         const command = savedCommands.find(

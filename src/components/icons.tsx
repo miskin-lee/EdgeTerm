@@ -20,6 +20,7 @@ import cloudUpload from "@vscode/codicons/src/icons/cloud-upload.svg?raw";
 import copy from "@vscode/codicons/src/icons/copy.svg?raw";
 import debugStop from "@vscode/codicons/src/icons/debug-stop.svg?raw";
 import edit from "@vscode/codicons/src/icons/edit.svg?raw";
+import ellipsis from "@vscode/codicons/src/icons/ellipsis.svg?raw";
 import error from "@vscode/codicons/src/icons/error.svg?raw";
 import folder from "@vscode/codicons/src/icons/folder.svg?raw";
 import folderOpened from "@vscode/codicons/src/icons/folder-opened.svg?raw";
@@ -68,6 +69,7 @@ const SVGS = {
   copy,
   "debug-stop": debugStop,
   edit,
+  ellipsis,
   error,
   folder,
   "folder-opened": folderOpened,

@@ -146,6 +146,7 @@ export default function App() {
   const [leftWidth, setLeftWidth] = useState(220);
   const [rightWidth, setRightWidth] = useState(220);
   const [bottomHeight, setBottomHeight] = useState(160);
+  const [senderExpanded, setSenderExpanded] = useState(false);
 
   // --- backend events -------------------------------------------------------
 
@@ -436,6 +437,8 @@ export default function App() {
   const left = shown("left");
   const right = shown("right");
   const bottom = shown("bottom");
+  const senderCanCompact = bottom.length === 1 && bottom[0] === "sender";
+  const senderCompact = senderCanCompact && !senderExpanded;
   const renderPanel = (panel: PanelName) =>
     panel === "sessions" ? (
       <SessionPanel
@@ -445,7 +448,11 @@ export default function App() {
     ) : panel === "filer" ? (
       <FilerPanel />
     ) : (
-      <SenderPanel />
+      <SenderPanel
+        compact={senderCompact}
+        canCompact={senderCanCompact}
+        onExpandedChange={setSenderExpanded}
+      />
     );
 
   return (
@@ -519,14 +526,21 @@ export default function App() {
           <>
             <Splitter
               orientation="horizontal"
-              onResize={(delta) =>
-                setBottomHeight((height) => clamp(height - delta, 80, 600))
-              }
+              onResize={(delta) => {
+                if (senderCompact) {
+                  if (delta < 0) {
+                    setSenderExpanded(true);
+                    setBottomHeight((height) => clamp(height - delta, 120, 600));
+                  }
+                } else {
+                  setBottomHeight((height) => clamp(height - delta, 80, 600));
+                }
+              }}
             />
             <DockArea
               dock="bottom"
               panels={bottom}
-              size={bottomHeight}
+              size={senderCompact ? 42 : bottomHeight}
               render={renderPanel}
             />
           </>

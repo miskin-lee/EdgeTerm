@@ -2485,6 +2485,233 @@ textarea:focus {
 
 /* --- sender --------------------------------------------------------------- */
 
+/* A saved-command toolbar for the bottom dock; the composer opens on demand. */
+.sender-quickbar {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  height: auto;
+  padding: 0 8px;
+  background: var(--bg-panel);
+}
+
+.sender-quickbar .sender-quick-title {
+  flex: none;
+  margin-right: 0;
+}
+
+.sender-quick-tags {
+  display: flex;
+  flex: 1 1 auto;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  height: 100%;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.sender-quick-tags::-webkit-scrollbar {
+  display: none;
+}
+
+.sender-quick-empty {
+  overflow: hidden;
+  color: var(--fg-faint);
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sender-quick-tag {
+  flex: none;
+  max-width: 225px;
+  height: 26px;
+  border-radius: 6px;
+}
+
+.sender-quick-tag .sender-command-load {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  max-width: 190px;
+  padding: 0 7px;
+}
+
+.sender-quick-tag .sender-command-load > .icon {
+  flex: none;
+  color: var(--panel-sender);
+}
+
+.sender-quick-tag .sender-command-load > span:last-child {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sender-quick-options {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 100%;
+  color: var(--fg-faint);
+}
+
+.sender-quick-options:hover {
+  color: var(--fg);
+  background: var(--bg-hover);
+}
+
+.sender-quick-button,
+.sender-collapse {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  height: 26px;
+  padding: 0 7px;
+  border: 1px solid var(--border-strong);
+  border-radius: 6px;
+  color: var(--fg-dim);
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+.sender-quick-button:hover,
+.sender-collapse:hover {
+  color: var(--fg);
+  background: var(--bg-hover);
+}
+
+.sender-quick-button.is-primary {
+  color: var(--panel-sender);
+  border-color: color-mix(in srgb, var(--panel-sender) 40%, var(--border-strong));
+}
+
+.sender-quick-button.is-running {
+  color: var(--green);
+}
+
+.sender-quick-button.is-stop {
+  color: var(--red);
+}
+
+.sender-quick-button.is-icon {
+  width: 26px;
+  padding: 0;
+}
+
+.sender-quick-count {
+  color: var(--fg-faint);
+  font-variant-numeric: tabular-nums;
+}
+
+.sender-quick-target {
+  flex: none;
+}
+
+.sender-quick-target .select {
+  max-width: 152px;
+}
+
+.sender-collapse {
+  width: 26px;
+  padding: 0;
+}
+
+.sender-more-menu {
+  position: fixed;
+  z-index: 190;
+  display: flex;
+  flex-direction: column;
+  width: 340px;
+  max-height: min(340px, calc(100vh - 24px));
+  padding: 6px;
+  border: 1px solid var(--border-menu);
+  border-radius: 8px;
+  background: var(--bg-app);
+  box-shadow: var(--shadow-pop);
+}
+
+.sender-more-search {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 8px;
+  color: var(--fg-faint);
+}
+
+.sender-more-search input {
+  flex: 1;
+  min-width: 0;
+  height: 30px;
+  border: 0;
+  background: transparent;
+  color: var(--fg);
+  outline: none;
+}
+
+.sender-more-list {
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.sender-more-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  height: 30px;
+  padding: 0 8px;
+  border-radius: 5px;
+  color: var(--fg);
+  text-align: left;
+}
+
+.sender-more-item:hover:not(:disabled),
+.sender-more-item:focus-visible {
+  background: var(--bg-hover);
+}
+
+.sender-more-item:disabled {
+  opacity: 0.4;
+}
+
+.sender-more-item > .icon {
+  flex: none;
+  color: var(--panel-sender);
+}
+
+.sender-more-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sender-more-scope {
+  max-width: 100px;
+  overflow: hidden;
+  color: var(--fg-faint);
+  font-size: 10px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sender-more-empty,
+.sender-more-foot {
+  padding: 8px;
+  color: var(--fg-faint);
+  font-size: 11px;
+}
+
 /* Three rows: the panel header carries the send options on its right (line
    ending, targets); the compose row is the command field with its Send
    button and, set apart, the tag name and Save; the library below lists the
