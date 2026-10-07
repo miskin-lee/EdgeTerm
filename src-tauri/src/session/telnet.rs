@@ -16,8 +16,12 @@
 //!   before its login prompt), input is edited and echoed locally and sent a
 //!   line at a time, ending in CR LF. Once the server echoes, every key goes
 //!   out as it is typed.
+//!
+//! Telnet has no authentication of its own: a device logs the user in by
+//! printing `Username:` and `Password:` on the terminal. A profile that holds
+//! the answers has them typed for it at those prompts (`AutoLogin`).
 
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use tauri::AppHandle;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
@@ -31,6 +35,12 @@ use crate::model::{SessionKind, SessionProfile};
 
 pub const DEFAULT_PORT: u16 = 23;
 const CONNECT_TIMEOUT: Duration = Duration::from_secs(15);
+/// How long after connecting a login prompt is still answered. Long enough
+/// for a slow device's banner; past it, a "password:" in the output is a
+/// command's (`enable`, `su`) and is the user's to answer.
+const LOGIN_WINDOW: Duration = Duration::from_secs(60);
+/// The end of the output kept for recognising a prompt.
+const LOGIN_TAIL: usize = 128;
 
 /// What the server is told the terminal is, the same type an SSH session
 /// asks its pty for.
@@ -460,6 +470,192 @@ impl Telnet {
     }
 }
 
+impl Telnet {
+    /// A line the session types for the user (`AutoLogin`): escaped like
+    /// typed input and ended the way Enter is, straight to the socket — past
+    /// the local line editor and its echo, so a password never reaches the
+    /// screen.
+    pub fn line(&self, text: &[u8]) -> Vec<u8> {
+        let mut out = Vec::with_capacity(text.len() + 2);
+        self.escape_into(text, &mut out);
+        if self.local_binary() {
+            out.push(b'\r');
+        } else {
+            out.extend_from_slice(b"\r\n");
+        }
+        out
+    }
+}
+
+/// What a login prompt asks for.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum LoginPrompt {
+    Username,
+    Password,
+}
+
+/// What `AutoLogin` types in answer to a prompt, in the session's encoding.
+#[derive(Debug, PartialEq, Eq)]
+pub enum LoginAnswer {
+    Username(Vec<u8>),
+    Password(Vec<u8>),
+}
+
+/// Types a profile's username and password at the device's login prompts
+/// (issue #89). A prompt is recognised only as the last, unfinished line of
+/// the output — `Username:`, `login:`, `Password:` and the like — and each
+/// answer goes out at most once: a prompt that comes back means the answer
+/// was wrong, and a wrong password sent again only counts toward a lockout.
+/// It stops for good once the password is sent (or the username, for a
+/// profile without one), or `LOGIN_WINDOW` after connecting.
+pub struct AutoLogin {
+    username: Option<Vec<u8>>,
+    password: Option<Vec<u8>>,
+    username_sent: bool,
+    done: bool,
+    deadline: Instant,
+    /// The output's unfinished last line, escape sequences included.
+    tail: Vec<u8>,
+}
+
+impl AutoLogin {
+    /// `None` when the profile has nothing to type.
+    pub fn new(profile: &SessionProfile, now: Instant) -> Option<Self> {
+        let encoding = super::encoding::terminal_encoding(profile);
+        let encode = |text: &Option<String>| {
+            text.as_deref()
+                .filter(|text| !text.is_empty())
+                .map(|text| super::encoding::encode_input(encoding, text))
+        };
+        let username = encode(&profile.username.as_ref().map(|u| u.trim().to_string()));
+        let password = encode(&profile.password);
+        if username.is_none() && password.is_none() {
+            return None;
+        }
+        Some(Self {
+            username,
+            password,
+            username_sent: false,
+            done: false,
+            deadline: now + LOGIN_WINDOW,
+            tail: Vec::new(),
+        })
+    }
+
+    /// Reads a chunk of terminal output; returns what to type when it ends
+    /// on a login prompt this session has an answer for.
+    pub fn output(&mut self, data: &[u8], now: Instant) -> Option<LoginAnswer> {
+        if self.done {
+            return None;
+        }
+        if now >= self.deadline {
+            self.finish();
+            return None;
+        }
+        match data.iter().rposition(|&b| b == b'\n' || b == b'\r') {
+            Some(end) => self.tail = data[end + 1..].to_vec(),
+            None => self.tail.extend_from_slice(data),
+        }
+        if self.tail.len() > LOGIN_TAIL {
+            self.tail.drain(..self.tail.len() - LOGIN_TAIL);
+        }
+        let prompt = login_prompt(&self.tail)?;
+        self.tail.clear();
+        match prompt {
+            LoginPrompt::Username => {
+                let Some(username) = self.username.clone() else {
+                    // The user types it; the password may still be ours.
+                    return None;
+                };
+                if self.username_sent {
+                    self.finish();
+                    return None;
+                }
+                self.username_sent = true;
+                if self.password.is_none() {
+                    self.finish();
+                }
+                Some(LoginAnswer::Username(username))
+            }
+            LoginPrompt::Password => {
+                let password = self.password.take();
+                self.finish();
+                password.map(LoginAnswer::Password)
+            }
+        }
+    }
+
+    fn finish(&mut self) {
+        self.done = true;
+        self.username = None;
+        self.password = None;
+        self.tail = Vec::new();
+    }
+}
+
+/// The login prompt `line` ends on, if it is one: a label ending in a colon,
+/// with nothing but spaces after it, whose last word names a user or a
+/// password.
+fn login_prompt(line: &[u8]) -> Option<LoginPrompt> {
+    let text = String::from_utf8_lossy(&strip_escapes(line)).to_lowercase();
+    let label = text.trim_end().strip_suffix(':')?.trim_end();
+    let ends_with_word = |word: &str| {
+        label.strip_suffix(word).is_some_and(|before| {
+            !before
+                .chars()
+                .next_back()
+                .is_some_and(|c| c.is_alphanumeric())
+        })
+    };
+    if ends_with_word("password") {
+        Some(LoginPrompt::Password)
+    } else if ["login", "username", "user name", "user"]
+        .iter()
+        .any(|word| ends_with_word(word))
+    {
+        Some(LoginPrompt::Username)
+    } else {
+        None
+    }
+}
+
+/// `line` without its escape sequences (colours, cursor moves), which some
+/// devices wrap their prompts in.
+fn strip_escapes(line: &[u8]) -> Vec<u8> {
+    let mut out = Vec::with_capacity(line.len());
+    let mut bytes = line.iter().copied();
+    while let Some(byte) = bytes.next() {
+        if byte != 0x1b {
+            if byte >= 0x20 || byte == b'\t' {
+                out.push(byte);
+            }
+            continue;
+        }
+        match bytes.next() {
+            // CSI: parameters and intermediates up to a final byte.
+            Some(b'[') => {
+                for byte in bytes.by_ref() {
+                    if (0x40..=0x7e).contains(&byte) {
+                        break;
+                    }
+                }
+            }
+            // OSC: up to BEL or ST.
+            Some(b']') => {
+                let mut escape = false;
+                for byte in bytes.by_ref() {
+                    if byte == 0x07 || (escape && byte == b'\\') {
+                        break;
+                    }
+                    escape = byte == 0x1b;
+                }
+            }
+            _ => {}
+        }
+    }
+    out
+}
+
 /// The host as typed, with the brackets of an IPv6 literal removed.
 fn bare_host(host: &str) -> &str {
     let host = host.trim();
@@ -493,6 +689,7 @@ pub fn spawn(
     port: u16,
     mut rx: UnboundedReceiver<SessionCommand>,
     recorder: Option<Recorder>,
+    mut login: Option<AutoLogin>,
 ) {
     tauri::async_runtime::spawn(async move {
         let (mut reader, mut writer) = stream.into_split();
@@ -526,6 +723,28 @@ pub fn spawn(
                         break;
                     }
                     pump.push(&received.data);
+                    let answer = login
+                        .as_mut()
+                        .and_then(|login| login.output(&received.data, Instant::now()));
+                    if let Some(answer) = answer {
+                        let local_echo = !telnet.remote_echo();
+                        let text = match answer {
+                            LoginAnswer::Username(text) => {
+                                // A server that echoes shows the name itself.
+                                if local_echo {
+                                    pump.push(&text);
+                                }
+                                text
+                            }
+                            LoginAnswer::Password(text) => text,
+                        };
+                        if local_echo {
+                            pump.push(b"\r\n");
+                        }
+                        if writer.write_all(&telnet.line(&text)).await.is_err() {
+                            break;
+                        }
+                    }
                     pump.flush();
                 }
                 cmd = rx.recv() => {
@@ -580,6 +799,124 @@ pub fn spawn(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn login_profile(username: Option<&str>, password: Option<&str>) -> SessionProfile {
+        let mut profile = crate::tests::profile(SessionKind::Telnet);
+        profile.username = username.map(str::to_string);
+        profile.password = password.map(str::to_string);
+        profile
+    }
+
+    #[test]
+    fn login_prompts_are_recognised_only_at_the_end_of_the_output() {
+        for prompt in [
+            "Username:",
+            "\x1b[1mUsername: \x1b[0m",
+            "login: ",
+            "switch01 login:",
+            "User Name:",
+            "user:",
+        ] {
+            assert_eq!(
+                login_prompt(prompt.as_bytes()),
+                Some(LoginPrompt::Username),
+                "{prompt:?}"
+            );
+        }
+        for prompt in ["Password:", "Password: ", "Enter password:"] {
+            assert_eq!(
+                login_prompt(prompt.as_bytes()),
+                Some(LoginPrompt::Password),
+                "{prompt:?}"
+            );
+        }
+        for line in [
+            "Last login: Tue Oct  6",
+            "Login incorrect",
+            "superuser:",
+            "Password changed",
+            "router#",
+            "",
+        ] {
+            assert_eq!(login_prompt(line.as_bytes()), None, "{line:?}");
+        }
+    }
+
+    #[test]
+    fn auto_login_types_each_answer_once_at_its_prompt() {
+        let now = Instant::now();
+        let mut login =
+            AutoLogin::new(&login_profile(Some(" admin "), Some("s3cret")), now).expect("set up");
+
+        assert_eq!(login.output(b"Welcome to the switch\r\n", now), None);
+        // A prompt split over two reads is still a prompt.
+        assert_eq!(login.output(b"\r\nUser", now), None);
+        assert_eq!(
+            login.output(b"name: ", now),
+            Some(LoginAnswer::Username(b"admin".to_vec()))
+        );
+        assert_eq!(
+            login.output(b"admin\r\nPassword: ", now),
+            Some(LoginAnswer::Password(b"s3cret".to_vec()))
+        );
+        // Refused: the prompts come back and are the user's to answer.
+        assert_eq!(
+            login.output(b"\r\nLogin incorrect\r\nUsername: ", now),
+            None
+        );
+        assert_eq!(login.output(b"\r\nPassword: ", now), None);
+    }
+
+    #[test]
+    fn a_username_prompt_that_returns_before_the_password_stops_auto_login() {
+        let now = Instant::now();
+        let mut login =
+            AutoLogin::new(&login_profile(Some("admin"), Some("s3cret")), now).expect("set up");
+        assert!(login.output(b"login: ", now).is_some());
+        assert_eq!(login.output(b"\r\nBad user\r\nlogin: ", now), None);
+        assert_eq!(login.output(b"\r\nPassword: ", now), None);
+    }
+
+    #[test]
+    fn auto_login_answers_what_the_profile_holds_and_nothing_late() {
+        let now = Instant::now();
+        assert!(AutoLogin::new(&login_profile(None, Some("")), now).is_none());
+
+        // A line password only (Cisco `line vty` without a username): the
+        // username prompt, if any, is left to the user.
+        let mut login = AutoLogin::new(&login_profile(None, Some("s3cret")), now).expect("set up");
+        assert_eq!(login.output(b"Username: ", now), None);
+        assert_eq!(
+            login.output(b"admin\r\nPassword: ", now),
+            Some(LoginAnswer::Password(b"s3cret".to_vec()))
+        );
+
+        // A username only: done once it is typed.
+        let mut login = AutoLogin::new(&login_profile(Some("admin"), None), now).expect("set up");
+        assert!(login.output(b"login: ", now).is_some());
+        assert_eq!(login.output(b"\r\nPassword: ", now), None);
+
+        // Past the window, `enable`'s password prompt is not the login's.
+        let mut login =
+            AutoLogin::new(&login_profile(Some("admin"), Some("s3cret")), now).expect("set up");
+        assert_eq!(login.output(b"Password: ", now + LOGIN_WINDOW), None);
+    }
+
+    #[test]
+    fn auto_login_lines_are_escaped_and_end_like_enter() {
+        let t = Telnet::new(80, 24);
+        assert_eq!(t.line(b"a\xffb"), b"a\xff\xffb\r\n");
+
+        let mut profile = login_profile(Some("管理员"), None);
+        profile.encoding = Some("gbk".into());
+        let mut login = AutoLogin::new(&profile, Instant::now()).expect("set up");
+        assert_eq!(
+            login.output(b"login: ", Instant::now()),
+            Some(LoginAnswer::Username(vec![
+                0xb9, 0xdc, 0xc0, 0xed, 0xd4, 0xb1
+            ]))
+        );
+    }
 
     #[test]
     fn plain_data_passes_through_and_iac_iac_is_one_byte() {

@@ -166,6 +166,7 @@ pub(crate) fn profile(kind: SessionKind) -> SessionProfile {
         group_id: None,
         encoding: None,
         locale: None,
+        backspace: None,
         record: false,
         record_dir: None,
         shell: None,
@@ -1407,7 +1408,7 @@ fn ftp_and_sftp_share_one_group_namespace() {
 }
 
 #[test]
-fn telnet_shares_the_ssh_groups_and_keeps_no_secrets() {
+fn telnet_shares_the_ssh_groups_and_keeps_its_own_password() {
     let dir = temp_dir("telnet-groups");
     let path = dir.join("sessions.json");
     let store = Store::load_from(path.clone());
@@ -1419,21 +1420,54 @@ fn telnet_shares_the_ssh_groups_and_keeps_no_secrets() {
     let mut telnet = profile(SessionKind::Telnet);
     telnet.group_id = Some(site.id.clone());
     telnet.host = Some("switch.lan".into());
-    // Left over from the SSH form before the protocol was switched; telnet
-    // logs in at the server's prompt and stores no password.
+    // Typed at the login prompt for the user (issue #89), and kept with
+    // the other secrets, never in sessions.json.
     telnet.password = Some("secret".into());
     let telnet = store.save(telnet).expect("save telnet member");
     assert_eq!(telnet.group_id.as_deref(), Some(site.id.as_str()));
     assert_eq!(telnet.address(), "switch.lan:23");
+    assert_eq!(telnet.password, None);
 
     let saved = store.get(&telnet.id).expect("get").expect("telnet saved");
-    assert_eq!(saved.password, None);
+    assert_eq!(saved.password.as_deref(), Some("secret"));
+
+    // Switching the protocol in the editor keeps the id; the password does
+    // not follow, so it never goes out in clear where it was meant for SSH
+    // or the other way round.
+    let mut ssh = profile(SessionKind::Ssh);
+    ssh.host = Some("router.lan".into());
+    ssh.password = Some("ssh-secret".into());
+    let ssh = store.save(ssh).expect("save ssh");
+    let mut switched = ssh.clone();
+    switched.kind = SessionKind::Telnet;
+    let switched = store.save(switched).expect("switch to telnet");
+    assert_eq!(
+        store
+            .get(&switched.id)
+            .expect("get")
+            .expect("saved")
+            .password,
+        None
+    );
+    let mut device = switched.clone();
+    device.password = Some("telnet-secret".into());
+    let device = store.save(device).expect("save telnet password");
+    let mut back = device.clone();
+    back.kind = SessionKind::Ssh;
+    let back = store.save(back).expect("switch to ssh");
+    assert_eq!(
+        store.get(&back.id).expect("get").expect("saved").password,
+        None
+    );
 
     // A telnet profile is no SSH transport, so it can be neither a jump
     // host nor use one.
     let mut via_telnet = profile(SessionKind::Ssh);
     via_telnet.jump_profile_id = Some(telnet.id.clone());
-    assert_eq!(store.save(via_telnet).expect("save ssh").jump_profile_id, None);
+    assert_eq!(
+        store.save(via_telnet).expect("save ssh").jump_profile_id,
+        None
+    );
 
     let reloaded = Store::load_from(path);
     let persisted = reloaded

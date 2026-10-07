@@ -29,6 +29,7 @@ import {
   isSshTransport,
   randomSessionColor,
   SESSION_COLORS,
+  type BackspaceKey,
   type SerialPortDesc,
   type SessionKind,
   type SessionProfile,
@@ -262,13 +263,14 @@ export function SessionDialog({ initial, onClose }: Props) {
 
   const normalized = (): SessionProfile => ({
     ...profile,
-    // Telnet logs in at the server's prompt: whatever the SSH form held
-    // before the protocol was switched is not kept, the password least of all.
+    // Telnet has no authentication method of its own: a username and
+    // password are typed at the server's prompts (issue #89), and the SSH
+    // form's key settings are not kept. The store drops a password saved
+    // under the other protocol when the protocol is switched.
     ...(profile.kind === "telnet"
       ? {
-          username: null,
+          username: profile.username?.trim() || null,
           auth: null,
-          password: null,
           privateKeyPath: null,
           passphrase: null,
         }
@@ -285,6 +287,11 @@ export function SessionDialog({ initial, onClose }: Props) {
       !isFileSession(profile.kind) &&
       encodingLabel(profile.encoding) !== DEFAULT_ENCODING
         ? encodingLabel(profile.encoding)
+        : null,
+    // ^? is xterm's own and stored as nothing.
+    backspace:
+      !isFileSession(profile.kind) && profile.backspace === "controlH"
+        ? "controlH"
         : null,
     locale:
       profile.kind === "local" || profile.kind === "ssh"
@@ -313,8 +320,7 @@ export function SessionDialog({ initial, onClose }: Props) {
     }
     const host = profile.host?.trim();
     if (!host) return `${name} · no host yet`;
-    // Telnet logs in at the server's own prompt; there is no user to show.
-    const user = profile.kind === "telnet" ? "" : profile.username?.trim();
+    const user = profile.username?.trim();
     return `${name} · ${user ? `${user}@` : ""}${host}:${profile.port ?? defaultPort(profile.kind)}`;
   };
 
@@ -339,6 +345,18 @@ export function SessionDialog({ initial, onClose }: Props) {
                 {choice.name}
               </option>
             ))}
+          </select>
+        </label>
+        <label className="session-field">
+          <span className="session-field-label">Backspace sends</span>
+          <select
+            value={profile.backspace ?? "delete"}
+            onChange={(event) =>
+              patch({ backspace: event.target.value as BackspaceKey })
+            }
+          >
+            <option value="delete">^? (DEL, 0x7f)</option>
+            <option value="controlH">^H (BS, 0x08)</option>
           </select>
         </label>
         {withLocale && (
@@ -819,7 +837,7 @@ export function SessionDialog({ initial, onClose }: Props) {
                 <small>
                   {profile.kind === "ssh"
                     ? "Server and authentication"
-                    : "Telnet · log in at the server's prompt · unencrypted"}
+                    : "Telnet · login typed at the server's prompt · unencrypted"}
                 </small>
               </div>
               <div className="session-form-grid">
@@ -898,6 +916,40 @@ export function SessionDialog({ initial, onClose }: Props) {
                   </>
                 ) : (
                   <>
+                    <label className="session-field">
+                      <span className="session-field-label">Username</span>
+                      <input
+                        {...RAW_TEXT_INPUT}
+                        value={profile.username ?? ""}
+                        placeholder="Optional"
+                        onChange={(event) =>
+                          patch({ username: event.target.value })
+                        }
+                      />
+                    </label>
+                    <label className="session-field">
+                      <span className="session-field-label">Password</span>
+                      <input
+                        {...RAW_TEXT_INPUT}
+                        type="password"
+                        value={profile.password ?? ""}
+                        // As for SSH, a saved password never reaches this
+                        // dialog, so only a new session can say "optional".
+                        placeholder={initial?.id ? undefined : "Optional"}
+                        onChange={(event) =>
+                          patch({ password: event.target.value })
+                        }
+                      />
+                    </label>
+                    <div className="session-note is-wide">
+                      <Icon name="info" />
+                      <span>
+                        When the device prints a login prompt (Username:,
+                        login:, Password:) within a minute of connecting, the
+                        saved answer is typed for you, once. Leave a field
+                        empty to type it yourself.
+                      </span>
+                    </div>
                     {renderTextFields(false)}
                     <div className="session-note is-wide">
                       <Icon name="info" />

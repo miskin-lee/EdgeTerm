@@ -316,6 +316,7 @@ pub async fn open_session(
                 profile.port.unwrap_or(session::telnet::DEFAULT_PORT),
                 rx,
                 recorder,
+                session::telnet::AutoLogin::new(&profile, std::time::Instant::now()),
             );
             None
         }

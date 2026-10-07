@@ -1,6 +1,8 @@
 export type SessionKind =
   "local" | "ssh" | "telnet" | "ftp" | "sftp" | "serial";
 export type AuthKind = "password" | "publicKey" | "agent";
+/** What the Backspace key sends; see `SessionProfile.backspace`. */
+export type BackspaceKey = "delete" | "controlH";
 
 /**
  * File-transfer sessions with no interactive terminal: they open the dual-pane
@@ -71,6 +73,12 @@ export interface SessionProfile {
    * from an SSH server. Null means automatic (see session/locale.rs).
    */
   locale?: string | null;
+  /**
+   * What the Backspace key sends: "controlH" for ^H (0x08), which old
+   * network gear and serial consoles take as erase; null means ^? (0x7f),
+   * xterm's own (issue #89).
+   */
+  backspace?: BackspaceKey | null;
   /**
    * Whether every session opened from this profile writes the output it
    * receives to a file, one per connection. Off unless the dialog's

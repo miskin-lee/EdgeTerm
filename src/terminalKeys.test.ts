@@ -194,3 +194,40 @@ describe("copy, paste and select all keys", () => {
     expect(filter(controller, press("KeyN"))).toBe(true);
   });
 });
+
+describe("Backspace", () => {
+  it("is left to xterm's ^? unless the profile asks for ^H", () => {
+    const controller = createController();
+    const input = vi.spyOn(controller.term, "input");
+
+    expect(filter(controller, press("Backspace"))).toBe(true);
+    controller.setBackspace(null);
+    expect(filter(controller, press("Backspace"))).toBe(true);
+    expect(input).not.toHaveBeenCalled();
+  });
+
+  it("sends ^H, with ^? one Ctrl away, where the profile asks for it (#89)", () => {
+    const controller = createController();
+    const input = vi
+      .spyOn(controller.term, "input")
+      .mockImplementation(() => {});
+    controller.setBackspace("controlH");
+
+    const plain = press("Backspace");
+    expect(filter(controller, plain)).toBe(false);
+    expect(plain.preventDefault).toHaveBeenCalled();
+    expect(input).toHaveBeenLastCalledWith("\x08", true);
+
+    filter(controller, press("Backspace", { ctrlKey: true }));
+    expect(input).toHaveBeenLastCalledWith("\x7f", true);
+
+    filter(controller, press("Backspace", { altKey: true }));
+    expect(input).toHaveBeenLastCalledWith("\x1b\x08", true);
+
+    // The other keys are untouched, and so is ^? once switched back.
+    expect(filter(controller, press("KeyH", { ctrlKey: true }))).toBe(true);
+    controller.setBackspace("delete");
+    expect(filter(controller, press("Backspace"))).toBe(true);
+    expect(input).toHaveBeenCalledTimes(3);
+  });
+});

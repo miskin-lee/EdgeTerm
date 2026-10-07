@@ -76,6 +76,12 @@ pub struct SessionProfile {
     /// `AcceptEnv LANG`). Absent means automatic; see `session::locale`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub locale: Option<String>,
+    /// What the Backspace key sends: `controlH` for `^H` (0x08), which old
+    /// network gear, serial consoles and some Unix systems take as erase;
+    /// absent means `^?` (0x7f), xterm's own. The key is translated in the
+    /// frontend (`TerminalController.filterKey`); nothing here reads it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub backspace: Option<String>,
     /// Whether every session opened from this profile writes the terminal
     /// output it receives to a file, one file per connection. Off unless the
     /// dialog's checkbox was ticked; see `session::recording`.

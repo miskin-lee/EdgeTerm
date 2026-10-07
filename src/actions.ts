@@ -300,6 +300,7 @@ async function connectSession(
   // first byte of the banner arrives; a reconnect may carry a re-edited
   // profile, so it is set on every connect.
   getController(id)?.setEncoding(profile.encoding);
+  getController(id)?.setBackspace(profile.backspace);
 
   pendingConnects.add(id);
   try {

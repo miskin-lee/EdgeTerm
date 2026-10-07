@@ -286,7 +286,7 @@ impl Store {
         let profile = self.profiles.lock().iter().find(|p| p.id == id).cloned();
         Ok(profile.map(|mut profile| {
             if let Some(stored) = self.credentials.lock().get(id) {
-                if profile.kind == SessionKind::Ftp {
+                if matches!(profile.kind, SessionKind::Ftp | SessionKind::Telnet) {
                     profile.password = stored.password.clone();
                 } else {
                     match profile.auth.unwrap_or_default() {
@@ -341,6 +341,21 @@ impl Store {
     pub fn save(&self, mut profile: SessionProfile) -> Result<SessionProfile> {
         if profile.id.is_empty() {
             profile.id = uuid::Uuid::new_v4().to_string();
+        }
+        // Switching between Telnet and the encrypted protocols in the editor
+        // keeps the id, and with it the stored password. An SSH password
+        // must not start going out in clear to a telnet prompt, nor a telnet
+        // device's password to an SSH server, unless it is typed again.
+        let switched = self
+            .profiles
+            .lock()
+            .iter()
+            .find(|p| p.id == profile.id)
+            .is_some_and(|p| {
+                (p.kind == SessionKind::Telnet) != (profile.kind == SessionKind::Telnet)
+            });
+        if switched {
+            self.credentials.lock().remove(&profile.id);
         }
         sync_secrets(&profile, &mut self.credentials.lock());
         profile.password = None;
@@ -1101,7 +1116,7 @@ fn open_credentials(
 fn sync_secrets(profile: &SessionProfile, credentials: &mut HashMap<String, StoredSecrets>) {
     if !matches!(
         profile.kind,
-        SessionKind::Ssh | SessionKind::Ftp | SessionKind::Sftp
+        SessionKind::Ssh | SessionKind::Ftp | SessionKind::Sftp | SessionKind::Telnet
     ) || (matches!(profile.kind, SessionKind::Ssh | SessionKind::Sftp)
         && profile.auth == Some(AuthKind::Agent))
     {
@@ -1109,7 +1124,9 @@ fn sync_secrets(profile: &SessionProfile, credentials: &mut HashMap<String, Stor
         return;
     }
 
-    if profile.kind == SessionKind::Ftp {
+    // FTP and Telnet hold a password and nothing else; Telnet's is typed at
+    // the server's login prompt (see `telnet::AutoLogin`).
+    if matches!(profile.kind, SessionKind::Ftp | SessionKind::Telnet) {
         let stored = credentials.entry(profile.id.clone()).or_default();
         stored.passphrase = None;
         if let Some(password) = &profile.password {

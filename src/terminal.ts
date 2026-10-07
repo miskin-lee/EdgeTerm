@@ -43,7 +43,7 @@ import {
 } from "./semanticPaint";
 import { needsPasteWarning } from "./terminalPaste";
 import { errorMessage, type TransferNoticeKind } from "./terminalTransfer";
-import type { ThemeMode } from "./types";
+import type { BackspaceKey, ThemeMode } from "./types";
 import { XmodemController, type XmodemBlockSize } from "./xmodem";
 import { ZmodemController } from "./zmodem";
 
@@ -398,6 +398,8 @@ export class TerminalController {
    * encoding xterm reads itself; null feeds xterm the bytes as they are.
    */
   private decoder: TextDecoder | null = null;
+  /** The erase character Backspace sends; see `setBackspace`. */
+  private erase = "\x7f";
   private readonly transferNotice: HTMLElement;
   private transferNoticeTimer: number | null = null;
 
@@ -832,6 +834,24 @@ export class TerminalController {
       }
     }
 
+    // Backspace sends ^H where the profile asks for it (#89). xterm has no
+    // option for this, and sends ^? for Backspace and ^H for Ctrl+Backspace,
+    // so in ^H mode the two trade places, leaving ^? one chord away. Alt
+    // keeps its ESC prefix, as xterm gives Alt+Backspace.
+    if (
+      this.erase === "\x08" &&
+      key === "backspace" &&
+      !event.metaKey &&
+      !event.isComposing
+    ) {
+      event.preventDefault();
+      this.term.input(
+        (event.altKey ? "\x1b" : "") + (event.ctrlKey ? "\x7f" : "\x08"),
+        true,
+      );
+      return false;
+    }
+
     // The shortcut table, copy / paste / select all included (#47). Those
     // three are the terminal's own and run right here; every other match
     // is left unhandled — not cancelled — so the window-level handler
@@ -1084,6 +1104,16 @@ export class TerminalController {
    */
   setEncoding(label: string | null | undefined) {
     this.decoder = createOutputDecoder(label);
+  }
+
+  /**
+   * Sets what Backspace sends: ^H for the profiles that ask for it (old
+   * network gear and serial consoles erase on 0x08 and print ^? for
+   * xterm's 0x7f, issue #89), ^? otherwise. Set on every connect, like the
+   * encoding, so a re-edited profile takes effect on reconnect.
+   */
+  setBackspace(key: BackspaceKey | null | undefined) {
+    this.erase = key === "controlH" ? "\x08" : "\x7f";
   }
 
   /**
@@ -2132,7 +2162,7 @@ export class TerminalController {
     // line — then sends the full command.
     const data = candidate.command.startsWith(input)
       ? candidate.command.slice(input.length)
-      : "\x7f".repeat([...input].length) + candidate.command;
+      : this.erase.repeat([...input].length) + candidate.command;
     this.dismissedInput = candidate.command;
     this.hidePopup();
     if (data && !this.locked && !this.isTransferActive()) {
