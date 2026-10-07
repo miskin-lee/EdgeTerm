@@ -14,11 +14,12 @@ interface Props {
 }
 
 /**
- * One round of an SSH server's keyboard-interactive challenge: the second
- * factor after a password or a public key — a verification code, a push
- * confirmation, a menu choice. The connection is stopped mid-handshake while
- * this is open, and a server may ask several rounds in a row, so the dialog
- * is rebuilt for each one. Nothing typed here is saved.
+ * One round of questions during an SSH login: a server's keyboard-interactive
+ * challenge (a password, or a second factor — a verification code, a push
+ * confirmation, a menu choice), or the password a profile does not hold. The
+ * connection is stopped mid-handshake while this is open, and a server may
+ * ask several rounds in a row, so the dialog is rebuilt for each one. Nothing
+ * typed here is saved.
  */
 export function AuthPromptDialog({ prompt, onDone }: Props) {
   const dialogRef = useRef<HTMLFormElement>(null);
@@ -95,9 +96,8 @@ export function AuthPromptDialog({ prompt, onDone }: Props) {
         </div>
         <div className="dialog-body confirm-dialog-body">
           <span>
-            <strong>{prompt.address}</strong> asked{" "}
-            <strong>{prompt.username}</strong> for another authentication
-            factor.
+            Signing in to <strong>{prompt.address}</strong> as{" "}
+            <strong>{prompt.username}</strong>.
           </span>
           {prompt.instructions.trim() && (
             <p className="auth-prompt-instructions">{prompt.instructions}</p>

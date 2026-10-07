@@ -512,6 +512,10 @@ export function SessionDialog({ initial, onClose }: Props) {
             {...RAW_TEXT_INPUT}
             type="password"
             value={profile.password ?? ""}
+            // Left empty, the password is asked for at each connection (issue
+            // #88). Only a new session can say so: a saved password never
+            // reaches this dialog, so an existing one's empty field may hold one.
+            placeholder={initial?.id ? undefined : "Ask on connect"}
             onChange={(event) => patch({ password: event.target.value })}
           />
         </label>

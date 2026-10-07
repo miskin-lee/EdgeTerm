@@ -53,6 +53,12 @@ const SFTP_SUBSYSTEM_TIMEOUT: Duration = Duration::from_secs(5);
 /// RFC 4256 puts no limit on them, and a server that keeps asking would
 /// otherwise keep the connection — and the user — busy forever.
 const MAX_AUTH_ROUNDS: usize = 16;
+/// How many times the user is asked for a password the profile does not
+/// hold, the way OpenSSH's `NumberOfPasswordPrompts` defaults to three.
+const PASSWORD_ATTEMPTS: usize = 3;
+/// Shown above the server's next question when the profile's password was
+/// refused, so a password that was rotated elsewhere reads as the cause.
+const SAVED_PASSWORD_REJECTED: &str = "The saved password was rejected.";
 
 /// Key exchange methods, strongest first: russh's default list with the NIST
 /// ECDH curves where OpenSSH's default list has them. russh leaves them out,
@@ -898,23 +904,30 @@ async fn authenticate<H: client::Handler>(
     // (issue #37) — dropbear lets "none" through for a blank password but
     // refuses the empty password that would be sent below, so a device every
     // other client walks into was the one EdgeTerm could not log in to.
-    if matches!(
-        handle.authenticate_none(username).await?,
-        AuthResult::Success
-    ) {
+    let AuthResult::Failure {
+        remaining_methods: offered,
+        ..
+    } = handle.authenticate_none(username).await?
+    else {
         return Ok(());
-    }
+    };
 
     let auth = profile.auth.unwrap_or_default();
     let password = profile
         .password
         .clone()
         .filter(|password| !password.is_empty());
+    // What the keyboard-interactive rounds may answer a password question
+    // with, and the line to show above the first question put to the user.
+    let mut saved = None;
+    let mut note = "";
     let result = match auth {
         AuthKind::Password => {
-            handle
-                .authenticate_password(username, password.clone().unwrap_or_default())
-                .await?
+            let outcome =
+                password_method(handle, username, address, prompter, &offered, password).await?;
+            saved = outcome.saved;
+            note = outcome.note;
+            outcome.result
         }
         AuthKind::PublicKey => {
             let path = profile
@@ -945,10 +958,9 @@ async fn authenticate<H: client::Handler>(
     };
 
     if remaining_methods.contains(&MethodKind::KeyboardInteractive) {
-        // Only the profile's own password answers the server's password
+        // Only a password not yet refused answers the server's password
         // question; see `saved_answer`.
-        let saved = password.filter(|_| matches!(auth, AuthKind::Password));
-        return keyboard_interactive(handle, username, address, prompter, saved).await;
+        return keyboard_interactive(handle, username, address, prompter, saved, note).await;
     }
     Err(auth_failure(
         auth,
@@ -956,6 +968,130 @@ async fn authenticate<H: client::Handler>(
         partial_success,
         &remaining_methods,
     ))
+}
+
+/// Where the `password` method left the login.
+struct PasswordOutcome {
+    result: AuthResult,
+    /// A password the server has not refused, for a keyboard-interactive
+    /// round that asks for it again.
+    saved: Option<String>,
+    /// Shown above the next question the user is asked.
+    note: &'static str,
+}
+
+/// Runs the `password` method for a profile that may or may not hold one
+/// (issue #88: a password that rotates centrally is better typed than saved
+/// in thirty profiles). A saved password is tried once; a refused one is
+/// never sent again, since every refusal counts toward the account's lockout.
+/// When the profile holds no password, or its password was refused, a server
+/// that also runs keyboard-interactive asks for it there itself; one that
+/// runs only `password` would otherwise end the login with nothing asked, so
+/// the user is asked here.
+async fn password_method<H: client::Handler>(
+    handle: &mut Handle<H>,
+    username: &str,
+    address: &str,
+    prompter: &AuthPrompter<'_>,
+    offered: &MethodSet,
+    password: Option<String>,
+) -> Result<PasswordOutcome> {
+    let interactive = |methods: &MethodSet| methods.contains(&MethodKind::KeyboardInteractive);
+    if !offered.contains(&MethodKind::Password) {
+        // The server checks the password in a keyboard-interactive round, if
+        // anywhere; the saved one answers it there.
+        return Ok(PasswordOutcome {
+            result: AuthResult::Failure {
+                remaining_methods: offered.clone(),
+                partial_success: false,
+            },
+            saved: password,
+            note: "",
+        });
+    }
+
+    let mut note = "";
+    if let Some(password) = password {
+        let result = handle
+            .authenticate_password(username, password.clone())
+            .await?;
+        let AuthResult::Failure {
+            remaining_methods,
+            partial_success: false,
+        } = &result
+        else {
+            return Ok(PasswordOutcome {
+                result,
+                saved: Some(password),
+                note: "",
+            });
+        };
+        note = SAVED_PASSWORD_REJECTED;
+        if interactive(remaining_methods) || !remaining_methods.contains(&MethodKind::Password) {
+            return Ok(PasswordOutcome {
+                result,
+                saved: None,
+                note,
+            });
+        }
+    } else if interactive(offered) {
+        return Ok(PasswordOutcome {
+            result: AuthResult::Failure {
+                remaining_methods: offered.clone(),
+                partial_success: false,
+            },
+            saved: None,
+            note: "",
+        });
+    }
+
+    let mut attempt = 0;
+    loop {
+        attempt += 1;
+        let challenge = Challenge {
+            address: address.to_string(),
+            username: username.to_string(),
+            name: "Password Required".to_string(),
+            instructions: note.to_string(),
+            prompts: vec![AuthPromptField {
+                prompt: "Password:".to_string(),
+                echo: false,
+            }],
+        };
+        let Some(answers) = prompter.ask(challenge).await? else {
+            return Err(AppError::new(format!(
+                "authentication for {username} was cancelled"
+            )));
+        };
+        let password = answers.into_iter().next().unwrap_or_default();
+        let result = handle
+            .authenticate_password(username, password.clone())
+            .await?;
+        match &result {
+            AuthResult::Failure {
+                remaining_methods,
+                partial_success: false,
+            } => {
+                if attempt < PASSWORD_ATTEMPTS && remaining_methods.contains(&MethodKind::Password)
+                {
+                    note = "Permission denied, please try again.";
+                    continue;
+                }
+                return Ok(PasswordOutcome {
+                    result,
+                    saved: None,
+                    note: "",
+                });
+            }
+            _ => {
+                return Ok(PasswordOutcome {
+                    result,
+                    saved: Some(password),
+                    note: "",
+                });
+            }
+        }
+    }
 }
 
 /// Why authentication stopped, when no method is left that EdgeTerm can run.
@@ -1000,13 +1136,14 @@ async fn keyboard_interactive<H: client::Handler>(
     address: &str,
     prompter: &AuthPrompter<'_>,
     mut saved_password: Option<String>,
+    note: &str,
 ) -> Result<()> {
     let mut reply = handle
         .authenticate_keyboard_interactive_start(username, None)
         .await?;
     // A round with nothing to answer only carries text ("a push was sent").
     // Keep it for the next round that does ask, so the user still reads it.
-    let mut carried = String::new();
+    let mut carried = note.to_string();
     for _ in 0..MAX_AUTH_ROUNDS {
         let (name, instructions, prompts) = match reply {
             KeyboardInteractiveAuthResponse::Success => return Ok(()),
@@ -1841,7 +1978,7 @@ mod tests {
         replace_host_key, run_sftp, saved_answer, verify_host_key, AuthPrompter, CancelFlag,
         Client, ConnectOutcome, Endpoint, Handle, HandshakeError, Hops, LegacyRecord, Prompt,
         SftpConnectOutcome, SftpRequest, SftpResponse, SharedTransport, SshTransports,
-        TRANSFER_CHUNK_SIZE,
+        SAVED_PASSWORD_REJECTED, TRANSFER_CHUNK_SIZE,
     };
     use crate::model::{AuthKind, AuthPromptField, SessionKind, SessionProfile};
     use crate::session::auth::CannedAnswers;
@@ -2460,6 +2597,11 @@ mod tests {
         /// Whether the "none" method is granted, the way a device that has no
         /// password set does.
         open: bool,
+        /// The methods a refused "none" lists; every method when unset.
+        offered: Option<&'static [MethodKind]>,
+        /// The password the `password` method accepts outright; any other
+        /// password gets `first`.
+        password: Option<&'static str>,
         /// The next round to ask.
         next: usize,
         answers: Arc<Mutex<Vec<Vec<String>>>>,
@@ -2471,6 +2613,8 @@ mod tests {
                 first,
                 rounds,
                 open: false,
+                offered: None,
+                password: None,
                 next: 0,
                 answers: Arc::new(Mutex::new(Vec::new())),
             }
@@ -2483,6 +2627,20 @@ mod tests {
                 ..Self::new(FirstReply::Refused(&[MethodKind::Password]), &[])
             }
         }
+
+        fn offering(self, offered: &'static [MethodKind]) -> Self {
+            Self {
+                offered: Some(offered),
+                ..self
+            }
+        }
+
+        fn accepting(self, password: &'static str) -> Self {
+            Self {
+                password: Some(password),
+                ..self
+            }
+        }
     }
 
     impl russh::server::Handler for AuthServer {
@@ -2492,7 +2650,10 @@ mod tests {
             if self.open {
                 return Ok(Auth::Accept);
             }
-            Ok(Auth::reject())
+            Ok(Auth::Reject {
+                proceed_with_methods: self.offered.map(MethodSet::from),
+                partial_success: false,
+            })
         }
 
         async fn auth_publickey(
@@ -2509,6 +2670,9 @@ mod tests {
             password: &str,
         ) -> std::result::Result<Auth, Self::Error> {
             self.answers.lock().push(vec![password.to_string()]);
+            if self.password == Some(password) {
+                return Ok(Auth::Accept);
+            }
             Ok(self.first.auth())
         }
 
@@ -3030,7 +3194,8 @@ mod tests {
         let server = AuthServer::new(
             FirstReply::Refused(&[MethodKind::KeyboardInteractive]),
             ROUNDS,
-        );
+        )
+        .offering(&[MethodKind::KeyboardInteractive]);
         let answers = server.answers.clone();
         let mut handle = handshake(server).await;
 
@@ -3052,9 +3217,8 @@ mod tests {
         assert_eq!(
             *answers.lock(),
             vec![
-                // The `password` method the server does not run,
-                vec!["hunter2".to_string()],
-                // then the same password as the first interactive round,
+                // The saved password as the first interactive round — the
+                // server offers no `password` method to send it to —
                 vec!["hunter2".to_string()],
                 // and the code, which only the user could supply.
                 vec!["424242".to_string()],
@@ -3063,6 +3227,210 @@ mod tests {
         let user = user.lock();
         assert_eq!(user.asked().len(), 1);
         assert_eq!(user.asked()[0].prompts[0].prompt, "Verification code: ");
+    }
+
+    fn password_profile(password: Option<&str>) -> SessionProfile {
+        let mut profile = crate::tests::profile(SessionKind::Ssh);
+        profile.auth = Some(AuthKind::Password);
+        profile.password = password.map(str::to_string);
+        profile
+    }
+
+    fn password_question() -> Vec<AuthPromptField> {
+        vec![AuthPromptField {
+            prompt: "Password:".into(),
+            echo: false,
+        }]
+    }
+
+    /// A server that runs only the `password` method gives a profile with no
+    /// password nowhere to be asked for one, so EdgeTerm asks (issue #88), and
+    /// asks again after a typo the way OpenSSH does.
+    #[tokio::test]
+    async fn a_password_only_server_gets_the_password_asked_for() {
+        let server = AuthServer::new(FirstReply::Refused(&[MethodKind::Password]), &[])
+            .offering(&[MethodKind::Password])
+            .accepting("hunter2");
+        let answers = server.answers.clone();
+        let mut handle = handshake(server).await;
+
+        let user = Mutex::new(CannedAnswers::new([
+            vec!["hunter3".to_string()],
+            vec!["hunter2".to_string()],
+        ]));
+        authenticate(
+            &mut handle,
+            &password_profile(None),
+            "alice",
+            "switch.example:22",
+            &AuthPrompter::canned(&user),
+        )
+        .await
+        .expect("the typed password logs in");
+
+        assert_eq!(
+            *answers.lock(),
+            vec![vec!["hunter3".to_string()], vec!["hunter2".to_string()]],
+            "no empty password is sent before the user is asked"
+        );
+        let user = user.lock();
+        assert_eq!(user.asked().len(), 2);
+        assert_eq!(user.asked()[0].prompts, password_question());
+        assert_eq!(user.asked()[0].instructions, "");
+        assert_eq!(
+            user.asked()[1].instructions,
+            "Permission denied, please try again."
+        );
+    }
+
+    /// Three refusals end the login, and so does a cancelled prompt.
+    #[tokio::test]
+    async fn asking_for_a_password_stops_after_three_tries_or_a_cancel() {
+        let server = AuthServer::new(FirstReply::Refused(&[MethodKind::Password]), &[])
+            .offering(&[MethodKind::Password]);
+        let answers = server.answers.clone();
+        let mut handle = handshake(server).await;
+        let user = Mutex::new(CannedAnswers::new(
+            ["a", "b", "c", "d"].map(|answer| vec![answer.to_string()]),
+        ));
+        let error = authenticate(
+            &mut handle,
+            &password_profile(None),
+            "alice",
+            "switch.example:22",
+            &AuthPrompter::canned(&user),
+        )
+        .await
+        .expect_err("every password is refused");
+        assert_eq!(
+            error.to_string(),
+            "authentication failed for alice (password)"
+        );
+        assert_eq!(answers.lock().len(), 3);
+        assert_eq!(user.lock().asked().len(), 3);
+
+        let server = AuthServer::new(FirstReply::Refused(&[MethodKind::Password]), &[])
+            .offering(&[MethodKind::Password]);
+        let answers = server.answers.clone();
+        let mut handle = handshake(server).await;
+        let user = Mutex::new(CannedAnswers::default());
+        let error = authenticate(
+            &mut handle,
+            &password_profile(None),
+            "alice",
+            "switch.example:22",
+            &AuthPrompter::canned(&user),
+        )
+        .await
+        .expect_err("the user cancelled");
+        assert_eq!(error.to_string(), "authentication for alice was cancelled");
+        assert!(
+            answers.lock().is_empty(),
+            "nothing is sent for a cancelled prompt"
+        );
+    }
+
+    /// A saved password that was rotated elsewhere is refused once and then
+    /// asked for, never sent a second time: each refusal counts toward the
+    /// account's lockout.
+    #[tokio::test]
+    async fn a_refused_saved_password_is_asked_for_rather_than_resent() {
+        let server = AuthServer::new(FirstReply::Refused(&[MethodKind::Password]), &[])
+            .offering(&[MethodKind::Password])
+            .accepting("rotated");
+        let answers = server.answers.clone();
+        let mut handle = handshake(server).await;
+
+        let user = Mutex::new(CannedAnswers::new([vec!["rotated".to_string()]]));
+        authenticate(
+            &mut handle,
+            &password_profile(Some("hunter2")),
+            "alice",
+            "switch.example:22",
+            &AuthPrompter::canned(&user),
+        )
+        .await
+        .expect("the new password logs in");
+
+        assert_eq!(
+            *answers.lock(),
+            vec![vec!["hunter2".to_string()], vec!["rotated".to_string()]]
+        );
+        let user = user.lock();
+        assert_eq!(user.asked().len(), 1);
+        assert_eq!(user.asked()[0].instructions, SAVED_PASSWORD_REJECTED);
+    }
+
+    /// The same on a PAM server, which asks for the password again through
+    /// keyboard-interactive: that question goes to the user, with the reason
+    /// above it, rather than being answered with the password just refused.
+    #[tokio::test]
+    async fn a_refused_saved_password_is_not_resent_to_keyboard_interactive() {
+        const ROUNDS: &[Round] = &[Round {
+            instructions: "",
+            prompts: &[("Password: ", false)],
+            expected: &["rotated"],
+        }];
+        let server = AuthServer::new(
+            FirstReply::Refused(&[MethodKind::Password, MethodKind::KeyboardInteractive]),
+            ROUNDS,
+        )
+        .offering(&[MethodKind::Password, MethodKind::KeyboardInteractive]);
+        let answers = server.answers.clone();
+        let mut handle = handshake(server).await;
+
+        let user = Mutex::new(CannedAnswers::new([vec!["rotated".to_string()]]));
+        authenticate(
+            &mut handle,
+            &password_profile(Some("hunter2")),
+            "alice",
+            "pam.example:22",
+            &AuthPrompter::canned(&user),
+        )
+        .await
+        .expect("the new password logs in");
+
+        assert_eq!(
+            *answers.lock(),
+            vec![vec!["hunter2".to_string()], vec!["rotated".to_string()]]
+        );
+        let user = user.lock();
+        assert_eq!(user.asked().len(), 1);
+        assert_eq!(user.asked()[0].prompts[0].prompt, "Password: ");
+        assert_eq!(user.asked()[0].instructions, SAVED_PASSWORD_REJECTED);
+    }
+
+    /// With nothing saved and keyboard-interactive on offer, the server asks
+    /// for the password itself, as it does in OpenSSH; EdgeTerm neither sends
+    /// an empty password nor asks a second time.
+    #[tokio::test]
+    async fn with_nothing_saved_a_pam_server_asks_for_the_password_itself() {
+        const ROUNDS: &[Round] = &[Round {
+            instructions: "",
+            prompts: &[("Password: ", false)],
+            expected: &["hunter2"],
+        }];
+        let server = AuthServer::new(FirstReply::Refused(&[MethodKind::Password]), ROUNDS)
+            .offering(&[MethodKind::Password, MethodKind::KeyboardInteractive]);
+        let answers = server.answers.clone();
+        let mut handle = handshake(server).await;
+
+        let user = Mutex::new(CannedAnswers::new([vec!["hunter2".to_string()]]));
+        authenticate(
+            &mut handle,
+            &password_profile(None),
+            "alice",
+            "pam.example:22",
+            &AuthPrompter::canned(&user),
+        )
+        .await
+        .expect("the password typed into the server's round logs in");
+
+        assert_eq!(*answers.lock(), vec![vec!["hunter2".to_string()]]);
+        let user = user.lock();
+        assert_eq!(user.asked().len(), 1);
+        assert_eq!(user.asked()[0].prompts[0].prompt, "Password: ");
+        assert_eq!(user.asked()[0].instructions, "");
     }
 
     #[test]
