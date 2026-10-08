@@ -7,7 +7,11 @@
 
 <p align="center">
   <a href="https://github.com/miskin-lee/EdgeTerm/stargazers"><img alt="GitHub stars" src="https://img.shields.io/github/stars/miskin-lee/EdgeTerm?style=flat"></a>
+  <a href="https://qm.qq.com/q/oINZ2ffDOg"><img alt="Join the EdgeTerm QQ group: 1129162865" src="https://img.shields.io/badge/QQ%20group-Join%20discussion-12B7F5?style=flat"></a>
   <a href="https://github.com/miskin-lee/EdgeTerm/releases"><img alt="GitHub release downloads" src="https://img.shields.io/github/downloads/miskin-lee/EdgeTerm/total?style=flat&amp;label=downloads"></a>
+  <a href="https://github.com/miskin-lee/EdgeTerm/releases/latest"><img alt="Latest GitHub release" src="https://img.shields.io/github/v/release/miskin-lee/EdgeTerm?style=flat"></a>
+  <a href="LICENSE"><img alt="GPL-3.0 license" src="https://img.shields.io/github/license/miskin-lee/EdgeTerm?style=flat"></a>
+  <a href="https://github.com/miskin-lee/EdgeTerm/graphs/contributors"><img alt="GitHub contributors" src="https://img.shields.io/github/contributors/miskin-lee/EdgeTerm?style=flat"></a>
 </p>
 
 [English](README.md) | [简体中文](README.zh-CN.md)
@@ -54,6 +58,10 @@ Download from [Releases](https://github.com/miskin-lee/EdgeTerm/releases):
 3. The **Sender** at the bottom sends text to the current session or to all sessions. Save frequently used commands as tags.
 4. **Split Right / Split Down** is on the tab's context menu and in **View**. Drag a tab onto another pane to move it there.
 5. **Edit** holds the copy/paste behavior (right click, Copy on Select, OSC 52), and **View** holds the theme, fonts and **Keyboard Shortcuts…**.
+
+## Community
+
+Join the EdgeTerm QQ group to discuss the project: **1129162865**. [Join via QQ](https://qm.qq.com/q/oINZ2ffDOg).
 
 ## Keyboard shortcuts
 

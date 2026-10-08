@@ -7,7 +7,11 @@
 
 <p align="center">
   <a href="https://github.com/miskin-lee/EdgeTerm/stargazers"><img alt="GitHub stars" src="https://img.shields.io/github/stars/miskin-lee/EdgeTerm?style=flat"></a>
+  <a href="https://qm.qq.com/q/oINZ2ffDOg"><img alt="加入 EdgeTerm QQ 群：1129162865" src="https://img.shields.io/badge/QQ%20group-Join%20discussion-12B7F5?style=flat"></a>
   <a href="https://github.com/miskin-lee/EdgeTerm/releases"><img alt="GitHub release downloads" src="https://img.shields.io/github/downloads/miskin-lee/EdgeTerm/total?style=flat&amp;label=downloads"></a>
+  <a href="https://github.com/miskin-lee/EdgeTerm/releases/latest"><img alt="最新 GitHub 发布版本" src="https://img.shields.io/github/v/release/miskin-lee/EdgeTerm?style=flat"></a>
+  <a href="LICENSE"><img alt="GPL-3.0 许可证" src="https://img.shields.io/github/license/miskin-lee/EdgeTerm?style=flat"></a>
+  <a href="https://github.com/miskin-lee/EdgeTerm/graphs/contributors"><img alt="GitHub 贡献者" src="https://img.shields.io/github/contributors/miskin-lee/EdgeTerm?style=flat"></a>
 </p>
 
 [English](README.md) | [简体中文](README.zh-CN.md)
@@ -54,6 +58,10 @@
 3. 底部 **Sender** 把文本发到当前会话或全部会话，常用命令可存成标签。
 4. 标签右键菜单和 **View** 里有 **Split Right / Split Down**，把标签拖到别的分栏即可移过去。
 5. **Edit** 里是复制粘贴相关设置（右键行为、选中即复制、OSC 52），**View** 里是主题、字体和 **Keyboard Shortcuts…**。
+
+## 交流讨论
+
+欢迎加入 EdgeTerm QQ 群交流，群号：**1129162865**。[点击加群](https://qm.qq.com/q/oINZ2ffDOg)。
 
 ## 快捷键
 
