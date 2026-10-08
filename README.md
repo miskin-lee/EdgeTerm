@@ -59,10 +59,6 @@ Download from [Releases](https://github.com/miskin-lee/EdgeTerm/releases):
 4. **Split Right / Split Down** is on the tab's context menu and in **View**. Drag a tab onto another pane to move it there.
 5. **Edit** holds the copy/paste behavior (right click, Copy on Select, OSC 52), and **View** holds the theme, fonts and **Keyboard Shortcuts…**.
 
-## Community
-
-Join the EdgeTerm QQ group to discuss the project: **1129162865**. [Join via QQ](https://qm.qq.com/q/oINZ2ffDOg).
-
 ## Keyboard shortcuts
 
 | macOS | Windows / Linux | Action |

@@ -59,10 +59,6 @@
 4. 标签右键菜单和 **View** 里有 **Split Right / Split Down**，把标签拖到别的分栏即可移过去。
 5. **Edit** 里是复制粘贴相关设置（右键行为、选中即复制、OSC 52），**View** 里是主题、字体和 **Keyboard Shortcuts…**。
 
-## 交流讨论
-
-欢迎加入 EdgeTerm QQ 群交流，群号：**1129162865**。[点击加群](https://qm.qq.com/q/oINZ2ffDOg)。
-
 ## 快捷键
 
 | macOS | Windows / Linux | 作用 |
