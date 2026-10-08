@@ -5,6 +5,11 @@
   </picture>
 </p>
 
+<p align="center">
+  <a href="https://github.com/miskin-lee/EdgeTerm/stargazers"><img alt="GitHub stars" src="https://img.shields.io/github/stars/miskin-lee/EdgeTerm?style=flat"></a>
+  <a href="https://github.com/miskin-lee/EdgeTerm/releases"><img alt="GitHub release downloads" src="https://img.shields.io/github/downloads/miskin-lee/EdgeTerm/total?style=flat&amp;label=downloads"></a>
+</p>
+
 [English](README.md) | [简体中文](README.zh-CN.md)
 
 A small, fast terminal, SSH, Telnet, SFTP, FTP and serial client built with **Rust + Tauri**. Installers are about 4–5 MB.
