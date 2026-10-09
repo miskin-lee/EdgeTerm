@@ -13,6 +13,7 @@ import {
   type ITheme,
 } from "@xterm/xterm";
 
+import closeIcon from "@vscode/codicons/src/icons/close.svg?raw";
 import { isAiSessionCommand } from "./aiTools";
 import { readClipboardText, writeClipboardText } from "./api";
 import { createOutputDecoder } from "./encodings";
@@ -362,6 +363,8 @@ interface Callbacks {
   ) => void;
   /** Ranked history completions for the current input; [] when none. */
   suggest: (input: string) => CommandSuggestion[];
+  /** Removes a command from the history behind `suggest`. */
+  forgetSuggestion: (command: string) => void;
 }
 
 /**
@@ -777,6 +780,22 @@ export class TerminalController {
     // own → autosuggest keep working); only ↓ (step into the list) and Esc
     // (dismiss) are taken. Once a row is selected the list owns ↑/↓ and
     // Enter/Tab accept — the user opted in by stepping into it.
+    // Shift+Delete on a selected row forgets it, as in browser and IDE
+    // completion lists; on macOS also Shift+⌫, since laptops have no
+    // forward Delete key.
+    if (
+      this.popupIndex >= 0 &&
+      event.shiftKey &&
+      !event.ctrlKey &&
+      !event.altKey &&
+      !event.metaKey &&
+      !event.isComposing &&
+      (key === "delete" || (IS_MAC && key === "backspace"))
+    ) {
+      event.preventDefault();
+      this.forgetSuggestion(this.popupIndex);
+      return false;
+    }
     if (
       this.candidates.length > 0 &&
       !event.isComposing &&
@@ -2131,7 +2150,20 @@ export class TerminalController {
       match.textContent = command.slice(matchStart, matchEnd);
       const post = document.createElement("span");
       post.textContent = command.slice(matchEnd);
-      row.append(pre, match, post);
+      const text = document.createElement("span");
+      text.className = "term-suggest-text";
+      text.append(pre, match, post);
+
+      const remove = document.createElement("span");
+      remove.className = "term-suggest-remove";
+      remove.title = `Remove from History (${IS_MAC ? "⇧⌫" : "Shift+Delete"})`;
+      remove.innerHTML = closeIcon;
+      remove.addEventListener("mousedown", (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        this.forgetSuggestion(index);
+      });
+      row.append(text, remove);
 
       row.addEventListener("mousedown", (event) => {
         // preventDefault keeps focus in the terminal.
@@ -2168,6 +2200,14 @@ export class TerminalController {
     if (data && !this.locked && !this.isTransferActive()) {
       this.callbacks.onData(data);
     }
+  }
+
+  /** Drops a row from the history and redraws the list for the same input. */
+  private forgetSuggestion(index: number) {
+    const candidate = this.candidates[index];
+    if (!candidate) return;
+    this.callbacks.forgetSuggestion(candidate.command);
+    this.syncPopup();
   }
 
   private hidePopup() {

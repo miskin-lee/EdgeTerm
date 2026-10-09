@@ -134,6 +134,9 @@ export const listCommandHistory = () =>
 export const recordCommand = (command: string, host: string) =>
   invoke<void>("record_command", { command, host });
 
+export const deleteCommandHistory = (command: string) =>
+  invoke<void>("delete_command_history", { command });
+
 export const clearCommandHistory = () =>
   invoke<void>("clear_command_history");
 

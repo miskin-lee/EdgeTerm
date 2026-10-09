@@ -650,6 +650,20 @@ impl Store {
         self.persist_command_history()
     }
 
+    /// Forgets `command` on every host: suggestions are deduplicated by text,
+    /// so leaving another host's copy would bring the row straight back.
+    pub fn delete_command_history(&self, command: &str) -> Result<()> {
+        {
+            let mut entries = self.command_history.lock();
+            let before = entries.len();
+            entries.retain(|entry| entry.command != command);
+            if entries.len() == before {
+                return Ok(());
+            }
+        }
+        self.persist_command_history()
+    }
+
     pub fn clear_command_history(&self) -> Result<()> {
         self.command_history.lock().clear();
         self.persist_command_history()

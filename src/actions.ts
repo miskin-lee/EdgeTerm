@@ -108,6 +108,7 @@ export async function ensureController(id: string): Promise<TerminalController> 
         else store.clearCommandActivity(id);
       },
       suggest: (input) => commandHistory.suggest(input, historyHost(id)),
+      forgetSuggestion: (command) => commandHistory.remove(command),
       onResize: (cols, rows) => {
         useStore.getState().setSize(id, cols, rows);
         void api.resizeSession(id, cols, rows).catch(() => undefined);

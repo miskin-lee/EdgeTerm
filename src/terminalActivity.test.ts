@@ -20,6 +20,7 @@ function createController(states: string[], commands: string[] = []) {
       onCommand: (command) => commands.push(command),
       onCommandState: (state) => states.push(state),
       suggest: () => [],
+      forgetSuggestion() {},
     },
     13,
     100,

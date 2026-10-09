@@ -119,6 +119,11 @@ pub fn record_command(state: State<'_, AppState>, command: String, host: String)
 }
 
 #[tauri::command]
+pub fn delete_command_history(state: State<'_, AppState>, command: String) -> Result<()> {
+    state.store.delete_command_history(&command)
+}
+
+#[tauri::command]
 pub fn clear_command_history(state: State<'_, AppState>) -> Result<()> {
     state.store.clear_command_history()
 }

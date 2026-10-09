@@ -106,6 +106,12 @@ class CommandHistory {
       .map(([command, { matchStart }]) => ({ command, matchStart }));
   }
 
+  /** Forgets `command` on every host (suggestions are per command text). */
+  remove(command: string) {
+    this.entries = this.entries.filter((entry) => entry.command !== command);
+    void api.deleteCommandHistory(command).catch(() => undefined);
+  }
+
   clear(): Promise<void> {
     this.entries = [];
     return api.clearCommandHistory();

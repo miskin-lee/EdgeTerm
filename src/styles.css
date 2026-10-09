@@ -2336,20 +2336,55 @@ textarea:focus {
 }
 
 .term-suggest-item {
-  display: block;
-  overflow: hidden;
-  padding: 3px 10px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 4px 3px 10px;
   border-radius: 4px;
   color: var(--fg);
   cursor: pointer;
-  text-overflow: ellipsis;
   /* Glow in the panel color separates the row text from the output showing
      through, without opaquing the panel. */
   text-shadow:
     0 0 2px var(--bg-panel-alt),
     0 0 4px var(--bg-panel-alt);
-  white-space: pre;
   transition: background-color 80ms ease-out;
+}
+
+.term-suggest-text {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: pre;
+}
+
+/* Kept in the layout while hidden so rows do not reflow on hover. */
+.term-suggest-remove {
+  display: flex;
+  flex: none;
+  width: 16px;
+  height: 16px;
+  border-radius: 3px;
+  color: var(--fg-dim);
+  visibility: hidden;
+}
+
+.term-suggest-remove svg {
+  display: block;
+  width: 16px;
+  height: 16px;
+  fill: currentColor;
+}
+
+.term-suggest-item:hover .term-suggest-remove,
+.term-suggest-item.is-selected .term-suggest-remove {
+  visibility: visible;
+}
+
+.term-suggest-remove:hover {
+  background: color-mix(in srgb, var(--fg) 14%, transparent);
+  color: var(--fg);
 }
 
 .term-suggest-item:hover {

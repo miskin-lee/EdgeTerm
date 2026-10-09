@@ -25,6 +25,7 @@ function createController() {
       onCommand() {},
       onCommandState() {},
       suggest: () => [],
+      forgetSuggestion() {},
     },
     13,
     100,

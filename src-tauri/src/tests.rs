@@ -1033,8 +1033,21 @@ fn store_merges_and_persists_command_history() {
         "trailing whitespace is trimmed before storing"
     );
 
-    let reloaded = Store::load_from(path);
+    let reloaded = Store::load_from(path.clone());
     assert_eq!(reloaded.list_command_history().len(), 2);
+
+    reloaded.record_command("ls -la", "shell:/bin/zsh").unwrap();
+    reloaded.delete_command_history("ls -la").unwrap();
+    let remaining = Store::load_from(path).list_command_history();
+    assert_eq!(
+        remaining
+            .iter()
+            .map(|entry| entry.command.as_str())
+            .collect::<Vec<_>>(),
+        ["make test"],
+        "deleting a command forgets it on every host, on disk too"
+    );
+
     reloaded.clear_command_history().unwrap();
     assert!(reloaded.list_command_history().is_empty());
 

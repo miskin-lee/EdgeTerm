@@ -387,6 +387,7 @@ pub fn run() {
             commands::delete_sender_command,
             commands::list_command_history,
             commands::record_command,
+            commands::delete_command_history,
             commands::clear_command_history,
             commands::export_app_data,
             commands::read_app_data,
