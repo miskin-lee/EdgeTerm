@@ -2038,6 +2038,37 @@ textarea:focus {
   box-shadow: inset 2px 0 0 var(--accent);
 }
 
+/* Drag-and-drop in the dual-pane browser. An icon must not start its own
+   native image drag under a row's pointer drag, and the pointer travel
+   before a drag starts must not begin a text selection. */
+.ftp-file-row {
+  user-select: none;
+}
+
+.ftp-file-row img {
+  -webkit-user-drag: none;
+}
+
+.ftp-dual-pane.is-dragging,
+.ftp-dual-pane.is-dragging .ftp-file-row {
+  cursor: grabbing;
+}
+
+.ftp-file-row.is-drag-source {
+  opacity: 0.5;
+}
+
+/* The folder row, or the pane background, a drag is over. */
+.ftp-file-row.is-drop-target {
+  background: color-mix(in srgb, var(--accent) 18%, transparent);
+  box-shadow: inset 0 0 0 1px var(--accent);
+}
+
+.ftp-browser-list.is-drop-target {
+  background: color-mix(in srgb, var(--accent) 6%, transparent);
+  box-shadow: inset 0 0 0 2px var(--accent);
+}
+
 .ftp-file-row.is-directory .ftp-file-name {
   color: var(--dir-label);
   font-weight: 600;
