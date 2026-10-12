@@ -1983,9 +1983,33 @@ textarea:focus {
   font-size: 10px;
 }
 
-.ftp-browser-columns span:nth-child(n + 2),
+.ftp-browser-columns > :nth-child(n + 2),
 .ftp-file-row > span:nth-child(n + 2) {
   text-align: right;
+}
+
+/* Column captions are buttons so they can sort the list; they restyle to the
+   span look they replaced. */
+.ftp-browser-columns button {
+  display: block;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+  user-select: none;
+}
+
+.ftp-browser-columns button:hover,
+.ftp-browser-columns button.is-sorted {
+  color: var(--fg);
+}
+
+.ftp-browser-columns button:focus-visible {
+  outline: 1px solid var(--accent);
+  outline-offset: -1px;
 }
 
 .ftp-browser-list {
@@ -4694,6 +4718,32 @@ textarea:focus {
   width: 74px;
   text-align: right;
   padding-left: 8px;
+}
+
+/* Column captions are buttons so they can sort the list; they restyle to the
+   span look they replaced. */
+.filer-columns button {
+  display: block;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  letter-spacing: inherit;
+  text-transform: inherit;
+  cursor: pointer;
+  user-select: none;
+}
+
+.filer-columns button:hover,
+.filer-columns button.is-sorted {
+  color: var(--fg);
+}
+
+.filer-columns button:focus-visible {
+  outline: 1px solid var(--accent);
+  outline-offset: -1px;
 }
 
 .filer-icon {

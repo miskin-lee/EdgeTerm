@@ -1,6 +1,15 @@
-import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 
 import * as api from "../api";
+import {
+  loadFileSort,
+  saveFileSort,
+  sortFileEntries,
+  sortIndicator,
+  toggleFileSort,
+  type FileSort,
+  type SortKey,
+} from "../fileSort";
 import { FileIcon } from "./FileIcon";
 import { Icon } from "./icons";
 import { useStore, type Tab } from "../store";
@@ -568,6 +577,21 @@ function FileBrowser({
   onActivate,
 }: FileBrowserProps) {
   const theme = useStore((s) => s.theme);
+  const [sort, setSort] = useState<FileSort>(loadFileSort);
+  const sortedEntries = useMemo(
+    () => sortFileEntries(entries, sort),
+    [entries, sort],
+  );
+
+  /** Re-sorts the list for a clicked column caption and remembers the choice. */
+  const sortBy = (key: SortKey) => {
+    setSort((current) => {
+      const next = toggleFileSort(current, key);
+      saveFileSort(next);
+      return next;
+    });
+  };
+
   return (
     <section className="ftp-file-browser">
       <div className="ftp-browser-header">
@@ -602,9 +626,30 @@ function FileBrowser({
       </div>
 
       <div className="ftp-browser-columns">
-        <span>Name</span>
-        <span>Size</span>
-        <span>Modified</span>
+        <button
+          type="button"
+          className={sort.key === "name" ? "is-sorted" : undefined}
+          onClick={() => sortBy("name")}
+          aria-label="Sort by name"
+        >
+          Name{sortIndicator(sort, "name")}
+        </button>
+        <button
+          type="button"
+          className={sort.key === "size" ? "is-sorted" : undefined}
+          onClick={() => sortBy("size")}
+          aria-label="Sort by size"
+        >
+          Size{sortIndicator(sort, "size")}
+        </button>
+        <button
+          type="button"
+          className={sort.key === "modified" ? "is-sorted" : undefined}
+          onClick={() => sortBy("modified")}
+          aria-label="Sort by last modified"
+        >
+          Modified{sortIndicator(sort, "modified")}
+        </button>
       </div>
 
       <div className="ftp-browser-list" role="listbox" aria-label={`${title} files`}>
@@ -614,7 +659,7 @@ function FileBrowser({
           <div className="ftp-browser-message">This folder is empty.</div>
         )}
         {!error &&
-          entries.map((entry) => (
+          sortedEntries.map((entry) => (
             <div
               key={entry.path}
               className={`ftp-file-row${selected === entry.path ? " is-selected" : ""}${entry.isDir ? " is-directory" : ""}`}

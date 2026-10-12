@@ -3,6 +3,7 @@ import { getCurrentWebview } from "@tauri-apps/api/webview";
 import {
   useCallback,
   useEffect,
+  useMemo,
   useRef,
   useState,
   type MouseEvent,
@@ -11,6 +12,15 @@ import {
 
 import { revealCwdInFiler } from "../../actions";
 import * as api from "../../api";
+import {
+  loadFileSort,
+  saveFileSort,
+  sortFileEntries,
+  sortIndicator,
+  toggleFileSort,
+  type FileSort,
+  type SortKey,
+} from "../../fileSort";
 import { open as openDialog, save as saveDialog } from "../../nativeDialog";
 import { IS_MAC, IS_WINDOWS } from "../../platform";
 import { chordLabel } from "../../shortcuts";
@@ -157,6 +167,7 @@ export function FilerPanel() {
   const [path, setPath] = useState("");
   const [draft, setDraft] = useState("");
   const [entries, setEntries] = useState<FileEntry[]>([]);
+  const [sort, setSort] = useState<FileSort>(loadFileSort);
   const [selected, setSelected] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -1177,6 +1188,19 @@ export function FilerPanel() {
   // deleted or navigated above.
   const atDrivesRoot = !remoteId && path === api.LOCAL_DRIVES_ROOT;
   const selectedEntry = entries.find((e) => e.path === selected) ?? null;
+  const sortedEntries = useMemo(
+    () => sortFileEntries(entries, sort),
+    [entries, sort],
+  );
+
+  /** Re-sorts the list for a clicked column caption and remembers the choice. */
+  const sortBy = (key: SortKey) => {
+    setSort((current) => {
+      const next = toggleFileSort(current, key);
+      saveFileSort(next);
+      return next;
+    });
+  };
 
   return (
     <div
@@ -1310,8 +1334,22 @@ export function FilerPanel() {
       </div>
 
       <div className="filer-columns">
-        <span className="filer-col-name">Name</span>
-        <span className="filer-col-date">Modified</span>
+        <button
+          type="button"
+          className={`filer-col-name${sort.key === "name" ? " is-sorted" : ""}`}
+          onClick={() => sortBy("name")}
+          aria-label="Sort by name"
+        >
+          Name{sortIndicator(sort, "name")}
+        </button>
+        <button
+          type="button"
+          className={`filer-col-date${sort.key === "modified" ? " is-sorted" : ""}`}
+          onClick={() => sortBy("modified")}
+          aria-label="Sort by last modified"
+        >
+          Modified{sortIndicator(sort, "modified")}
+        </button>
       </div>
 
       <div
@@ -1351,7 +1389,7 @@ export function FilerPanel() {
             />
           </div>
         )}
-        {entries.map((entry) => {
+        {sortedEntries.map((entry) => {
           const kind = entryKind(entry);
           return (
             <div
