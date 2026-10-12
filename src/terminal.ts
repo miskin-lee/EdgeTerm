@@ -22,6 +22,7 @@ import type { CommandSuggestion } from "./history";
 import { patchImeInput } from "./imePatch";
 import { parseOsc52, type ProgramClipboardMode } from "./osc52";
 import { IS_MAC, IS_WINDOWS } from "./platform";
+import { createSettleThrottle } from "./settleThrottle";
 import { matchAppShortcut } from "./shortcuts";
 import { SEARCH_HIGHLIGHT_LIMIT } from "./terminalSearch";
 import {
@@ -125,6 +126,13 @@ const LINE_TIME_SLACK = 4096;
  */
 const BACKLOG_QUIET_MS = 200;
 const BACKLOG_SLICE_MS = 8;
+/**
+ * A fit resizes xterm, which reflows the whole scrollback buffer; a splitter
+ * drag crosses many sizes in a second and would reflow per crossing, freezing
+ * the window. The first fit applies at once and the rest inside this window
+ * collapse into one final pass (see `Terminal.fit`).
+ */
+const FIT_SETTLE_MS = 100;
 
 /**
  * Data xterm sends back on the terminal's own behalf rather than the user's:
@@ -405,6 +413,11 @@ export class TerminalController {
   private erase = "\x7f";
   private readonly transferNotice: HTMLElement;
   private transferNoticeTimer: number | null = null;
+  /** Applies fits: at once, then collapsed into one pass per settle window. */
+  private readonly fitThrottle = createSettleThrottle(
+    () => this.applyFit(),
+    FIT_SETTLE_MS,
+  );
 
   private root: HTMLElement | null = null;
   private host: HTMLElement | null = null;
@@ -1093,6 +1106,14 @@ export class TerminalController {
   }
 
   fit(): { cols: number; rows: number } | null {
+    // Resizing reflows xterm's whole scrollback buffer, so the many sizes a
+    // splitter drag crosses must not each pay for it: the first fit applies
+    // at once (attaching, a font change, a first layout), and the fits behind
+    // it collapse into a single trailing pass once the size has settled.
+    return this.fitThrottle.run();
+  }
+
+  private applyFit(): { cols: number; rows: number } | null {
     if (!this.host || this.host.clientWidth === 0) return null;
     try {
       this.fitAddon.fit();
@@ -1654,6 +1675,7 @@ export class TerminalController {
       window.clearTimeout(this.transferNoticeTimer);
       this.transferNoticeTimer = null;
     }
+    this.fitThrottle.cancel();
     if (this.webglTimer !== null) {
       window.clearTimeout(this.webglTimer);
       this.webglTimer = null;
