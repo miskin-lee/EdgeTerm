@@ -155,7 +155,6 @@ export const zhCN: Record<string, string> = {
   // —— B ——
   "Backspace sends": "退格键发送",
   Bar: "竖线",
-  baud: "波特",
   "Baud rate": "波特率",
   "Baud rate must be a positive whole number up to 4294967295.":
     "波特率必须是不超过 4294967295 的正整数。",

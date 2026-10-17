@@ -1220,7 +1220,8 @@ export function SessionDialog({ initial, onClose }: Props) {
                         })
                       }
                     />
-                    <span>{t("baud")}</span>
+                    {/* 单位符号（ISO/IEC 80000-13），语言无关，不参与翻译。 */}
+                    <span>Bd</span>
                   </div>
                   <datalist id="serial-baud-rates">
                     {COMMON_BAUD_RATES.map((rate) => (
