@@ -43,6 +43,7 @@ import { SenderPanel } from "./components/panels/SenderPanel";
 import { SessionPanel } from "./components/panels/SessionPanel";
 import { applyFonts, symbolFallbacks } from "./fonts";
 import { commandHistory } from "./history";
+import { useT } from "./i18n";
 import type { PanelDock } from "./panelDock";
 import { IS_WINDOWS } from "./platform";
 import { matchAppShortcut } from "./shortcuts";
@@ -71,6 +72,7 @@ const hasLiveSessions = () =>
 
 export default function App() {
   const updater = useUpdater();
+  const t = useT();
   const activeId = useStore((s) => s.activeId);
   const panels = useStore((s) => s.panels);
   const panelDocks = useStore((s) => s.panelDocks);
@@ -265,14 +267,17 @@ export default function App() {
   useEffect(() => {
     const unlisten = api.onRecordingError(({ id, path, message }) => {
       const store = useStore.getState();
-      store.setError(`Recording stopped: ${message} (${path})`, id);
+      store.setError(
+        t("Recording stopped: {message} ({path})", { message, path }),
+        id,
+      );
       const tab = store.tabs.find((item) => item.info.id === id);
       if (tab) store.updateTabInfo(id, { ...tab.info, recording: null });
     });
     return () => {
       void unlisten.then((off) => off());
     };
-  }, []);
+  }, [t]);
 
   // A tab-close prompt open underneath would race this dialog for
   // Enter/Esc (both listen on window in the capture phase), so drop it.
@@ -616,7 +621,7 @@ export default function App() {
       {clipboardPrompt && (
         <ClipboardWriteDialog
           key={clipboardPrompt.sessionId}
-          session={clipboardTab ? tabTitle(clipboardTab) : "a session"}
+          session={clipboardTab ? tabTitle(clipboardTab) : t("a session")}
           text={clipboardPrompt.text}
           onAllow={(always) => {
             const { sessionId, text } = clipboardPrompt;
@@ -698,18 +703,18 @@ export default function App() {
             style={{ width: 380 }}
             onMouseDown={(event) => event.stopPropagation()}
           >
-            <div className="dialog-header">About EdgeTerm</div>
+            <div className="dialog-header">{t("About EdgeTerm")}</div>
             <div className="dialog-body" style={{ lineHeight: 1.7 }}>
               <strong>
                 EdgeTerm{updater.appVersion ? ` ${updater.appVersion}` : ""}
               </strong>
               <span>
-                A small, fast terminal, SSH, SFTP, FTP and serial client. The
-                installer is tiny, it starts instantly, and it stays out of
-                your way.
+                {t(
+                  "A small, fast terminal, SSH, SFTP, FTP and serial client. The installer is tiny, it starts instantly, and it stays out of your way.",
+                )}
               </span>
               <span style={{ color: "var(--fg-faint)" }}>
-                Made by miskin ·{" "}
+                {t("Made by miskin ·")}{" "}
                 <a
                   className="about-link"
                   href={REPO_URL}
@@ -726,7 +731,7 @@ export default function App() {
             </div>
             <div className="dialog-footer">
               <button className="btn" onClick={() => setAboutOpen(false)}>
-                Close
+                {t("Close")}
               </button>
             </div>
           </div>

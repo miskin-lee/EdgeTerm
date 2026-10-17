@@ -4,6 +4,7 @@ import appIcon from "../../src-tauri/icons/128x128@2x.png";
 import { layoutRects, type Rect, type SplitterRect } from "../layout";
 import { chordLabel } from "../shortcuts";
 import { useStore } from "../store";
+import { useT } from "../i18n";
 import { Splitter } from "./Splitter";
 import { TabStrip } from "./TabStrip";
 import { SessionPane } from "./TerminalPane";
@@ -60,6 +61,7 @@ const splitterStyle = (splitter: SplitterRect): CSSProperties =>
  * boundaries, so a pane's box is exactly its share.
  */
 export function Workspace({ onNewSession }: Props) {
+  const t = useT();
   const layout = useStore((s) => s.layout);
   const panes = useStore((s) => s.panes);
   const tabs = useStore((s) => s.tabs);
@@ -116,15 +118,19 @@ export function Workspace({ onNewSession }: Props) {
                   <p className="term-empty-hint">
                     {newSessionKey ? (
                       <>
-                        Press <kbd>{newSessionKey}</kbd> for a new session, or
-                        pick one from the Session panel.
+                        {t("Press")} <kbd>{newSessionKey}</kbd>{" "}
+                        {t(
+                          "for a new session, or pick one from the Session panel.",
+                        )}
                       </>
                     ) : (
-                      "Open a new session, or pick one from the Session panel."
+                      t(
+                        "Open a new session, or pick one from the Session panel.",
+                      )
                     )}
                   </p>
                   <button className="btn is-primary" onClick={onNewSession}>
-                    New Session
+                    {t("New Session")}
                   </button>
                 </div>
               )}

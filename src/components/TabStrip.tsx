@@ -15,6 +15,7 @@ import {
   splitSession,
 } from "../actions";
 import { tabTitle, useStore, type DropTarget, type Tab } from "../store";
+import { t, useT } from "../i18n";
 import { colorForSession } from "../types";
 import { ContextMenu, type MenuItem } from "./ContextMenu";
 import { Icon } from "./icons";
@@ -45,8 +46,10 @@ interface Props {
  */
 function activityLabel(tab: Tab): string | null {
   if (tab.commandActivity === "idle") return null;
-  const subject = tab.activityKind === "ai" ? "AI" : "command";
-  return `${subject} ${tab.commandActivity === "running" ? "running" : "finished"}`;
+  const subject = tab.activityKind === "ai" ? "AI" : t("command");
+  return tab.commandActivity === "running"
+    ? t("{subject} running", { subject })
+    : t("{subject} finished", { subject });
 }
 
 interface TabDrag {
@@ -143,6 +146,7 @@ const dropTargetAt = (
 };
 
 export function TabStrip({ paneId }: Props) {
+  const t = useT();
   const allTabs = useStore((s) => s.tabs);
   // The strip is the pane's tabs in list order; see `placeTab` in the store.
   const tabs = useMemo(
@@ -192,14 +196,24 @@ export function TabStrip({ paneId }: Props) {
   // button's click fires the menu is already gone; remember whether it was
   // open so the button toggles instead of reopening.
   const listWasOpen = useRef(false);
-  const listItems: MenuItem[] = tabs.map((tab) => ({
-    label: `${tab.number}. ${tabTitle(tab)}${
-      activityLabel(tab) ? ` · ${activityLabel(tab)}` : ""
-    }`,
-    checked: tab.info.id === shownId,
-    mark: "radio" as const,
-    action: () => setActive(tab.info.id),
-  }));
+  const listItems: MenuItem[] = tabs.map((tab) => {
+    const activity = activityLabel(tab);
+    return {
+      label: activity
+        ? t("{number}. {title} · {activity}", {
+            number: tab.number,
+            title: tabTitle(tab),
+            activity,
+          })
+        : t("{number}. {title}", {
+            number: tab.number,
+            title: tabTitle(tab),
+          }),
+      checked: tab.info.id === shownId,
+      mark: "radio" as const,
+      action: () => setActive(tab.info.id),
+    };
+  });
 
   // A tab's own menu: the close commands work along this strip, the way
   // VS Code's "Close to the Right" stays inside its editor group.
@@ -222,45 +236,45 @@ export function TabStrip({ paneId }: Props) {
     const tab = tabs.find((item) => item.info.id === id);
     return [
       {
-        label: "Close",
+        label: t("Close"),
         shortcut: closeKey,
         action: () => requestCloseTabs([id]),
       },
       {
-        label: "Close Others",
+        label: t("Close Others"),
         disabled: ids.length < 2,
         action: () => requestCloseTabs(ids.filter((other) => other !== id)),
       },
       {
-        label: "Close to the Left",
+        label: t("Close to the Left"),
         disabled: index <= 0,
         action: () => requestCloseTabs(ids.slice(0, index)),
       },
       {
-        label: "Close to the Right",
+        label: t("Close to the Right"),
         disabled: index >= ids.length - 1,
         action: () => requestCloseTabs(ids.slice(index + 1)),
       },
-      { label: "Close All", action: () => requestCloseTabs(ids) },
+      { label: t("Close All"), action: () => requestCloseTabs(ids) },
       "separator",
       // Only a live SSH tab has a connection to open another channel on.
       ...(tab && canDuplicateSshChannel(tab)
         ? [
             {
-              label: "Duplicate SSH Channel",
+              label: t("Duplicate SSH Channel"),
               icon: "copy",
               action: () => void duplicateSshChannel(id),
             } satisfies MenuItem,
           ]
         : []),
       {
-        label: "Split Right",
+        label: t("Split Right"),
         icon: "split-horizontal",
         shortcut: splitRightKey,
         action: () => void splitSession(id, "right"),
       },
       {
-        label: "Split Down",
+        label: t("Split Down"),
         icon: "split-vertical",
         shortcut: splitDownKey,
         action: () => void splitSession(id, "down"),
@@ -515,7 +529,9 @@ export function TabStrip({ paneId }: Props) {
               tab.commandActivity === "running"
                 ? activityLabel(tab)
                 : tab.commandActivity === "complete"
-                  ? `${activityLabel(tab)} — select to view`
+                  ? t("{activity} — select to view", {
+                      activity: activityLabel(tab) ?? "",
+                    })
                   : (tab.message ?? tab.state)
             }`}
           >
@@ -533,8 +549,8 @@ export function TabStrip({ paneId }: Props) {
                 event.stopPropagation();
                 requestCloseTabs([tab.info.id]);
               }}
-              title="Close session"
-              aria-label="Close session"
+              title={t("Close session")}
+              aria-label={t("Close session")}
             >
               <Icon name="close" />
             </button>
@@ -560,7 +576,7 @@ export function TabStrip({ paneId }: Props) {
               const rect = event.currentTarget.getBoundingClientRect();
               setListMenu({ x: rect.right, y: rect.bottom + 2 });
             }}
-            title="All sessions"
+            title={t("All sessions")}
             aria-haspopup="menu"
             aria-expanded={listMenu !== null}
           >

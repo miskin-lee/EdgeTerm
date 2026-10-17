@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 
 import * as api from "../api";
+import { t, useT } from "../i18n";
 import { useActiveTab, useStore } from "../store";
 import { isFileSession, type LegacyAlgorithms } from "../types";
 import { Icon } from "./icons";
@@ -12,11 +13,14 @@ const parentDir = (path: string): string =>
 /** The tooltip naming each server's legacy algorithms, one server a line. */
 const legacyTitle = (servers: LegacyAlgorithms[]): string =>
   [
-    "Connected with legacy SSH algorithms, because the server offers nothing newer:",
+    t(
+      "Connected with legacy SSH algorithms, because the server offers nothing newer:",
+    ),
     ...servers.map(({ address, algorithms }) => `${address}: ${algorithms.join(", ")}`),
   ].join("\n");
 
 export function StatusBar() {
+  const t = useT();
   const tab = useActiveTab();
   const status = useStore((s) => s.status);
   const error = useStore((s) => s.error);
@@ -46,14 +50,16 @@ export function StatusBar() {
           {legacy.length > 0 && (
             <span className="status-item status-legacy" title={legacyTitle(legacy)}>
               <Icon name="warning" />
-              Legacy SSH
+              {t("Legacy SSH")}
             </span>
           )}
           {recording && (
             <button
               type="button"
               className="status-item status-recording"
-              title={`Recording to ${recording} — click to open the folder`}
+              title={t("Recording to {path} — click to open the folder", {
+                path: recording,
+              })}
               onClick={() =>
                 void api.openLocalPath(parentDir(recording)).catch(() => undefined)
               }
@@ -63,10 +69,10 @@ export function StatusBar() {
             </button>
           )}
           {isFileSession(tab.info.kind) ? (
-            <span className="status-item">Dual-pane file transfer</span>
+            <span className="status-item">{t("Dual-pane file transfer")}</span>
           ) : (
             <span className="status-item">
-              Window {tab.rows}×{tab.cols}
+              {t("Window {rows}×{cols}", { rows: tab.rows, cols: tab.cols })}
             </span>
           )}
           <span className="status-item">{tab.info.protocol}</span>

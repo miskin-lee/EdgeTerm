@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
 
 import * as api from "../api";
+import { useT } from "../i18n";
 import type { AuthPrompt } from "../types";
 import {
   endDialogAttention,
@@ -22,6 +23,7 @@ interface Props {
  * typed here is saved.
  */
 export function AuthPromptDialog({ prompt, onDone }: Props) {
+  const t = useT();
   const dialogRef = useRef<HTMLFormElement>(null);
   const firstField = useRef<HTMLInputElement>(null);
   const [answers, setAnswers] = useState<string[]>(() =>
@@ -69,7 +71,7 @@ export function AuthPromptDialog({ prompt, onDone }: Props) {
     }
   };
 
-  const title = prompt.name.trim() || "Verification Required";
+  const title = prompt.name.trim() || t("Verification Required");
 
   return (
     <div
@@ -96,15 +98,15 @@ export function AuthPromptDialog({ prompt, onDone }: Props) {
         </div>
         <div className="dialog-body confirm-dialog-body">
           <span>
-            Signing in to <strong>{prompt.address}</strong> as{" "}
-            <strong>{prompt.username}</strong>.
+            {t("Signing in to")} <strong>{prompt.address}</strong>
+            {t(" as")} <strong>{prompt.username}</strong>.
           </span>
           {prompt.instructions.trim() && (
             <p className="auth-prompt-instructions">{prompt.instructions}</p>
           )}
           {prompt.prompts.map((field, index) => (
             <label className="auth-prompt-field" key={index}>
-              <span>{field.prompt.trim() || "Response"}</span>
+              <span>{field.prompt.trim() || t("Response")}</span>
               <input
                 ref={index === 0 ? firstField : undefined}
                 type={field.echo ? "text" : "password"}
@@ -125,14 +127,15 @@ export function AuthPromptDialog({ prompt, onDone }: Props) {
             </label>
           ))}
           <span className="confirm-dialog-hint">
-            Answers are sent to the server for this login only; EdgeTerm never
-            stores them.
+            {t(
+              "Answers are sent to the server for this login only; EdgeTerm never stores them.",
+            )}
           </span>
           {error && <div className="dialog-error">{error}</div>}
         </div>
         <div className="dialog-footer confirm-dialog-footer">
           <span className="confirm-dialog-keys">
-            <kbd>Esc</kbd> cancel
+            <kbd>Esc</kbd> {t("cancel")}
           </span>
           <button
             type="button"
@@ -140,10 +143,10 @@ export function AuthPromptDialog({ prompt, onDone }: Props) {
             onClick={cancel}
             disabled={busy}
           >
-            Cancel
+            {t("Cancel")}
           </button>
           <button type="submit" className="btn is-primary" disabled={busy}>
-            {busy ? "Sending…" : "Continue"}
+            {busy ? t("Sending…") : t("Continue")}
           </button>
         </div>
       </form>

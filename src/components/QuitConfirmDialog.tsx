@@ -1,5 +1,6 @@
 import { useEffect, useRef } from "react";
 
+import { useT } from "../i18n";
 import { tabTitle, useStore } from "../store";
 
 interface Props {
@@ -15,6 +16,7 @@ const LISTED_SESSIONS = 4;
  * cannot drop every open connection at once. Enter quits and Esc cancels.
  */
 export function QuitConfirmDialog({ onConfirm, onCancel }: Props) {
+  const t = useT();
   const confirmRef = useRef<HTMLButtonElement>(null);
   const tabs = useStore((s) => s.tabs);
   const live = tabs.filter(
@@ -56,13 +58,14 @@ export function QuitConfirmDialog({ onConfirm, onCancel }: Props) {
         onMouseDown={(event) => event.stopPropagation()}
       >
         <div className="dialog-header" id="quit-app-title">
-          Quit EdgeTerm
+          {t("Quit EdgeTerm")}
         </div>
         <div className="dialog-body confirm-dialog-body">
           <span>
-            Quit with{" "}
+            {t("Quit with")}{" "}
             <strong>
-              {live.length} active session{live.length === 1 ? "" : "s"}
+              {live.length}{" "}
+              {t(live.length === 1 ? "active session" : "active sessions")}
             </strong>
             ?
           </span>
@@ -72,19 +75,22 @@ export function QuitConfirmDialog({ onConfirm, onCancel }: Props) {
             </span>
           ))}
           {extra > 0 && (
-            <span className="confirm-dialog-target">…and {extra} more</span>
+            <span className="confirm-dialog-target">
+              {t("…and {count} more", { count: extra })}
+            </span>
           )}
           <span className="confirm-dialog-hint">
-            All connections will be disconnected and their terminal output
-            discarded.
+            {t(
+              "All connections will be disconnected and their terminal output discarded.",
+            )}
           </span>
         </div>
         <div className="dialog-footer confirm-dialog-footer">
           <span className="confirm-dialog-keys">
-            <kbd>Enter</kbd> quit · <kbd>Esc</kbd> cancel
+            <kbd>Enter</kbd> {t("quit")} · <kbd>Esc</kbd> {t("cancel")}
           </span>
           <button type="button" className="btn" onClick={onCancel}>
-            Cancel
+            {t("Cancel")}
           </button>
           <button
             ref={confirmRef}
@@ -92,7 +98,7 @@ export function QuitConfirmDialog({ onConfirm, onCancel }: Props) {
             className="btn is-danger"
             onClick={onConfirm}
           >
-            Quit
+            {t("Quit")}
           </button>
         </div>
       </div>

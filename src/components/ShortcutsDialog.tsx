@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 
+import { useT } from "../i18n";
 import { IS_MAC } from "../platform";
 import {
   chordFromEvent,
@@ -31,6 +32,7 @@ const FIXED_SHORTCUTS: { keys: string; label: string }[] = IS_MAC
  * `chordProblem`).
  */
 export function ShortcutsDialog({ bindings, onApply, onClose }: Props) {
+  const t = useT();
   const dialogRef = useRef<HTMLFormElement>(null);
   const [draft, setDraft] = useState<ShortcutBindings>(() => ({ ...bindings }));
   const [recording, setRecording] = useState<ShortcutCommand | null>(null);
@@ -61,7 +63,12 @@ export function ShortcutsDialog({ bindings, onApply, onClose }: Props) {
       );
       setRecording(null);
       setNotice(
-        taken ? `${chordLabel(chord)} was taken from ${taken.label}.` : null,
+        taken
+          ? t("{chord} was taken from {command}.", {
+              chord: chordLabel(chord),
+              command: t(taken.label),
+            })
+          : null,
       );
       setDraft((current) => {
         const next = { ...current, [recording]: chord };
@@ -107,7 +114,7 @@ export function ShortcutsDialog({ bindings, onApply, onClose }: Props) {
           onApply(draft);
         }}
       >
-        <div className="dialog-header">Keyboard Shortcuts</div>
+        <div className="dialog-header">{t("Keyboard Shortcuts")}</div>
         <div className="dialog-body shortcuts-dialog-body">
           <div className="shortcuts-list">
             {SHORTCUT_COMMANDS.map(({ id, label, hint }) => {
@@ -116,31 +123,33 @@ export function ShortcutsDialog({ bindings, onApply, onClose }: Props) {
               return (
                 <div key={id} className="shortcut-row">
                   <span className="shortcut-command">
-                    <strong>{label}</strong>
-                    <small>{hint}</small>
+                    <strong>{t(label)}</strong>
+                    <small>{t(hint)}</small>
                   </span>
                   <button
                     type="button"
                     className={`shortcut-key${armed ? " is-recording" : ""}${
                       !armed && !chord ? " is-unset" : ""
                     }`}
-                    aria-label={`${label} shortcut`}
+                    aria-label={t("{label} shortcut", { label: t(label) })}
                     onClick={() => {
                       setNotice(null);
                       setRecording(armed ? null : id);
                     }}
                   >
                     {armed
-                      ? "Press keys…"
+                      ? t("Press keys…")
                       : chord
                         ? chordLabel(chord)
-                        : "Unassigned"}
+                        : t("Unassigned")}
                   </button>
                   <button
                     type="button"
                     className="shortcut-clear"
-                    title="Remove shortcut"
-                    aria-label={`Remove the ${label} shortcut`}
+                    title={t("Remove shortcut")}
+                    aria-label={t("Remove the {label} shortcut", {
+                      label: t(label),
+                    })}
                     disabled={!chord}
                     onClick={() => unassign(id)}
                   >
@@ -154,15 +163,15 @@ export function ShortcutsDialog({ bindings, onApply, onClose }: Props) {
           <p className="shortcuts-notice" role="status">
             {notice ??
               (recording
-                ? "Press the combination, or Esc to keep the current one."
+                ? t("Press the combination, or Esc to keep the current one.")
                 : "")}
           </p>
 
           <div className="shortcuts-fixed">
-            <strong>Fixed</strong>
+            <strong>{t("Fixed")}</strong>
             {FIXED_SHORTCUTS.map(({ keys, label }) => (
               <span key={keys}>
-                <kbd>{keys}</kbd> {label}
+                <kbd>{keys}</kbd> {t(label)}
               </span>
             ))}
           </div>
@@ -177,13 +186,13 @@ export function ShortcutsDialog({ bindings, onApply, onClose }: Props) {
               setDraft(defaultShortcuts());
             }}
           >
-            Reset Defaults
+            {t("Reset Defaults")}
           </button>
           <button type="button" className="btn" onClick={onClose}>
-            Cancel
+            {t("Cancel")}
           </button>
           <button type="submit" className="btn is-primary">
-            Apply
+            {t("Apply")}
           </button>
         </div>
       </form>

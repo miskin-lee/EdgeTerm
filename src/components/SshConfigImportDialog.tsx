@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 
 import * as api from "../api";
+import { useT } from "../i18n";
 import { groupPath } from "../sessionGroups";
 import { useStore } from "../store";
 import type { SshConfigEntry, SshConfigPreview } from "../types";
@@ -13,9 +14,6 @@ interface Props {
 }
 
 const basename = (path: string) => path.split(/[\\/]/).pop() || path;
-
-const plural = (count: number, noun: string) =>
-  `${count} ${noun}${count === 1 ? "" : "s"}`;
 
 /** `user@host`, with the port when it is not the default. */
 const target = (entry: SshConfigEntry) =>
@@ -36,6 +34,7 @@ function authLabel(entry: SshConfigEntry): string {
  * it only closes through its buttons; a click outside makes it blink.
  */
 export function SshConfigImportDialog({ preview, onClose }: Props) {
+  const t = useT();
   const groups = useStore((s) => s.groups);
   const setStatus = useStore((s) => s.setStatus);
   const loadProfiles = useStore((s) => s.loadProfiles);
@@ -94,7 +93,7 @@ export function SshConfigImportDialog({ preview, onClose }: Props) {
 
   const submit = async () => {
     if (selected.size === 0) {
-      setError("Choose at least one host.");
+      setError(t("Choose at least one host."));
       return;
     }
     setBusy(true);
@@ -110,17 +109,40 @@ export function SshConfigImportDialog({ preview, onClose }: Props) {
       );
       await loadProfiles();
       const parts: string[] = [];
-      if (summary.added > 0) parts.push(`${plural(summary.added, "session")} added`);
+      if (summary.added > 0) {
+        parts.push(
+          summary.added === 1
+            ? t("1 session added")
+            : t("{count} sessions added", { count: summary.added }),
+        );
+      }
       if (summary.updated > 0) {
-        parts.push(`${plural(summary.updated, "session")} updated`);
+        parts.push(
+          summary.updated === 1
+            ? t("1 session updated")
+            : t("{count} sessions updated", { count: summary.updated }),
+        );
       }
       if (summary.jumpHosts > 0) {
-        parts.push(`${plural(summary.jumpHosts, "jump host")} added`);
+        parts.push(
+          summary.jumpHosts === 1
+            ? t("1 jump host added")
+            : t("{count} jump hosts added", { count: summary.jumpHosts }),
+        );
       }
       if (summary.jumpsIgnored > 0) {
-        parts.push(`${plural(summary.jumpsIgnored, "multi-hop jump")} skipped`);
+        parts.push(
+          summary.jumpsIgnored === 1
+            ? t("1 multi-hop jump skipped")
+            : t("{count} multi-hop jumps skipped", {
+                count: summary.jumpsIgnored,
+              }),
+        );
       }
-      let status = `Imported from ${basename(preview.path)}: ${parts.join(", ") || "nothing to do"}`;
+      let status = t("Imported from {path}: {summary}", {
+        path: basename(preview.path),
+        summary: parts.join(", ") || t("nothing to do"),
+      });
       if (summary.warnings.length > 0) {
         status += `; ${summary.warnings.join("; ")}`;
       }
@@ -147,29 +169,29 @@ export function SshConfigImportDialog({ preview, onClose }: Props) {
         onAnimationEnd={endDialogAttention}
       >
         <div className="dialog-header">
-          <span id="ssh-import-title">Import OpenSSH Config</span>
+          <span id="ssh-import-title">{t("Import OpenSSH Config")}</span>
           <button
             className="panel-action"
             type="button"
             onClick={onClose}
-            aria-label="Close"
+            aria-label={t("Close")}
           >
             <Icon name="close" />
           </button>
         </div>
         <div className="dialog-body ssh-import-body">
           <span className="confirm-dialog-target">{preview.path}</span>
-          <div className="ssh-import-list" role="group" aria-label="Hosts">
+          <div className="ssh-import-list" role="group" aria-label={t("Hosts")}>
             <label className="ssh-import-row is-head">
               <input
                 type="checkbox"
                 checked={allSelected}
                 onChange={toggleAll}
-                aria-label="Select all hosts"
+                aria-label={t("Select all hosts")}
               />
-              <span className="ssh-import-alias">Host</span>
-              <span className="ssh-import-target">Connects to</span>
-              <span className="ssh-import-note">Auth</span>
+              <span className="ssh-import-alias">{t("Host")}</span>
+              <span className="ssh-import-target">{t("Connects to")}</span>
+              <span className="ssh-import-note">{t("Auth")}</span>
             </label>
             {preview.entries.map((entry) => (
               <label
@@ -187,12 +209,16 @@ export function SshConfigImportDialog({ preview, onClose }: Props) {
                 <span className="ssh-import-target" title={target(entry)}>
                   {target(entry)}
                   {entry.jumps.length === 1 && (
-                    <span className="ssh-import-via"> via {entry.jumps[0]}</span>
+                    <span className="ssh-import-via">
+                      {" "}
+                      {t("via")} {entry.jumps[0]}
+                    </span>
                   )}
                   {entry.jumps.length > 1 && (
                     <span className="ssh-import-via">
                       {" "}
-                      via {entry.jumps.join(", ")} (multi-hop, not imported)
+                      {t("via")} {entry.jumps.join(", ")} (
+                      {t("multi-hop, not imported")})
                     </span>
                   )}
                 </span>
@@ -202,7 +228,7 @@ export function SshConfigImportDialog({ preview, onClose }: Props) {
                   </span>
                   {entry.existingId && (
                     <span className="ssh-import-existing">
-                      updates “{entry.existingName}”
+                      {t("updates")} “{entry.existingName}”
                     </span>
                   )}
                 </span>
@@ -210,14 +236,14 @@ export function SshConfigImportDialog({ preview, onClose }: Props) {
             ))}
           </div>
           <label className="ssh-import-group">
-            <span>Add new sessions to</span>
+            <span>{t("Add new sessions to")}</span>
             <span className="select-wrap">
               <select
                 className="select"
                 value={groupId}
                 onChange={(event) => setGroupId(event.target.value)}
               >
-                <option value="">SSH Sessions (no group)</option>
+                <option value="">{t("SSH Sessions (no group)")}</option>
                 {sshGroups.map((group) => (
                   <option key={group.id} value={group.id}>
                     {group.label}
@@ -228,19 +254,21 @@ export function SshConfigImportDialog({ preview, onClose }: Props) {
             </span>
           </label>
           <span className="confirm-dialog-hint">
-            Hosts already saved start unchecked; checking one updates that
-            session’s host, port and user from the file. A single jump host
-            comes along; a multi-hop ProxyJump is not imported. Passwords are
-            never in the file, so imported sessions ask for theirs.
+            {t(
+              "Hosts already saved start unchecked; checking one updates that session’s host, port and user from the file. A single jump host comes along; a multi-hop ProxyJump is not imported. Passwords are never in the file, so imported sessions ask for theirs.",
+            )}
           </span>
           {error && <div className="dialog-error">{error}</div>}
         </div>
         <div className="dialog-footer confirm-dialog-footer">
           <span className="confirm-dialog-keys">
-            {selected.size} of {preview.entries.length} selected
+            {t("{selected} of {total} selected", {
+              selected: selected.size,
+              total: preview.entries.length,
+            })}
           </span>
           <button type="button" className="btn" onClick={onClose}>
-            Cancel
+            {t("Cancel")}
           </button>
           <button
             type="button"
@@ -248,7 +276,7 @@ export function SshConfigImportDialog({ preview, onClose }: Props) {
             disabled={busy || selected.size === 0}
             onClick={() => void submit()}
           >
-            Import
+            {t("Import")}
           </button>
         </div>
       </div>
