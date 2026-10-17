@@ -1,6 +1,14 @@
 import { create } from "zustand";
 
 import * as api from "./api";
+import {
+  getUiLanguage,
+  parseUiLanguage,
+  resetUiLanguage,
+  setUiLanguage,
+  t,
+  type UiLanguage,
+} from "./i18n";
 import { commandHistory } from "./history";
 import {
   adjacentPane,
@@ -522,6 +530,8 @@ export interface AppSettings {
   rightClickAction: RightClickAction;
   /** Only the key bindings that differ from the platform defaults. */
   shortcuts: Partial<ShortcutBindings>;
+  /** Interface language; lives in i18n.ts, mirrored here for data exports. */
+  uiLanguage: UiLanguage;
 }
 
 interface AppStore {
@@ -887,7 +897,7 @@ export const useStore = create<AppStore>((set, get) => ({
   shortcuts: initialShortcuts,
   panels: loadPanels(),
   panelDocks: loadPanelDocks(),
-  status: "Ready",
+  status: t("Ready"),
   error: null,
   errorSessionId: null,
   hostKeyPrompt: null,
@@ -1032,7 +1042,7 @@ export const useStore = create<AppStore>((set, get) => ({
     set({
       ...settled,
       tabs: acknowledgeTab(settled.tabs, settled.activeId),
-      status: clearsSessionError ? "Ready" : current.status,
+      status: clearsSessionError ? t("Ready") : current.status,
       error: clearsSessionError ? null : current.error,
       errorSessionId: clearsSessionError ? null : current.errorSessionId,
       hostKeyPrompt:
@@ -1428,6 +1438,7 @@ export const useStore = create<AppStore>((set, get) => ({
       programClipboard: "ask",
       rightClickAction: defaultRightClickAction(),
     });
+    resetUiLanguage();
     try {
       localStorage.removeItem(PANELS_KEY);
       localStorage.removeItem(PANEL_DOCKS_KEY);
@@ -1475,6 +1486,7 @@ export const useStore = create<AppStore>((set, get) => ({
       programClipboard: state.programClipboard,
       rightClickAction: state.rightClickAction,
       shortcuts: shortcutOverrides(state.shortcuts),
+      uiLanguage: getUiLanguage(),
     };
   },
 
@@ -1533,6 +1545,8 @@ export const useStore = create<AppStore>((set, get) => ({
     if (rightClickAction) state.setRightClickAction(rightClickAction);
     const shortcuts = parseShortcuts(values.shortcuts, state.shortcuts);
     if (shortcuts) state.setShortcuts(shortcuts);
+    const uiLanguage = parseUiLanguage(values.uiLanguage);
+    if (uiLanguage) setUiLanguage(uiLanguage);
   },
 
   bumpSenderLibrary() {

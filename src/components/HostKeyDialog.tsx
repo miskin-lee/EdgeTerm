@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 
+import { useT } from "../i18n";
 import type { HostKeyPrompt } from "../store";
 
 interface Props {
@@ -24,6 +25,7 @@ function serverKeyFile(keyType: string): string {
  */
 export function HostKeyDialog({ prompt, onAccept, onCancel }: Props) {
   const { change } = prompt;
+  const t = useT();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const cancelRef = useRef<HTMLButtonElement>(null);
@@ -67,38 +69,37 @@ export function HostKeyDialog({ prompt, onAccept, onCancel }: Props) {
         onMouseDown={(event) => event.stopPropagation()}
       >
         <div className="dialog-header" id="host-key-title">
-          Host Key Changed
+          {t("Host Key Changed")}
         </div>
         <div className="dialog-body confirm-dialog-body">
           <span>
             <strong>
               {change.host}:{change.port}
             </strong>{" "}
-            presented a key that does not match the one recorded for it.
+            {t("presented a key that does not match the one recorded for it.")}
           </span>
           <dl className="host-key-facts">
-            <dt>New key</dt>
+            <dt>{t("New key")}</dt>
             <dd>
               {change.keyType} {change.fingerprint}
             </dd>
-            <dt>Recorded in</dt>
+            <dt>{t("Recorded in")}</dt>
             <dd>
-              {change.knownHosts}, line {change.line}
+              {change.knownHosts}, {t("line")} {change.line}
             </dd>
           </dl>
           <span className="confirm-dialog-hint">
-            Accept only if you expect this — the server was reinstalled, or the
-            address now belongs to a different machine. A changed key can also
-            mean the connection is being intercepted; when in doubt, cancel and
-            compare the fingerprint with{" "}
-            <code>ssh-keygen -lf {serverKeyFile(change.keyType)}</code> on the
-            server. Accepting replaces every key recorded for this host.
+            {t(
+              "Accept only if you expect this — the server was reinstalled, or the address now belongs to a different machine. A changed key can also mean the connection is being intercepted; when in doubt, cancel and compare the fingerprint with",
+            )}{" "}
+            <code>ssh-keygen -lf {serverKeyFile(change.keyType)}</code>{" "}
+            {t("on the server. Accepting replaces every key recorded for this host.")}
           </span>
           {error && <div className="dialog-error">{error}</div>}
         </div>
         <div className="dialog-footer confirm-dialog-footer">
           <span className="confirm-dialog-keys">
-            <kbd>Esc</kbd> cancel
+            <kbd>Esc</kbd> {t("cancel")}
           </span>
           <button
             ref={cancelRef}
@@ -107,7 +108,7 @@ export function HostKeyDialog({ prompt, onAccept, onCancel }: Props) {
             onClick={onCancel}
             disabled={busy}
           >
-            Cancel
+            {t("Cancel")}
           </button>
           <button
             type="button"
@@ -115,7 +116,7 @@ export function HostKeyDialog({ prompt, onAccept, onCancel }: Props) {
             onClick={() => void accept()}
             disabled={busy}
           >
-            {busy ? "Accepting…" : "Accept New Key"}
+            {busy ? t("Accepting…") : t("Accept New Key")}
           </button>
         </div>
       </div>

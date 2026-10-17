@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 
 import * as api from "../api";
+import { t, useT } from "../i18n";
 import { FileIcon } from "./FileIcon";
 import { Icon } from "./icons";
 import { useStore, type Tab } from "../store";
@@ -40,6 +41,7 @@ interface FileBrowserProps {
 }
 
 export function FtpPane({ tab, active }: Props) {
+  const t = useT();
   const sessionId = tab.info.id;
   // The pane serves both FTP and SFTP file sessions; only the labels differ.
   const protocolLabel = tab.info.kind === "sftp" ? "SFTP" : "FTP";
@@ -156,15 +158,22 @@ export function FtpPane({ tab, active }: Props) {
     if (existingRemote && existingRemote.isDir !== selectedLocal.isDir) {
       setRemoteError(
         selectedLocal.isDir
-          ? `A remote file named “${selectedLocal.name}” already exists.`
-          : `A remote folder named “${selectedLocal.name}” already exists.`,
+          ? t("A remote file named “{name}” already exists.", {
+              name: selectedLocal.name,
+            })
+          : t("A remote folder named “{name}” already exists.", {
+              name: selectedLocal.name,
+            }),
       );
       return;
     }
     if (existingRemote) {
       const prompt = selectedLocal.isDir
-        ? `Merge into remote folder “${selectedLocal.name}”? Existing files with the same names will be replaced.`
-        : `Replace remote file “${selectedLocal.name}”?`;
+        ? t(
+            "Merge into remote folder “{name}”? Existing files with the same names will be replaced.",
+            { name: selectedLocal.name },
+          )
+        : t("Replace remote file “{name}”?", { name: selectedLocal.name });
       if (!window.confirm(prompt)) return;
     }
 
@@ -218,21 +227,32 @@ export function FtpPane({ tab, active }: Props) {
       (entry) => entry.name === selectedRemote.name,
     );
     if (existingLocal?.isSymlink) {
-      setLocalError(`Refusing to replace local symlink “${selectedRemote.name}”.`);
+      setLocalError(
+        t("Refusing to replace local symlink “{name}”.", {
+          name: selectedRemote.name,
+        }),
+      );
       return;
     }
     if (existingLocal && existingLocal.isDir !== selectedRemote.isDir) {
       setLocalError(
         selectedRemote.isDir
-          ? `A local file named “${selectedRemote.name}” already exists.`
-          : `A local folder named “${selectedRemote.name}” already exists.`,
+          ? t("A local file named “{name}” already exists.", {
+              name: selectedRemote.name,
+            })
+          : t("A local folder named “{name}” already exists.", {
+              name: selectedRemote.name,
+            }),
       );
       return;
     }
     if (existingLocal) {
       const prompt = selectedRemote.isDir
-        ? `Merge into local folder “${selectedRemote.name}”? Existing files with the same names will be replaced.`
-        : `Replace local file “${selectedRemote.name}”?`;
+        ? t(
+            "Merge into local folder “{name}”? Existing files with the same names will be replaced.",
+            { name: selectedRemote.name },
+          )
+        : t("Replace local file “{name}”?", { name: selectedRemote.name });
       if (!window.confirm(prompt)) return;
     }
 
@@ -279,7 +299,7 @@ export function FtpPane({ tab, active }: Props) {
 
   const createRemoteFolder = async () => {
     if (!remotePath || transferring) return;
-    const name = window.prompt("New remote folder name")?.trim();
+    const name = window.prompt(t("New remote folder name"))?.trim();
     if (!name) return;
     setRemoteError(null);
     try {
@@ -292,7 +312,7 @@ export function FtpPane({ tab, active }: Props) {
 
   const renameRemote = async () => {
     if (!selectedRemote || transferring) return;
-    const name = window.prompt("Rename remote item", selectedRemote.name)?.trim();
+    const name = window.prompt(t("Rename remote item"), selectedRemote.name)?.trim();
     if (!name || name === selectedRemote.name) return;
     setRemoteError(null);
     try {
@@ -309,7 +329,8 @@ export function FtpPane({ tab, active }: Props) {
 
   const removeRemote = async () => {
     if (!selectedRemote || transferring) return;
-    if (!window.confirm(`Delete remote ${selectedRemote.name}?`)) return;
+    if (!window.confirm(t("Delete remote {name}?", { name: selectedRemote.name })))
+      return;
     setRemoteError(null);
     try {
       await api.sftpRemove(
@@ -325,7 +346,7 @@ export function FtpPane({ tab, active }: Props) {
 
   const createLocalFolder = async () => {
     if (!localPath || transferring) return;
-    const name = window.prompt("New local folder name")?.trim();
+    const name = window.prompt(t("New local folder name"))?.trim();
     if (!name) return;
     setLocalError(null);
     try {
@@ -338,7 +359,7 @@ export function FtpPane({ tab, active }: Props) {
 
   const renameLocal = async () => {
     if (!selectedLocal || transferring) return;
-    const name = window.prompt("Rename local item", selectedLocal.name)?.trim();
+    const name = window.prompt(t("Rename local item"), selectedLocal.name)?.trim();
     if (!name || name === selectedLocal.name) return;
     setLocalError(null);
     try {
@@ -354,8 +375,11 @@ export function FtpPane({ tab, active }: Props) {
 
   const removeLocal = async () => {
     if (!selectedLocal || transferring) return;
-    const type = selectedLocal.isDir ? "empty local folder" : "local file";
-    if (!window.confirm(`Delete ${type} “${selectedLocal.name}”?`)) return;
+    const type = selectedLocal.isDir ? t("empty local folder") : t("local file");
+    if (
+      !window.confirm(t("Delete {type} “{name}”?", { type, name: selectedLocal.name }))
+    )
+      return;
     setLocalError(null);
     try {
       await api.localRemove(
@@ -382,8 +406,8 @@ export function FtpPane({ tab, active }: Props) {
         <div className={`ftp-session-state is-${tab.state}`}>
           <strong>
             {tab.state === "connecting"
-              ? `Connecting to ${protocolLabel}…`
-              : `${protocolLabel} unavailable`}
+              ? t("Connecting to {protocol}…", { protocol: protocolLabel })
+              : t("{protocol} unavailable", { protocol: protocolLabel })}
           </strong>
           <span>{tab.message ?? tab.info.address}</span>
         </div>
@@ -391,7 +415,7 @@ export function FtpPane({ tab, active }: Props) {
         <>
           <div className="ftp-dual-pane">
             <FileBrowser
-              title={`${protocolLabel} Server`}
+              title={t("{protocol} Server", { protocol: protocolLabel })}
               subtitle={tab.info.address}
               path={remotePath}
               draft={remoteDraft}
@@ -411,21 +435,21 @@ export function FtpPane({ tab, active }: Props) {
               actions={
                 <>
                   <ToolButton
-                    label="New remote folder"
+                    label={t("New remote folder")}
                     onClick={() => void createRemoteFolder()}
                     disabled={remoteLoading || transferring}
                   >
                     <Icon name="new-folder" />
                   </ToolButton>
                   <ToolButton
-                    label="Rename remote item"
+                    label={t("Rename remote item")}
                     onClick={() => void renameRemote()}
                     disabled={!selectedRemote || remoteLoading || transferring}
                   >
                     <Icon name="edit" />
                   </ToolButton>
                   <ToolButton
-                    label="Delete remote item"
+                    label={t("Delete remote item")}
                     onClick={() => void removeRemote()}
                     disabled={!selectedRemote || remoteLoading || transferring}
                     danger
@@ -436,30 +460,32 @@ export function FtpPane({ tab, active }: Props) {
               }
             />
 
-            <div className="ftp-transfer-rail" aria-label="File transfer actions">
+            <div className="ftp-transfer-rail" aria-label={t("File transfer actions")}>
               <button
                 className="ftp-transfer-button"
                 onClick={() => void upload()}
                 disabled={!selectedLocal || transferring}
-                title="Upload selected local file or folder"
+                title={t("Upload selected local file or folder")}
               >
                 <span>←</span>
-                Upload
+                {t("Upload")}
               </button>
               <button
                 className="ftp-transfer-button"
                 onClick={() => void download()}
                 disabled={!selectedRemote || transferring}
-                title={`Download selected ${protocolLabel} file or folder`}
+                title={t("Download selected {protocol} file or folder", {
+                  protocol: protocolLabel,
+                })}
               >
-                Download
+                {t("Download")}
                 <span>→</span>
               </button>
             </div>
 
             <FileBrowser
-              title="Local Computer"
-              subtitle="This device"
+              title={t("Local Computer")}
+              subtitle={t("This device")}
               path={localPath}
               draft={localDraft}
               entries={localEntries}
@@ -480,21 +506,21 @@ export function FtpPane({ tab, active }: Props) {
               actions={
                 <>
                   <ToolButton
-                    label="New local folder"
+                    label={t("New local folder")}
                     onClick={() => void createLocalFolder()}
                     disabled={localLoading || transferring}
                   >
                     <Icon name="new-folder" />
                   </ToolButton>
                   <ToolButton
-                    label="Rename local item"
+                    label={t("Rename local item")}
                     onClick={() => void renameLocal()}
                     disabled={!selectedLocal || localLoading || transferring}
                   >
                     <Icon name="edit" />
                   </ToolButton>
                   <ToolButton
-                    label="Delete local item"
+                    label={t("Delete local item")}
                     onClick={() => void removeLocal()}
                     disabled={!selectedLocal || localLoading || transferring}
                     danger
@@ -512,12 +538,12 @@ export function FtpPane({ tab, active }: Props) {
                 <div className="ftp-transfer-summary">
                   <span>
                     {transfer.status === "complete"
-                      ? "Complete"
+                      ? t("Complete")
                       : transfer.status === "error"
-                        ? "Failed"
+                        ? t("Failed")
                         : transfer.direction === "upload"
-                          ? "Uploading"
-                          : "Downloading"}
+                          ? t("Uploading")
+                          : t("Downloading")}
                     : {transfer.name}
                   </span>
                   <span>
@@ -540,7 +566,12 @@ export function FtpPane({ tab, active }: Props) {
                 )}
               </>
             ) : (
-              <span>{`Select a local file or folder to upload, or a ${protocolLabel} file or folder to download.`}</span>
+              <span>
+                {t(
+                  "Select a local file or folder to upload, or a {protocol} file or folder to download.",
+                  { protocol: protocolLabel },
+                )}
+              </span>
             )}
           </div>
         </>
@@ -567,6 +598,7 @@ function FileBrowser({
   onSelect,
   onActivate,
 }: FileBrowserProps) {
+  const t = useT();
   const theme = useStore((s) => s.theme);
   return (
     <section className="ftp-file-browser">
@@ -576,13 +608,13 @@ function FileBrowser({
           <span>{subtitle}</span>
         </div>
         <div className="ftp-browser-actions">
-          <ToolButton label="Home" onClick={onHome} disabled={loading}>
+          <ToolButton label={t("Home")} onClick={onHome} disabled={loading}>
             <Icon name="home" />
           </ToolButton>
-          <ToolButton label="Parent folder" onClick={onParent} disabled={loading || !path}>
+          <ToolButton label={t("Parent folder")} onClick={onParent} disabled={loading || !path}>
             <Icon name="arrow-up" />
           </ToolButton>
-          <ToolButton label="Refresh" onClick={onRefresh} disabled={loading}>
+          <ToolButton label={t("Refresh")} onClick={onRefresh} disabled={loading}>
             <Icon name="refresh" />
           </ToolButton>
           {actions}
@@ -592,7 +624,7 @@ function FileBrowser({
       <div className="ftp-browser-path">
         <input
           value={draft}
-          aria-label={`${title} path`}
+          aria-label={t("{title} path", { title })}
           onChange={(event) => onDraftChange(event.target.value)}
           onKeyDown={(event) => {
             if (event.key === "Enter") onOpenPath(draft);
@@ -602,16 +634,16 @@ function FileBrowser({
       </div>
 
       <div className="ftp-browser-columns">
-        <span>Name</span>
-        <span>Size</span>
-        <span>Modified</span>
+        <span>{t("Name")}</span>
+        <span>{t("Size")}</span>
+        <span>{t("Modified")}</span>
       </div>
 
-      <div className="ftp-browser-list" role="listbox" aria-label={`${title} files`}>
+      <div className="ftp-browser-list" role="listbox" aria-label={t("{title} files", { title })}>
         {error && <div className="ftp-browser-message is-error">{error}</div>}
-        {!error && loading && <div className="ftp-browser-message">Loading…</div>}
+        {!error && loading && <div className="ftp-browser-message">{t("Loading…")}</div>}
         {!error && !loading && entries.length === 0 && (
-          <div className="ftp-browser-message">This folder is empty.</div>
+          <div className="ftp-browser-message">{t("This folder is empty.")}</div>
         )}
         {!error &&
           entries.map((entry) => (
@@ -636,8 +668,8 @@ function FileBrowser({
           ))}
       </div>
       <div className="ftp-browser-footer">
-        <span>{entries.length} items</span>
-        <span>{loading ? "Loading…" : path}</span>
+        <span>{t("{count} items", { count: entries.length })}</span>
+        <span>{loading ? t("Loading…") : path}</span>
       </div>
     </section>
   );
@@ -707,7 +739,9 @@ function formatDate(seconds: number | null): string {
 function friendlyFtpError(error: unknown): string {
   const message = String(error);
   if (message.includes("Response contains an invalid syntax")) {
-    return "The FTP server returned a legacy or non-UTF-8 directory listing. Reconnect after updating EdgeTerm and try again.";
+    return t(
+      "The FTP server returned a legacy or non-UTF-8 directory listing. Reconnect after updating EdgeTerm and try again.",
+    );
   }
   return message;
 }

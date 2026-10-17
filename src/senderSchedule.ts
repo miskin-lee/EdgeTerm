@@ -1,5 +1,6 @@
 import { useSyncExternalStore } from "react";
 
+import { t } from "./i18n";
 import { newStopSignal, sendUnits, type StopSignal } from "./senderSend";
 import { buildUnits, type SendUnit } from "./senderUnits";
 import { useStore } from "./store";
@@ -138,8 +139,9 @@ export function startSchedule(spec: ScheduleSpec): string | null {
   } catch (error) {
     return String(error);
   }
-  if (units.length === 0) return "enter a command before repeating it";
-  if (spec.target === "current" && !spec.sessionId) return "no session selected";
+  if (units.length === 0) return t("enter a command before repeating it");
+  if (spec.target === "current" && !spec.sessionId)
+    return t("no session selected");
 
   stopSchedule();
   const entry: Active = {
@@ -161,14 +163,14 @@ export function startSchedule(spec: ScheduleSpec): string | null {
     const { ids, gone } = targetsOf(spec);
     if (gone) {
       stopSchedule();
-      setStatus("Sender: stopped repeating, the session was closed");
+      setStatus(t("Sender: stopped repeating, the session was closed"));
       return;
     }
     if (ids.length > 0) {
       try {
         await sendUnits(ids, entry.units, spec.ending, entry.stop);
       } catch (error) {
-        setStatus(`Sender: ${error}`);
+        setStatus(t("Sender: {error}", { error: String(error) }));
       }
     }
     if (active !== entry) return;
@@ -177,7 +179,7 @@ export function startSchedule(spec: ScheduleSpec): string | null {
     if (spec.times > 0 && sent >= spec.times) {
       active = null;
       notify();
-      setStatus(`Sender: repeated the command ${sent} times, done`);
+      setStatus(t("Sender: repeated the command {sent} times, done", { sent }));
       return;
     }
     const nextAt = Date.now() + spec.every * 1000;

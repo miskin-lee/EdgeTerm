@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 
+import { useT } from "../i18n";
 import { pasteLines } from "../terminalPaste";
 
 interface Props {
@@ -24,6 +25,7 @@ const PREVIEW_COLUMNS = 120;
  * Enter allows and Esc denies.
  */
 export function ClipboardWriteDialog({ session, text, onAllow, onDeny }: Props) {
+  const t = useT();
   const allowRef = useRef<HTMLButtonElement>(null);
   const [always, setAlways] = useState(false);
   const alwaysRef = useRef(always);
@@ -61,13 +63,16 @@ export function ClipboardWriteDialog({ session, text, onAllow, onDeny }: Props) 
         onMouseDown={(event) => event.stopPropagation()}
       >
         <div className="dialog-header" id="clipboard-write-title">
-          Allow Clipboard Access
+          {t("Allow Clipboard Access")}
         </div>
         <div className="dialog-body confirm-dialog-body">
           <span>
-            A program in <strong>{session}</strong> wants to copy{" "}
-            {text.length.toLocaleString()} characters to the clipboard.
-            Allowing it lets this session set the clipboard until it closes.
+            {t("A program in")} <strong>{session}</strong>{" "}
+            {t("wants to copy")}{" "}
+            {text.length.toLocaleString()}{" "}
+            {t(
+              "characters to the clipboard. Allowing it lets this session set the clipboard until it closes.",
+            )}
           </span>
           <pre className="paste-warning-preview">
             {shown.map((line, index) => (
@@ -80,7 +85,9 @@ export function ClipboardWriteDialog({ session, text, onAllow, onDeny }: Props) 
             ))}
             {preview.length > shown.length && (
               <span className="paste-warning-more">
-                … and {preview.length - shown.length} more lines
+                {t("… and {count} more lines", {
+                  count: preview.length - shown.length,
+                })}
               </span>
             )}
           </pre>
@@ -90,15 +97,15 @@ export function ClipboardWriteDialog({ session, text, onAllow, onDeny }: Props) 
               checked={always}
               onChange={(event) => setAlways(event.target.checked)}
             />
-            <span>Always allow programs to set the clipboard</span>
+            <span>{t("Always allow programs to set the clipboard")}</span>
           </label>
         </div>
         <div className="dialog-footer confirm-dialog-footer">
           <span className="confirm-dialog-keys">
-            <kbd>Enter</kbd> allow · <kbd>Esc</kbd> deny
+            <kbd>Enter</kbd> {t("allow")} · <kbd>Esc</kbd> {t("deny")}
           </span>
           <button type="button" className="btn" onClick={onDeny}>
-            Deny
+            {t("Deny")}
           </button>
           <button
             ref={allowRef}
@@ -106,7 +113,7 @@ export function ClipboardWriteDialog({ session, text, onAllow, onDeny }: Props) 
             className="btn is-primary"
             onClick={() => onAllow(always)}
           >
-            Allow
+            {t("Allow")}
           </button>
         </div>
       </div>

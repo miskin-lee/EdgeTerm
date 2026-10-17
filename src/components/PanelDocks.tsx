@@ -18,6 +18,7 @@ import {
   type PanelDock,
 } from "../panelDock";
 import { type PanelName, useStore } from "../store";
+import { useT } from "../i18n";
 import { ContextMenu, type MenuItem } from "./ContextMenu";
 import { Splitter } from "./Splitter";
 
@@ -239,6 +240,7 @@ interface Pending {
 }
 
 export function DockArea({ dock, panels, size, render }: DockAreaProps) {
+  const t = useT();
   const side = dock !== "bottom";
   const ref = useRef<HTMLDivElement>(null);
   const movePanel = useStore((s) => s.movePanel);
@@ -366,7 +368,7 @@ export function DockArea({ dock, panels, size, render }: DockAreaProps) {
     const current = dockOf(panelDocks, panel);
     return [
       ...DOCK_NAMES.map((name) => ({
-        label: `Dock ${DOCK_LABELS[name]}`,
+        label: t("Dock {dock}", { dock: t(DOCK_LABELS[name]) }),
         checked: current === name,
         mark: "radio" as const,
         action: () => {
@@ -375,7 +377,7 @@ export function DockArea({ dock, panels, size, render }: DockAreaProps) {
       })),
       "separator",
       {
-        label: `Hide ${PANEL_LABELS[panel]}`,
+        label: t("Hide {panel}", { panel: t(PANEL_LABELS[panel]) }),
         action: () => togglePanel(panel),
       },
     ];

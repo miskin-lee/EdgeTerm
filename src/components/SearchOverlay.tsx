@@ -8,6 +8,7 @@ import {
 } from "react";
 import { flushSync } from "react-dom";
 
+import { t, useT } from "../i18n";
 import { matchAppShortcut } from "../shortcuts";
 import { useActiveTab, useStore } from "../store";
 import {
@@ -52,7 +53,7 @@ const selectedText = (sessionId: string | null) => {
 
 /** "3/12", "1000+" past the highlight limit, or "No results". */
 const formatResults = ({ resultIndex, resultCount }: SearchResults) => {
-  if (resultCount === 0) return "No results";
+  if (resultCount === 0) return t("No results");
   const total =
     resultCount >= SEARCH_HIGHLIGHT_LIMIT
       ? `${SEARCH_HIGHLIGHT_LIMIT}+`
@@ -67,6 +68,7 @@ const formatResults = ({ resultIndex, resultCount }: SearchResults) => {
  */
 export const SearchOverlay = forwardRef<SearchOverlayHandle, Props>(
   function SearchOverlay({ onClose }, ref) {
+    const t = useT();
     const tab = useActiveTab();
     const activeId = useStore((s) => s.activeId);
     const [query, setQuery] = useState(() => selectedText(activeId));
@@ -168,7 +170,7 @@ export const SearchOverlay = forwardRef<SearchOverlayHandle, Props>(
         <input
           ref={inputRef}
           value={query}
-          placeholder="Find in buffer"
+          placeholder={t("Find in buffer")}
           autoCapitalize="none"
           autoCorrect="off"
           spellCheck={false}
@@ -202,24 +204,24 @@ export const SearchOverlay = forwardRef<SearchOverlayHandle, Props>(
         <button
           className="panel-action"
           onClick={() => runSearch(false)}
-          title="Previous match"
-          aria-label="Previous match"
+          title={t("Previous match")}
+          aria-label={t("Previous match")}
         >
           <Icon name="arrow-up" />
         </button>
         <button
           className="panel-action"
           onClick={() => runSearch(true)}
-          title="Next match"
-          aria-label="Next match"
+          title={t("Next match")}
+          aria-label={t("Next match")}
         >
           <Icon name="arrow-down" />
         </button>
         <button
           className="panel-action"
           onClick={onClose}
-          title="Close search"
-          aria-label="Close search"
+          title={t("Close search")}
+          aria-label={t("Close search")}
         >
           <Icon name="close" />
         </button>

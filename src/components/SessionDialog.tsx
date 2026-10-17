@@ -9,6 +9,7 @@ import {
   LOCALE_SUGGESTIONS,
   TERMINAL_ENCODINGS,
 } from "../encodings";
+import { t, useT } from "../i18n";
 import { open as openDialog } from "../nativeDialog";
 import { IS_WINDOWS } from "../platform";
 import {
@@ -166,7 +167,9 @@ const describeJumpHost = (p: SessionProfile) =>
 
 function validateProfile(profile: SessionProfile): string | null {
   if (profile.locale && !LOCALE_NAME.test(profile.locale)) {
-    return "Locale must be a locale name such as en_US.UTF-8 or C.UTF-8.";
+    return t(
+      "Locale must be a locale name such as en_US.UTF-8 or C.UTF-8.",
+    );
   }
   if (profile.kind !== "serial") return null;
 
@@ -177,7 +180,7 @@ function validateProfile(profile: SessionProfile): string | null {
     baudRate <= 0 ||
     baudRate > 0xffffffff
   ) {
-    return "Baud rate must be a positive whole number up to 4294967295.";
+    return t("Baud rate must be a positive whole number up to 4294967295.");
   }
   return null;
 }
@@ -211,6 +214,7 @@ function nextColorIndex(
 }
 
 export function SessionDialog({ initial, onClose }: Props) {
+  const t = useT();
   const colorPickerRef = useRef<HTMLDivElement>(null);
   const { dialogRef, handleProps: dragHandleProps } =
     useDialogDrag<HTMLDivElement>();
@@ -308,18 +312,22 @@ export function SessionDialog({ initial, onClose }: Props) {
   // One line under the title saying what the form connects to as it is filled
   // in, so the header always names the target rather than repeating the mode.
   const summary = (): string => {
-    const name = PROTOCOL_NAMES[profile.kind];
+    const name = t(PROTOCOL_NAMES[profile.kind]);
     if (profile.kind === "local") {
       return `${name} · ${profile.shell?.trim() || (IS_WINDOWS ? "%COMSPEC%" : "$SHELL")}`;
     }
     if (profile.kind === "serial") {
       const port = profile.portName?.trim();
       return port
-        ? `${name} · ${port} · ${profile.baudRate ?? 115200} baud`
-        : `${name} · no port selected`;
+        ? t("{protocol} · {port} · {baud} baud", {
+            protocol: name,
+            port,
+            baud: profile.baudRate ?? 115200,
+          })
+        : t("{protocol} · no port selected", { protocol: name });
     }
     const host = profile.host?.trim();
-    if (!host) return `${name} · no host yet`;
+    if (!host) return t("{protocol} · no host yet", { protocol: name });
     const user = profile.username?.trim();
     return `${name} · ${user ? `${user}@` : ""}${host}:${profile.port ?? defaultPort(profile.kind)}`;
   };
@@ -335,7 +343,7 @@ export function SessionDialog({ initial, onClose }: Props) {
     return (
       <>
         <label className="session-field">
-          <span className="session-field-label">Encoding</span>
+          <span className="session-field-label">{t("Encoding")}</span>
           <select
             value={encoding}
             onChange={(event) => patch({ encoding: event.target.value })}
@@ -348,7 +356,7 @@ export function SessionDialog({ initial, onClose }: Props) {
           </select>
         </label>
         <label className="session-field">
-          <span className="session-field-label">Backspace sends</span>
+          <span className="session-field-label">{t("Backspace sends")}</span>
           <select
             value={profile.backspace ?? "delete"}
             onChange={(event) =>
@@ -362,12 +370,12 @@ export function SessionDialog({ initial, onClose }: Props) {
         {withLocale && (
           <>
             <label className="session-field">
-              <span className="session-field-label">Locale</span>
+              <span className="session-field-label">{t("Locale")}</span>
               <input
                 {...RAW_TEXT_INPUT}
                 list="session-locale-suggestions"
                 value={profile.locale ?? ""}
-                placeholder="Automatic"
+                placeholder={t("Automatic")}
                 onChange={(event) => patch({ locale: event.target.value })}
               />
               <datalist id="session-locale-suggestions">
@@ -380,13 +388,12 @@ export function SessionDialog({ initial, onClose }: Props) {
               <Icon name="info" />
               <span>
                 {profile.kind === "ssh"
-                  ? "The locale is sent as LANG when the shell starts, so " +
-                    "a server with AcceptEnv LANG prints file names in " +
-                    "UTF-8 instead of octal escapes. Empty keeps the " +
-                    "server's default."
-                  : "The locale becomes the shell's LANG. Empty inherits " +
-                    "the environment, with a UTF-8 locale filled in when " +
-                    "the environment names none."}
+                  ? t(
+                      "The locale is sent as LANG when the shell starts, so a server with AcceptEnv LANG prints file names in UTF-8 instead of octal escapes. Empty keeps the server's default.",
+                    )
+                  : t(
+                      "The locale becomes the shell's LANG. Empty inherits the environment, with a UTF-8 locale filled in when the environment names none.",
+                    )}
               </span>
             </div>
           </>
@@ -400,7 +407,7 @@ export function SessionDialog({ initial, onClose }: Props) {
       const picked = await openDialog({
         directory: true,
         multiple: false,
-        title: "Recording folder",
+        title: t("Recording folder"),
         defaultPath: profile.recordDir?.trim() || defaultRecordDir || undefined,
       });
       if (typeof picked === "string") patch({ recordDir: picked });
@@ -416,8 +423,8 @@ export function SessionDialog({ initial, onClose }: Props) {
     <section className="session-section">
       <div className="session-section-heading">
         <Icon name="record" />
-        <span>Recording</span>
-        <small>Terminal output to a file</small>
+        <span>{t("Recording")}</span>
+        <small>{t("Terminal output to a file")}</small>
       </div>
       <div className="session-form-grid">
         <label className="session-check is-wide">
@@ -426,41 +433,41 @@ export function SessionDialog({ initial, onClose }: Props) {
             checked={profile.record === true}
             onChange={(event) => patch({ record: event.target.checked })}
           />
-          <span>Record this session's output to a file</span>
+          <span>{t("Record this session's output to a file")}</span>
         </label>
         {profile.record === true && (
           <>
             <div className="session-field is-wide">
-              <span className="session-field-label">Folder</span>
+              <span className="session-field-label">{t("Folder")}</span>
               <div className="serial-port-row">
                 <input
                   {...RAW_TEXT_INPUT}
                   value={profile.recordDir ?? ""}
-                  placeholder={defaultRecordDir || "Default folder"}
+                  placeholder={defaultRecordDir || t("Default folder")}
                   onChange={(event) => patch({ recordDir: event.target.value })}
                 />
                 <button
                   type="button"
                   className="btn serial-refresh"
                   onClick={() => void browseRecordDir()}
-                  title="Choose a folder"
-                  aria-label="Choose a folder"
+                  title={t("Choose a folder")}
+                  aria-label={t("Choose a folder")}
                 >
                   <Icon name="folder-opened" />
                 </button>
               </div>
               <small className="session-field-hint">
-                Each connection starts a new file, named{" "}
-                {`${profile.name.trim() || defaultName()}_<date>_<time>.log`}.
+                {t("Each connection starts a new file, named {file}.", {
+                  file: `${profile.name.trim() || defaultName()}_<date>_<time>.log`,
+                })}
               </small>
             </div>
             <div className="session-note is-wide">
               <Icon name="info" />
               <span>
-                The file is the raw output the terminal received, escape
-                sequences included, so it replays in a terminal with cat. What
-                you type appears only as the far end echoes it, so a password
-                entered without echo is not recorded.
+                {t(
+                  "The file is the raw output the terminal received, escape sequences included, so it replays in a terminal with cat. What you type appears only as the far end echoes it, so a password entered without echo is not recorded.",
+                )}
               </span>
             </div>
           </>
@@ -474,17 +481,17 @@ export function SessionDialog({ initial, onClose }: Props) {
   const renderJumpHostField = () => (
     <>
       <label className="session-field is-wide">
-        <span className="session-field-label">Jump host</span>
+        <span className="session-field-label">{t("Jump host")}</span>
         <select
           value={profile.jumpProfileId ?? ""}
           onChange={(event) =>
             patch({ jumpProfileId: event.target.value || null })
           }
         >
-          <option value="">None — connect directly</option>
+          <option value="">{t("None — connect directly")}</option>
           {jumpHostMissing && (
             <option value={profile.jumpProfileId ?? ""}>
-              (deleted session)
+              {t("(deleted session)")}
             </option>
           )}
           {jumpChoices.map((p) => (
@@ -497,8 +504,9 @@ export function SessionDialog({ initial, onClose }: Props) {
       <div className="session-note is-wide">
         <Icon name="info" />
         <span>
-          Connect through a saved SSH session (ProxyJump) to reach a host that
-          is only visible from its network.
+          {t(
+            "Connect through a saved SSH session (ProxyJump) to reach a host that is only visible from its network.",
+          )}
         </span>
       </div>
     </>
@@ -510,22 +518,22 @@ export function SessionDialog({ initial, onClose }: Props) {
   const renderServerAuthFields = () => (
     <>
       <label className="session-field">
-        <span className="session-field-label">Authentication</span>
+        <span className="session-field-label">{t("Authentication")}</span>
         <select
           value={profile.auth ?? "password"}
           onChange={(event) =>
             patch({ auth: event.target.value as SessionProfile["auth"] })
           }
         >
-          <option value="password">Password</option>
-          <option value="publicKey">Public key</option>
-          <option value="agent">SSH agent</option>
+          <option value="password">{t("Password")}</option>
+          <option value="publicKey">{t("Public key")}</option>
+          <option value="agent">{t("SSH agent")}</option>
         </select>
       </label>
 
       {profile.auth === "password" && (
         <label className="session-field is-wide">
-          <span className="session-field-label">Password</span>
+          <span className="session-field-label">{t("Password")}</span>
           <input
             {...RAW_TEXT_INPUT}
             type="password"
@@ -533,7 +541,7 @@ export function SessionDialog({ initial, onClose }: Props) {
             // Left empty, the password is asked for at each connection (issue
             // #88). Only a new session can say so: a saved password never
             // reaches this dialog, so an existing one's empty field may hold one.
-            placeholder={initial?.id ? undefined : "Ask on connect"}
+            placeholder={initial?.id ? undefined : t("Ask on connect")}
             onChange={(event) => patch({ password: event.target.value })}
           />
         </label>
@@ -542,7 +550,7 @@ export function SessionDialog({ initial, onClose }: Props) {
       {profile.auth === "publicKey" && (
         <>
           <label className="session-field is-wide">
-            <span className="session-field-label">Private key</span>
+            <span className="session-field-label">{t("Private key")}</span>
             <input
               {...RAW_TEXT_INPUT}
               value={profile.privateKeyPath ?? ""}
@@ -551,7 +559,7 @@ export function SessionDialog({ initial, onClose }: Props) {
             />
           </label>
           <label className="session-field is-wide">
-            <span className="session-field-label">Passphrase</span>
+            <span className="session-field-label">{t("Passphrase")}</span>
             <input
               {...RAW_TEXT_INPUT}
               type="password"
@@ -604,7 +612,7 @@ export function SessionDialog({ initial, onClose }: Props) {
         passphrase: candidate.passphrase,
       });
       if (id) onClose();
-      else setError(useStore.getState().error ?? "connection failed");
+      else setError(useStore.getState().error ?? t("connection failed"));
     } catch (e) {
       setError(String(e));
     } finally {
@@ -656,7 +664,7 @@ export function SessionDialog({ initial, onClose }: Props) {
           </span>
           <div className="session-dialog-heading">
             <div id="session-dialog-title" className="session-dialog-title">
-              {initial?.id ? "Edit Session" : "New Session"}
+              {initial?.id ? t("Edit Session") : t("New Session")}
             </div>
             <div className="session-dialog-subtitle">{summary()}</div>
           </div>
@@ -664,7 +672,7 @@ export function SessionDialog({ initial, onClose }: Props) {
             className="panel-action"
             type="button"
             onClick={onClose}
-            aria-label="Close"
+            aria-label={t("Close")}
           >
             <Icon name="close" />
           </button>
@@ -674,16 +682,16 @@ export function SessionDialog({ initial, onClose }: Props) {
           <section className="session-section">
             <div className="session-section-heading">
               <Icon name="tag" />
-              <span>Session</span>
-              <small>Identity and protocol</small>
+              <span>{t("Session")}</span>
+              <small>{t("Identity and protocol")}</small>
             </div>
             <div className="session-form-grid">
               <div className="session-field is-wide">
-                <span className="session-field-label">Protocol</span>
+                <span className="session-field-label">{t("Protocol")}</span>
                 <div
                   className="protocol-picker"
                   role="radiogroup"
-                  aria-label="Protocol"
+                  aria-label={t("Protocol")}
                 >
                   {PROTOCOL_OPTIONS.map((option) => {
                     const active = option.kinds.includes(profile.kind);
@@ -719,10 +727,10 @@ export function SessionDialog({ initial, onClose }: Props) {
                           <Icon name={option.icon} />
                         </span>
                         <span className="protocol-option-label">
-                          {option.label}
+                          {t(option.label)}
                         </span>
                         <small className="protocol-option-hint">
-                          {option.hint}
+                          {t(option.hint)}
                         </small>
                       </button>
                     );
@@ -731,7 +739,7 @@ export function SessionDialog({ initial, onClose }: Props) {
               </div>
 
               <label className="session-field">
-                <span className="session-field-label">Name</span>
+                <span className="session-field-label">{t("Name")}</span>
                 <input
                   {...RAW_TEXT_INPUT}
                   value={profile.name}
@@ -741,12 +749,12 @@ export function SessionDialog({ initial, onClose }: Props) {
               </label>
 
               <div className="session-field">
-                <span className="session-field-label">Color</span>
+                <span className="session-field-label">{t("Color")}</span>
                 <div
                   ref={colorPickerRef}
                   className="session-color-picker"
                   role="radiogroup"
-                  aria-label="Session color"
+                  aria-label={t("Session color")}
                   onKeyDown={(event) => {
                     const current = SESSION_COLORS.indexOf(
                       (event.target as HTMLElement).dataset.color ?? "",
@@ -787,7 +795,7 @@ export function SessionDialog({ initial, onClose }: Props) {
                         className={`session-color-option${selected ? " is-selected" : ""}`}
                         style={{ background: color }}
                         aria-checked={selected}
-                        aria-label={`Use session color ${color}`}
+                        aria-label={t("Use session color {color}", { color })}
                         title={color}
                         onClick={() => patch({ color })}
                       />
@@ -797,7 +805,7 @@ export function SessionDialog({ initial, onClose }: Props) {
               </div>
               <div className="session-field is-wide">
                 <label className="session-field-label" htmlFor="session-group">
-                  Group
+                  {t("Group")}
                 </label>
                 <select
                   id="session-group"
@@ -807,7 +815,9 @@ export function SessionDialog({ initial, onClose }: Props) {
                   }
                 >
                   <option value="">
-                    {sectionLabel(profile.kind)} (no group)
+                    {t("{section} (no group)", {
+                      section: t(sectionLabel(profile.kind)),
+                    })}
                   </option>
                   {groupChoices.map(({ group }) => (
                     <option key={group.id} value={group.id}>
@@ -817,8 +827,9 @@ export function SessionDialog({ initial, onClose }: Props) {
                 </select>
                 {groupChoices.length === 0 && (
                   <small className="session-field-hint">
-                    Right-click a heading in the Session panel to create
-                    groups.
+                    {t(
+                      "Right-click a heading in the Session panel to create groups.",
+                    )}
                   </small>
                 )}
               </div>
@@ -831,18 +842,20 @@ export function SessionDialog({ initial, onClose }: Props) {
                 <Icon name="server" />
                 <span>
                   {profile.kind === "ssh"
-                    ? "SSH connection"
-                    : "Telnet connection"}
+                    ? t("SSH connection")
+                    : t("Telnet connection")}
                 </span>
                 <small>
                   {profile.kind === "ssh"
-                    ? "Server and authentication"
-                    : "Telnet · login typed at the server's prompt · unencrypted"}
+                    ? t("Server and authentication")
+                    : t(
+                        "Telnet · login typed at the server's prompt · unencrypted",
+                      )}
                 </small>
               </div>
               <div className="session-form-grid">
                 <div className="session-field is-wide">
-                  <span className="session-field-label">Protocol</span>
+                  <span className="session-field-label">{t("Protocol")}</span>
                   <div className="kind-picker">
                     {(["ssh", "telnet"] as SessionKind[]).map((sub) => (
                       <button
@@ -868,7 +881,7 @@ export function SessionDialog({ initial, onClose }: Props) {
                 </div>
 
                 <label className="session-field">
-                  <span className="session-field-label">Host</span>
+                  <span className="session-field-label">{t("Host")}</span>
                   <input
                     {...RAW_TEXT_INPUT}
                     value={profile.host ?? ""}
@@ -880,7 +893,7 @@ export function SessionDialog({ initial, onClose }: Props) {
                 </label>
 
                 <label className="session-field">
-                  <span className="session-field-label">Port</span>
+                  <span className="session-field-label">{t("Port")}</span>
                   <input
                     type="number"
                     min={1}
@@ -899,7 +912,9 @@ export function SessionDialog({ initial, onClose }: Props) {
                 {profile.kind === "ssh" ? (
                   <>
                     <label className="session-field">
-                      <span className="session-field-label">Username</span>
+                      <span className="session-field-label">
+                        {t("Username")}
+                      </span>
                       <input
                         {...RAW_TEXT_INPUT}
                         value={profile.username ?? ""}
@@ -917,25 +932,27 @@ export function SessionDialog({ initial, onClose }: Props) {
                 ) : (
                   <>
                     <label className="session-field">
-                      <span className="session-field-label">Username</span>
+                      <span className="session-field-label">
+                        {t("Username")}
+                      </span>
                       <input
                         {...RAW_TEXT_INPUT}
                         value={profile.username ?? ""}
-                        placeholder="Optional"
+                        placeholder={t("Optional")}
                         onChange={(event) =>
                           patch({ username: event.target.value })
                         }
                       />
                     </label>
                     <label className="session-field">
-                      <span className="session-field-label">Password</span>
+                      <span className="session-field-label">{t("Password")}</span>
                       <input
                         {...RAW_TEXT_INPUT}
                         type="password"
                         value={profile.password ?? ""}
                         // As for SSH, a saved password never reaches this
                         // dialog, so only a new session can say "optional".
-                        placeholder={initial?.id ? undefined : "Optional"}
+                        placeholder={initial?.id ? undefined : t("Optional")}
                         onChange={(event) =>
                           patch({ password: event.target.value })
                         }
@@ -944,29 +961,26 @@ export function SessionDialog({ initial, onClose }: Props) {
                     <div className="session-note is-wide">
                       <Icon name="info" />
                       <span>
-                        When the device prints a login prompt (Username:,
-                        login:, Password:) within a minute of connecting, the
-                        saved answer is typed for you, once. Leave a field
-                        empty to type it yourself.
+                        {t(
+                          "When the device prints a login prompt (Username:, login:, Password:) within a minute of connecting, the saved answer is typed for you, once. Leave a field empty to type it yourself.",
+                        )}
                       </span>
                     </div>
                     {renderTextFields(false)}
                     <div className="session-note is-wide">
                       <Icon name="info" />
                       <span>
-                        Port 23 opens with the usual telnet negotiation. On
-                        any other port the connection stays plain until the
-                        server negotiates, so text services such as HTTP or
-                        SMTP can be tested too; lines are edited and echoed
-                        locally until the server echoes them itself.
+                        {t(
+                          "Port 23 opens with the usual telnet negotiation. On any other port the connection stays plain until the server negotiates, so text services such as HTTP or SMTP can be tested too; lines are edited and echoed locally until the server echoes them itself.",
+                        )}
                       </span>
                     </div>
                     <div className="session-note is-warning is-wide">
                       <Icon name="warning" />
                       <span>
-                        Telnet sends everything you type, passwords included,
-                        without encryption. Use it only on a trusted network —
-                        choose SSH when the device supports it.
+                        {t(
+                          "Telnet sends everything you type, passwords included, without encryption. Use it only on a trusted network — choose SSH when the device supports it.",
+                        )}
                       </span>
                     </div>
                   </>
@@ -979,16 +993,16 @@ export function SessionDialog({ initial, onClose }: Props) {
             <section className="session-section">
               <div className="session-section-heading">
                 <Icon name="folder" />
-                <span>(S)FTP connection</span>
+                <span>{t("(S)FTP connection")}</span>
                 <small>
                   {profile.kind === "sftp"
-                    ? "SFTP · encrypted file transfer over SSH"
-                    : "FTP · passive mode · unencrypted"}
+                    ? t("SFTP · encrypted file transfer over SSH")
+                    : t("FTP · passive mode · unencrypted")}
                 </small>
               </div>
               <div className="session-form-grid">
                 <div className="session-field is-wide">
-                  <span className="session-field-label">Protocol</span>
+                  <span className="session-field-label">{t("Protocol")}</span>
                   <div className="kind-picker">
                     {(["sftp", "ftp"] as SessionKind[]).map((sub) => (
                       <button
@@ -1014,7 +1028,7 @@ export function SessionDialog({ initial, onClose }: Props) {
                 </div>
 
                 <label className="session-field">
-                  <span className="session-field-label">Host</span>
+                  <span className="session-field-label">{t("Host")}</span>
                   <input
                     {...RAW_TEXT_INPUT}
                     value={profile.host ?? ""}
@@ -1028,7 +1042,7 @@ export function SessionDialog({ initial, onClose }: Props) {
                 </label>
 
                 <label className="session-field">
-                  <span className="session-field-label">Port</span>
+                  <span className="session-field-label">{t("Port")}</span>
                   <input
                     type="number"
                     min={1}
@@ -1045,7 +1059,7 @@ export function SessionDialog({ initial, onClose }: Props) {
                 </label>
 
                 <label className="session-field">
-                  <span className="session-field-label">Username</span>
+                  <span className="session-field-label">{t("Username")}</span>
                   <input
                     {...RAW_TEXT_INPUT}
                     value={profile.username ?? ""}
@@ -1062,12 +1076,12 @@ export function SessionDialog({ initial, onClose }: Props) {
                 ) : (
                   <>
                     <label className="session-field">
-                      <span className="session-field-label">Password</span>
+                      <span className="session-field-label">{t("Password")}</span>
                       <input
                         {...RAW_TEXT_INPUT}
                         type="password"
                         value={profile.password ?? ""}
-                        placeholder="Optional for anonymous FTP"
+                        placeholder={t("Optional for anonymous FTP")}
                         onChange={(event) =>
                           patch({ password: event.target.value })
                         }
@@ -1077,9 +1091,9 @@ export function SessionDialog({ initial, onClose }: Props) {
                     <div className="session-note is-warning is-wide">
                       <Icon name="warning" />
                       <span>
-                        Standard FTP sends credentials and file contents
-                        without encryption. Use it only on a trusted network —
-                        choose SFTP when transport security is required.
+                        {t(
+                          "Standard FTP sends credentials and file contents without encryption. Use it only on a trusted network — choose SFTP when transport security is required.",
+                        )}
                       </span>
                     </div>
                   </>
@@ -1092,12 +1106,12 @@ export function SessionDialog({ initial, onClose }: Props) {
             <section className="session-section">
               <div className="session-section-heading">
                 <Icon name="terminal" />
-                <span>Local shell</span>
-                <small>Process and working directory</small>
+                <span>{t("Local shell")}</span>
+                <small>{t("Process and working directory")}</small>
               </div>
               <div className="session-form-grid">
                 <label className="session-field is-wide">
-                  <span className="session-field-label">Shell</span>
+                  <span className="session-field-label">{t("Shell")}</span>
                   <input
                     {...RAW_TEXT_INPUT}
                     value={profile.shell ?? ""}
@@ -1106,11 +1120,11 @@ export function SessionDialog({ initial, onClose }: Props) {
                   />
                 </label>
                 <label className="session-field is-wide">
-                  <span className="session-field-label">Directory</span>
+                  <span className="session-field-label">{t("Directory")}</span>
                   <input
                     {...RAW_TEXT_INPUT}
                     value={profile.cwd ?? ""}
-                    placeholder="Home directory"
+                    placeholder={t("Home directory")}
                     onChange={(event) => patch({ cwd: event.target.value })}
                   />
                 </label>
@@ -1123,17 +1137,22 @@ export function SessionDialog({ initial, onClose }: Props) {
             <section className="session-section">
               <div className="session-section-heading">
                 <Icon name="circuit-board" />
-                <span>Serial connection</span>
+                <span>{t("Serial connection")}</span>
                 <small>
                   {profile.dataBits ?? 8}-{parityCode}-{profile.stopBits ?? 1}
                   {profile.flowControl && profile.flowControl !== "none"
-                    ? ` · ${profile.flowControl} flow`
-                    : " · no flow control"}
+                    ? t(" · {mode} flow", {
+                        mode:
+                          profile.flowControl === "software"
+                            ? t("XON/XOFF (software)")
+                            : t("RTS/CTS (hardware)"),
+                      })
+                    : t(" · no flow control")}
                 </small>
               </div>
               <div className="session-form-grid">
                 <div className="session-field is-wide">
-                  <span className="session-field-label">Port</span>
+                  <span className="session-field-label">{t("Port")}</span>
                   <div className="serial-port-row">
                     <select
                       value={profile.portName ?? ""}
@@ -1141,7 +1160,7 @@ export function SessionDialog({ initial, onClose }: Props) {
                         patch({ portName: event.target.value })
                       }
                     >
-                      <option value="">Select a port…</option>
+                      <option value="">{t("Select a port…")}</option>
                       {ports.map((port) => (
                         <option key={port.portName} value={port.portName}>
                           {port.portName}
@@ -1158,8 +1177,8 @@ export function SessionDialog({ initial, onClose }: Props) {
                           .then(setPorts)
                           .catch(() => undefined)
                       }
-                      title="Refresh serial ports"
-                      aria-label="Refresh serial ports"
+                      title={t("Refresh serial ports")}
+                      aria-label={t("Refresh serial ports")}
                     >
                       <Icon name="refresh" />
                     </button>
@@ -1167,8 +1186,10 @@ export function SessionDialog({ initial, onClose }: Props) {
                   <small className="session-field-hint">
                     {selectedPort?.description ||
                       (ports.length
-                        ? "Choose a detected COM or TTY device."
-                        : "No serial ports detected. Refresh to scan again.")}
+                        ? t("Choose a detected COM or TTY device.")
+                        : t(
+                            "No serial ports detected. Refresh to scan again.",
+                          ))}
                   </small>
                 </div>
 
@@ -1177,7 +1198,7 @@ export function SessionDialog({ initial, onClose }: Props) {
                     className="session-field-label"
                     htmlFor="serial-baud-rate"
                   >
-                    Baud rate
+                    {t("Baud rate")}
                   </label>
                   <div className="input-with-suffix">
                     <input
@@ -1199,7 +1220,7 @@ export function SessionDialog({ initial, onClose }: Props) {
                         })
                       }
                     />
-                    <span>baud</span>
+                    <span>{t("baud")}</span>
                   </div>
                   <datalist id="serial-baud-rates">
                     {COMMON_BAUD_RATES.map((rate) => (
@@ -1207,12 +1228,14 @@ export function SessionDialog({ initial, onClose }: Props) {
                     ))}
                   </datalist>
                   <small className="session-field-hint">
-                    Select a common value or enter any custom positive integer.
+                    {t(
+                      "Select a common value or enter any custom positive integer.",
+                    )}
                   </small>
                 </div>
 
                 <label className="session-field">
-                  <span className="session-field-label">Data bits</span>
+                  <span className="session-field-label">{t("Data bits")}</span>
                   <select
                     value={profile.dataBits ?? 8}
                     onChange={(event) =>
@@ -1221,48 +1244,50 @@ export function SessionDialog({ initial, onClose }: Props) {
                   >
                     {[5, 6, 7, 8].map((bits) => (
                       <option key={bits} value={bits}>
-                        {bits} bits
+                        {t("{count} bits", { count: bits })}
                       </option>
                     ))}
                   </select>
                 </label>
 
                 <label className="session-field">
-                  <span className="session-field-label">Stop bits</span>
+                  <span className="session-field-label">{t("Stop bits")}</span>
                   <select
                     value={profile.stopBits ?? 1}
                     onChange={(event) =>
                       patch({ stopBits: Number(event.target.value) })
                     }
                   >
-                    <option value={1}>1 bit</option>
-                    <option value={2}>2 bits</option>
+                    <option value={1}>{t("1 bit")}</option>
+                    <option value={2}>{t("2 bits")}</option>
                   </select>
                 </label>
 
                 <label className="session-field">
-                  <span className="session-field-label">Parity</span>
+                  <span className="session-field-label">{t("Parity")}</span>
                   <select
                     value={profile.parity ?? "none"}
                     onChange={(event) => patch({ parity: event.target.value })}
                   >
-                    <option value="none">None (N)</option>
-                    <option value="odd">Odd (O)</option>
-                    <option value="even">Even (E)</option>
+                    <option value="none">{t("None (N)")}</option>
+                    <option value="odd">{t("Odd (O)")}</option>
+                    <option value="even">{t("Even (E)")}</option>
                   </select>
                 </label>
 
                 <label className="session-field">
-                  <span className="session-field-label">Flow control</span>
+                  <span className="session-field-label">
+                    {t("Flow control")}
+                  </span>
                   <select
                     value={profile.flowControl ?? "none"}
                     onChange={(event) =>
                       patch({ flowControl: event.target.value })
                     }
                   >
-                    <option value="none">None</option>
-                    <option value="software">XON/XOFF (software)</option>
-                    <option value="hardware">RTS/CTS (hardware)</option>
+                    <option value="none">{t("None")}</option>
+                    <option value="software">{t("XON/XOFF (software)")}</option>
+                    <option value="hardware">{t("RTS/CTS (hardware)")}</option>
                   </select>
                 </label>
                 {renderTextFields(false)}
@@ -1282,11 +1307,11 @@ export function SessionDialog({ initial, onClose }: Props) {
 
         <div className="dialog-footer">
           <button type="button" className="btn" onClick={onClose}>
-            Cancel
+            {t("Cancel")}
           </button>
           <button type="button" className="btn" onClick={save} disabled={busy}>
             <Icon name="save" />
-            Save
+            {t("Save")}
           </button>
           <button
             type="button"
@@ -1295,7 +1320,7 @@ export function SessionDialog({ initial, onClose }: Props) {
             disabled={busy}
           >
             <Icon name="plug" />
-            {busy ? "Connecting…" : "Connect"}
+            {busy ? t("Connecting…") : t("Connect")}
           </button>
         </div>
       </div>

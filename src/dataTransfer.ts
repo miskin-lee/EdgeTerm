@@ -1,5 +1,6 @@
 
 import * as api from "./api";
+import { t } from "./i18n";
 import { ask, open as openDialog, save as saveDialog } from "./nativeDialog";
 import { useStore } from "./store";
 import type { AppData } from "./types";
@@ -26,19 +27,30 @@ const hasDataExtension = (path: string) =>
 const withDataExtension = (path: string) =>
   hasDataExtension(path) ? path : `${path}.${DATA_FILE_EXTENSION}`;
 
-const plural = (count: number, noun: string) =>
-  `${count} ${noun}${count === 1 ? "" : "s"}`;
-
+/** "2 sessions, 1 group, 3 Sender commands" — each part localized, "" dropped. */
 const describe = (counts: {
   profiles: number;
   groups: number;
   senderCommands: number;
-}) =>
-  [
-    plural(counts.profiles, "session"),
-    plural(counts.groups, "group"),
-    plural(counts.senderCommands, "Sender command"),
-  ].join(", ");
+}) => {
+  const count = (n: number, one: string, many: string) =>
+    n === 1 ? t(one) : t(many, { count: n });
+  return [
+    count(counts.profiles, "1 session", "{count} sessions"),
+    counts.groups
+      ? count(counts.groups, "1 group", "{count} groups")
+      : null,
+    counts.senderCommands
+      ? count(
+          counts.senderCommands,
+          "1 Sender command",
+          "{count} Sender commands",
+        )
+      : null,
+  ]
+    .filter((part) => part !== null)
+    .join(t(", "));
+};
 
 const basename = (path: string) => path.split(/[\\/]/).pop() || path;
 
@@ -54,7 +66,7 @@ export async function exportAppData(): Promise<void> {
   try {
     const now = new Date();
     const picked = await saveDialog({
-      title: "Export EdgeTerm Data",
+      title: t("Export EdgeTerm Data"),
       defaultPath: `EdgeTerm-${datestamp(now)}.${DATA_FILE_EXTENSION}`,
       filters: FILE_FILTERS,
     });
@@ -66,10 +78,13 @@ export async function exportAppData(): Promise<void> {
       now.toISOString(),
     );
     setStatus(
-      `Exported ${describe(summary)} and settings to ${basename(path)} (passwords are not included)`,
+      t(
+        "Exported {summary} and settings to {path} (passwords are not included)",
+        { summary: describe(summary), path: basename(path) },
+      ),
     );
   } catch (error) {
-    setStatus(`Export failed: ${error}`);
+    setStatus(t("Export failed: {error}", { error: String(error) }));
   }
 }
 
@@ -77,7 +92,7 @@ export async function importAppData(): Promise<void> {
   const store = useStore.getState();
   try {
     const picked = await openDialog({
-      title: "Import EdgeTerm Data",
+      title: t("Import EdgeTerm Data"),
       multiple: false,
       directory: false,
       filters: FILE_FILTERS,
@@ -88,7 +103,10 @@ export async function importAppData(): Promise<void> {
     // paths get through on some platforms; say what was expected up front.
     if (!hasDataExtension(path)) {
       store.setStatus(
-        `Import failed: “${basename(path)}” is not an EdgeTerm data file (expected .${DATA_FILE_EXTENSION})`,
+        t(
+          "Import failed: “{path}” is not an EdgeTerm data file (expected .{extension})",
+          { path: basename(path), extension: DATA_FILE_EXTENSION },
+        ),
       );
       return;
     }
@@ -102,14 +120,19 @@ export async function importAppData(): Promise<void> {
       senderCommands: data.senderCommands.length,
     });
     const confirmed = await ask(
-      `Import ${summary}${hasSettings ? " and settings" : ""} from “${basename(path)}”?\n\n` +
-        "Entries with the same id replace the local ones; nothing else is removed. " +
-        "Data files never contain session passwords, so imported sessions will ask for theirs again.",
+      t(
+        "Import {summary}{settings} from “{path}”?\n\nEntries with the same id replace the local ones; nothing else is removed. Data files never contain session passwords, so imported sessions will ask for theirs again.",
+        {
+          summary,
+          settings: hasSettings ? t(" and settings") : "",
+          path: basename(path),
+        },
+      ),
       {
-        title: "Import Data",
+        title: t("Import Data"),
         kind: "info",
-        okLabel: "Import",
-        cancelLabel: "Cancel",
+        okLabel: t("Import"),
+        cancelLabel: t("Cancel"),
       },
     );
     if (!confirmed) return;
@@ -118,13 +141,23 @@ export async function importAppData(): Promise<void> {
     if (hasSettings) store.applySettings(data.settings);
     await store.loadProfiles();
     store.bumpSenderLibrary();
-    let status = `Imported ${describe(result)}${hasSettings ? " and settings" : ""}`;
+    let status = t("Imported {summary}{settings}", {
+      summary: describe(result),
+      settings: hasSettings ? t(" and settings") : "",
+    });
     if (result.skippedSenderCommands > 0) {
-      status += `; skipped ${plural(result.skippedSenderCommands, "Sender command")} (library full)`;
+      status += t("; skipped {summary} (library full)", {
+        summary:
+          result.skippedSenderCommands === 1
+            ? t("1 Sender command")
+            : t("{count} Sender commands", {
+                count: result.skippedSenderCommands,
+              }),
+      });
     }
     store.setStatus(status);
   } catch (error) {
-    store.setStatus(`Import failed: ${error}`);
+    store.setStatus(t("Import failed: {error}", { error: String(error) }));
   }
 }
 
@@ -138,7 +171,7 @@ export async function importSshConfig(): Promise<void> {
   try {
     const defaultPath = await api.defaultSshConfigPath();
     const picked = await openDialog({
-      title: "Import OpenSSH Config",
+      title: t("Import OpenSSH Config"),
       multiple: false,
       directory: false,
       defaultPath,
@@ -147,11 +180,13 @@ export async function importSshConfig(): Promise<void> {
     if (!path) return;
     const preview = await api.readSshConfig(path);
     if (preview.entries.length === 0) {
-      store.setStatus(`No Host entries found in ${basename(path)}`);
+      store.setStatus(
+        t("No Host entries found in {path}", { path: basename(path) }),
+      );
       return;
     }
     store.setSshConfigImport(preview);
   } catch (error) {
-    store.setStatus(`Import failed: ${error}`);
+    store.setStatus(t("Import failed: {error}", { error: String(error) }));
   }
 }
