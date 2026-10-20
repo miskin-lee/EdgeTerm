@@ -21,6 +21,7 @@ function createController(states: string[], commands: string[] = []) {
       onCommandState: (state) => states.push(state),
       suggest: () => [],
       forgetSuggestion() {},
+      onReconnect() {},
     },
     13,
     100,

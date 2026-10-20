@@ -75,8 +75,9 @@
 | `⌘⌥[` / `⌘⌥]` | `Ctrl+Alt+[` / `Ctrl+Alt+]` | 上一个 / 下一个分栏 |
 | `⌘⌥←` / `⌘⌥→` / `⌘⌥↓` | `Ctrl+Alt+←` / `→` / `↓` | 显示 / 隐藏 Session、Filer、Sender |
 | `⌘C` / `⌘V` / `⌘A` | `Ctrl+Shift+C` / `V` / `A` | 复制 / 粘贴 / 全选 |
+| `↩` | `Enter` | 会话断开后：重新连接 |
 
-除标签序号键和查找框自身的按键外，都可在 **View → Keyboard Shortcuts…** 中修改。
+除标签序号键、查找框自身的按键和 Enter 外，都可在 **View → Keyboard Shortcuts…** 中修改。
 
 ## 许可证
 

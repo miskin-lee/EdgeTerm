@@ -15,7 +15,7 @@ import { TerminalController } from "./terminal";
 
 const controllers: TerminalController[] = [];
 
-function createController() {
+function createController(onReconnect = () => {}) {
   const controller = new TerminalController(
     "keys-test",
     {
@@ -26,6 +26,7 @@ function createController() {
       onCommandState() {},
       suggest: () => [],
       forgetSuggestion() {},
+      onReconnect,
     },
     13,
     100,
@@ -42,7 +43,10 @@ function createController() {
 function press(
   code: string,
   modifiers: Partial<
-    Pick<KeyboardEvent, "ctrlKey" | "altKey" | "shiftKey" | "metaKey">
+    Pick<
+      KeyboardEvent,
+      "ctrlKey" | "altKey" | "shiftKey" | "metaKey" | "repeat" | "isComposing"
+    >
   > = {},
   key = /^Key[A-Z]$/.test(code) ? code.slice(3).toLowerCase() : code,
 ) {
@@ -54,6 +58,7 @@ function press(
     altKey: false,
     shiftKey: false,
     metaKey: false,
+    repeat: false,
     isComposing: false,
     preventDefault: vi.fn(),
     ...modifiers,
@@ -230,5 +235,45 @@ describe("Backspace", () => {
     controller.setBackspace("delete");
     expect(filter(controller, press("Backspace"))).toBe(true);
     expect(input).toHaveBeenCalledTimes(3);
+  });
+});
+
+describe("Enter in an ended session", () => {
+  it("reconnects instead of typing into the dead terminal (#96)", () => {
+    const onReconnect = vi.fn();
+    const controller = createController(onReconnect);
+
+    // A live session's Enter is the shell's.
+    expect(filter(controller, press("Enter"))).toBe(true);
+    expect(onReconnect).not.toHaveBeenCalled();
+
+    controller.setLocked(true);
+    const enter = press("Enter");
+    expect(filter(controller, enter)).toBe(false);
+    expect(enter.preventDefault).toHaveBeenCalled();
+    expect(onReconnect).toHaveBeenCalledTimes(1);
+
+    // The keypad's Enter reports the same key.
+    expect(filter(controller, press("NumpadEnter", {}, "Enter"))).toBe(false);
+    expect(onReconnect).toHaveBeenCalledTimes(2);
+
+    controller.setLocked(false);
+    expect(filter(controller, press("Enter"))).toBe(true);
+    expect(onReconnect).toHaveBeenCalledTimes(2);
+  });
+
+  it("ignores a held, modified or composing Enter", () => {
+    const onReconnect = vi.fn();
+    const controller = createController(onReconnect);
+    controller.setLocked(true);
+
+    filter(controller, press("Enter", { repeat: true }));
+    filter(controller, press("Enter", { isComposing: true }));
+    filter(controller, press("Enter", { shiftKey: true }));
+    filter(controller, press("Enter", { ctrlKey: true }));
+    filter(controller, press("Enter", { altKey: true }));
+    filter(controller, press("Enter", { metaKey: true }));
+    filter(controller, press("KeyR"));
+    expect(onReconnect).not.toHaveBeenCalled();
   });
 });

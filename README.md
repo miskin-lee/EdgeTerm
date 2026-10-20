@@ -75,8 +75,9 @@ Download from [Releases](https://github.com/miskin-lee/EdgeTerm/releases):
 | `⌘⌥[` / `⌘⌥]` | `Ctrl+Alt+[` / `Ctrl+Alt+]` | Previous / next pane |
 | `⌘⌥←` / `⌘⌥→` / `⌘⌥↓` | `Ctrl+Alt+←` / `→` / `↓` | Toggle Session / Filer / Sender |
 | `⌘C` / `⌘V` / `⌘A` | `Ctrl+Shift+C` / `V` / `A` | Copy / paste / select all |
+| `↩` | `Enter` | In a disconnected session: reconnect |
 
-All except the tab numbers and the find box's own keys can be changed in **View → Keyboard Shortcuts…**.
+All except the tab numbers, the find box's own keys and Enter can be changed in **View → Keyboard Shortcuts…**.
 
 ## License
 

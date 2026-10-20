@@ -366,6 +366,8 @@ interface Callbacks {
   suggest: (input: string) => CommandSuggestion[];
   /** Removes a command from the history behind `suggest`. */
   forgetSuggestion: (command: string) => void;
+  /** Enter pressed while the terminal is locked: its session has ended. */
+  onReconnect: () => void;
 }
 
 /**
@@ -771,6 +773,25 @@ export class TerminalController {
   private filterKey(event: KeyboardEvent): boolean {
     if (event.type !== "keydown") return true;
     const key = event.key.toLowerCase();
+
+    // Enter in an ended session reconnects it (issue #96), as Windows
+    // Terminal restarts an exited shell; the closed notice says so. Plain
+    // Enter only, and not a held one: auto-repeat would retry a failing
+    // connection as fast as it fails.
+    if (
+      this.locked &&
+      key === "enter" &&
+      !event.repeat &&
+      !event.isComposing &&
+      !event.ctrlKey &&
+      !event.altKey &&
+      !event.metaKey &&
+      !event.shiftKey
+    ) {
+      event.preventDefault();
+      this.callbacks.onReconnect();
+      return false;
+    }
 
     // IDE-style completion popup. While it is *passive* every key still
     // reaches the shell (so ↑ history, Tab completion and a remote shell's
@@ -1211,9 +1232,9 @@ export class TerminalController {
 
   /**
    * Locks the terminal once its session has ended: keystrokes, paste and
-   * completions no longer reach `onData`, and the cursor is hidden so the
-   * pane does not look like it is waiting for input. Unlocking restores both
-   * for a reconnect.
+   * completions no longer reach `onData` (Enter goes to `onReconnect`
+   * instead), and the cursor is hidden so the pane does not look like it is
+   * waiting for input. Unlocking restores both for a reconnect.
    */
   setLocked(locked: boolean) {
     if (this.locked === locked) return;

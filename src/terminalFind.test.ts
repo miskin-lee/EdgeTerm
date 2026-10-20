@@ -349,6 +349,7 @@ describe("Esc in the terminal", () => {
         onCommandState() {},
         suggest: () => [],
         forgetSuggestion() {},
+        onReconnect() {},
       },
       13,
       100,

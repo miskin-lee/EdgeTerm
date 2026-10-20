@@ -20,6 +20,7 @@ function createController(scrollback = 100) {
       onCommandState() {},
       suggest: () => [],
       forgetSuggestion() {},
+      onReconnect() {},
     },
     13,
     scrollback,

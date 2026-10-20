@@ -22,6 +22,7 @@ function createController(events: string[]) {
       onCommandState: (state, kind) => events.push(`${state}:${kind}`),
       suggest: () => [],
       forgetSuggestion() {},
+      onReconnect() {},
     },
     13,
     100,

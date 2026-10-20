@@ -21,6 +21,7 @@ function createController() {
       onCommandState() {},
       suggest: () => [],
       forgetSuggestion() {},
+      onReconnect() {},
     },
     13,
     100,
