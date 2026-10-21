@@ -32,6 +32,16 @@
   --green: #89d185;
   --yellow: #cca700;
   --red: #f85149;
+  /* Sender tag tints (senderColors.ts), at the strength that reads as an
+     icon and a border on this theme's panels. */
+  --tag-red: #f14c4c;
+  --tag-orange: #f0883e;
+  --tag-yellow: #e3b341;
+  --tag-green: #3fb950;
+  --tag-teal: #39c5cf;
+  --tag-blue: #4ea1f3;
+  --tag-purple: #bc8cff;
+  --tag-pink: #db61a2;
 
   --scrollbar-thumb: #424242;
   --scrollbar-thumb-hover: #4f4f4f;
@@ -115,6 +125,14 @@
   --green: #107c10;
   --yellow: #bf8803;
   --red: #cd3131;
+  --tag-red: #cd3131;
+  --tag-orange: #c2410c;
+  --tag-yellow: #a16207;
+  --tag-green: #15803d;
+  --tag-teal: #0e7490;
+  --tag-blue: #005fb8;
+  --tag-purple: #7c3aed;
+  --tag-pink: #be185d;
 
   --scrollbar-thumb: #c1c1c1;
   --scrollbar-thumb-hover: #9a9a9a;
@@ -186,6 +204,14 @@
   --green: #4fc38a;
   --yellow: #e0b070;
   --red: #ef8a83;
+  --tag-red: #ef8a83;
+  --tag-orange: #f29a5c;
+  --tag-yellow: #e3c26b;
+  --tag-green: #4fc38a;
+  --tag-teal: #4fc9dc;
+  --tag-blue: #62b0f5;
+  --tag-purple: #b98af5;
+  --tag-pink: #ec8fc6;
 
   --scrollbar-thumb: #3d434f;
   --scrollbar-thumb-hover: #4d5462;
@@ -246,6 +272,14 @@
   --green: #2f8a5b;
   --yellow: #a8730f;
   --red: #cb4b40;
+  --tag-red: #cb4b40;
+  --tag-orange: #c25e12;
+  --tag-yellow: #9a7b0a;
+  --tag-green: #2f8a5b;
+  --tag-teal: #0f8593;
+  --tag-blue: #2f7fd4;
+  --tag-purple: #8a3ee0;
+  --tag-pink: #c2408c;
 
   --scrollbar-thumb: #c6c6cd;
   --scrollbar-thumb-hover: #a8a8b1;
@@ -746,6 +780,28 @@ textarea:focus {
 .menu-entry:hover .menu-check.is-radio.is-checked::after,
 .menu-entry:focus-visible .menu-check.is-radio.is-checked::after {
   background: var(--accent-contrast);
+}
+
+/* A color choice's sample, tucked against its label. The faint ring keeps a
+   pale shade apart from the menu; on the pointed row it turns the row's text
+   colour like the radio does, or a blue swatch would sink into the accent. */
+.menu-swatch {
+  flex: none;
+  width: 10px;
+  height: 10px;
+  margin-right: -4px;
+  border-radius: 50%;
+  box-shadow: 0 0 0 1px var(--swatch-ring);
+}
+
+.menu-swatch.is-empty {
+  box-shadow: 0 0 0 1px var(--menu-mark);
+}
+
+.menu-entry:hover .menu-swatch,
+.menu-entry:focus-visible .menu-swatch {
+  box-shadow: 0 0 0 1px
+    color-mix(in srgb, var(--accent-contrast) 70%, transparent);
 }
 
 .menu-entry-label {
@@ -2650,34 +2706,19 @@ textarea:focus {
   align-items: center;
   gap: 4px;
   min-width: 0;
-  max-width: 190px;
-  padding: 0 7px;
+  max-width: 100%;
+  padding: 0 9px 0 7px;
 }
 
 .sender-quick-tag .sender-command-load > .icon {
   flex: none;
-  color: var(--panel-sender);
+  color: var(--tag-color, var(--panel-sender));
 }
 
 .sender-quick-tag .sender-command-load > span:last-child {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-
-.sender-quick-options {
-  display: inline-flex;
-  flex: none;
-  align-items: center;
-  justify-content: center;
-  width: 22px;
-  height: 100%;
-  color: var(--fg-faint);
-}
-
-.sender-quick-options:hover {
-  color: var(--fg);
-  background: var(--bg-hover);
 }
 
 .sender-quick-button,
@@ -2798,7 +2839,7 @@ textarea:focus {
 
 .sender-more-item > .icon {
   flex: none;
-  color: var(--panel-sender);
+  color: var(--tag-color, var(--panel-sender));
 }
 
 .sender-more-name {
@@ -3219,6 +3260,18 @@ textarea:focus {
   transform: translateY(-1px);
 }
 
+/* Right-click → Color: the border and a wash take the tag's hue, the text
+   keeps the panel's so every tint stays readable. */
+.sender-command-tag.has-color {
+  border-color: color-mix(in srgb, var(--tag-color) 55%, var(--border-strong));
+  background: color-mix(in srgb, var(--tag-color) 12%, var(--bg-panel-alt));
+}
+
+.sender-command-tag.has-color:hover {
+  border-color: var(--tag-color);
+  background: color-mix(in srgb, var(--tag-color) 20%, var(--bg-panel-alt));
+}
+
 /* The tag whose contents are loaded in the inputs (right-click → Edit). */
 .sender-command-tag.is-editing {
   border-style: dashed;
@@ -3243,7 +3296,7 @@ textarea:focus {
   white-space: nowrap;
 }
 
-.sender-command-load:disabled {
+.sender-command-load[aria-disabled="true"] {
   cursor: default;
 }
 

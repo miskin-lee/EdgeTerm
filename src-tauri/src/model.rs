@@ -377,6 +377,11 @@ pub struct SavedCommand {
     /// Missing in files written before scopes existed: those tags are global.
     #[serde(default)]
     pub scope: CommandScope,
+    /// The tag's tint, a palette name the frontend owns (`senderColors.ts`);
+    /// absent for the default look. Kept as a string so a name this build
+    /// does not know loads as an untinted tag instead of failing the file.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub color: Option<String>,
 }
 
 /// Marker every exported data file carries, so a stray JSON file is refused

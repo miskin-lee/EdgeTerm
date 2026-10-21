@@ -503,6 +503,7 @@ fn store_persists_sender_commands_across_restarts() {
             text: "ls -la".into(),
             ending: LineEnding::Lf,
             scope: CommandScope::Global,
+            color: None,
         })
         .expect("save sender command");
     assert!(!saved.id.is_empty());
@@ -554,6 +555,41 @@ fn sender_commands_saved_with_a_format_still_load() {
 }
 
 #[test]
+fn sender_command_colors_round_trip_and_default_to_none() {
+    let dir = temp_dir("sender-color");
+    let path = dir.join("sessions.json");
+    let store = Store::load_from(path.clone());
+
+    let tinted = store
+        .save_sender_command(SavedCommand {
+            color: Some("teal".into()),
+            ..command("deploy", "make deploy")
+        })
+        .expect("save tinted");
+    let plain = store
+        .save_sender_command(command("ls", "ls"))
+        .expect("save plain");
+
+    // An untinted tag writes no `color`, so an older build reads back
+    // exactly what it wrote.
+    let json = std::fs::read_to_string(dir.join("sender_commands.json")).expect("read file");
+    assert_eq!(json.matches("\"color\"").count(), 1, "{json}");
+
+    let reloaded = Store::load_from(path).list_sender_commands();
+    assert_eq!(reloaded, vec![tinted, plain]);
+
+    // A palette name from a newer build is kept as text rather than failing
+    // the whole file (`read_json` would then empty the library).
+    let future: SavedCommand = serde_json::from_str(
+        r#"{"id":"f","name":"x","text":"x","ending":"lf","color":"chartreuse"}"#,
+    )
+    .expect("unknown color still parses");
+    assert_eq!(future.color.as_deref(), Some("chartreuse"));
+
+    std::fs::remove_dir_all(&dir).ok();
+}
+
+#[test]
 fn recording_settings_round_trip_and_default_to_off() {
     let dir = temp_dir("recording");
     let path = dir.join("sessions.json");
@@ -595,6 +631,7 @@ fn command(name: &str, text: &str) -> SavedCommand {
         text: text.into(),
         ending: LineEnding::Lf,
         scope: CommandScope::Global,
+        color: None,
     }
 }
 
@@ -1218,6 +1255,7 @@ fn store_files_are_owner_readable_only() {
             text: "secret command".into(),
             ending: LineEnding::Lf,
             scope: CommandScope::Global,
+            color: None,
         })
         .expect("save sender command");
 

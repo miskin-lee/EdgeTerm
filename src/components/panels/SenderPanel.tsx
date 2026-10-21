@@ -20,6 +20,12 @@ import {
   storeSaveLevel,
   type ScopeLevel,
 } from "../../senderScope";
+import {
+  SENDER_COLORS,
+  senderColor,
+  senderColorStyle,
+  senderColorValue,
+} from "../../senderColors";
 import { newStopSignal, sendUnits, type StopSignal } from "../../senderSend";
 import {
   buildUnits,
@@ -359,7 +365,7 @@ export function SenderPanel({ compact, canCompact, onExpandedChange }: SenderPan
   /** Saves `command` with `patch` applied, keeping an open edit in step. */
   const updateSaved = async (
     command: SavedCommand,
-    patch: Partial<Pick<SavedCommand, "ending" | "scope">>,
+    patch: Partial<Pick<SavedCommand, "ending" | "scope" | "color">>,
   ) => {
     if (libraryBusy) return;
     setLibraryBusy(true);
@@ -551,41 +557,37 @@ export function SenderPanel({ compact, canCompact, onExpandedChange }: SenderPan
             {visibleCommands.length === 0 ? (
               <span className="sender-quick-empty">{emptyMessage}</span>
             ) : visibleCommands.map((command) => (
-              <div className="sender-command-tag sender-quick-tag" key={command.id}>
+              <div
+                className={`sender-command-tag sender-quick-tag${senderColor(command.color) ? " has-color" : ""}`}
+                style={senderColorStyle(command.color)}
+                key={command.id}
+                onContextMenu={(event) => {
+                  event.preventDefault();
+                  // The header under the tags has its own dock menu.
+                  event.stopPropagation();
+                  hideCommandTooltip();
+                  setContextMenu({ commandId: command.id, x: event.clientX, y: event.clientY });
+                }}
+              >
                 <button
                   type="button"
                   className="sender-command-load"
                   data-own-tooltip
                   aria-label={`Send ${command.name}: ${command.text}`}
-                  disabled={running}
+                  // Not `disabled`: a disabled button swallows the right
+                  // click, and the menu is the tag's only way to its options.
+                  aria-disabled={running}
                   onMouseEnter={(event) => showCommandTooltip(command, event.currentTarget)}
                   onMouseLeave={hideCommandTooltip}
                   onMouseDown={(event) => event.preventDefault()}
                   onClick={() => {
+                    if (running) return;
                     setSelectedCommandId(command.id);
                     void sendCommand(command.text, command.ending);
-                  }}
-                  onContextMenu={(event) => {
-                    event.preventDefault();
-                    hideCommandTooltip();
-                    setContextMenu({ commandId: command.id, x: event.clientX, y: event.clientY });
                   }}
                 >
                   <Icon name="run-compact" />
                   <span>{command.name}</span>
-                </button>
-                <button
-                  type="button"
-                  className="sender-quick-options"
-                  aria-label={`Options for ${command.name}`}
-                  title={`Options for ${command.name}`}
-                  onClick={(event) => {
-                    hideCommandTooltip();
-                    const rect = event.currentTarget.getBoundingClientRect();
-                    setContextMenu({ commandId: command.id, x: rect.right, y: rect.top });
-                  }}
-                >
-                  <Icon name="ellipsis" />
                 </button>
               </div>
             ))}
@@ -1004,11 +1006,13 @@ export function SenderPanel({ compact, canCompact, onExpandedChange }: SenderPan
               <div
                 className={[
                   "sender-command-tag",
+                  senderColor(command.color) ? "has-color" : "",
                   selectedCommandId === command.id ? "is-selected" : "",
                   editing?.command.id === command.id ? "is-editing" : "",
                 ]
                   .filter(Boolean)
                   .join(" ")}
+                style={senderColorStyle(command.color)}
                 key={command.id}
                 onContextMenu={(event) => {
                   event.preventDefault();
@@ -1027,7 +1031,8 @@ export function SenderPanel({ compact, canCompact, onExpandedChange }: SenderPan
                   type="button"
                   data-own-tooltip
                   aria-label={`Send ${command.name}: ${command.text}`}
-                  disabled={running}
+                  // Not `disabled`, which would swallow the right click.
+                  aria-disabled={running}
                   onMouseEnter={(event) =>
                     showCommandTooltip(command, event.currentTarget)
                   }
@@ -1040,6 +1045,7 @@ export function SenderPanel({ compact, canCompact, onExpandedChange }: SenderPan
                   // clicked again. Keyboard activation still focuses it.
                   onMouseDown={(event) => event.preventDefault()}
                   onClick={() => {
+                    if (running) return;
                     setSelectedCommandId(command.id);
                     void sendCommand(command.text, command.ending);
                   }}
@@ -1079,6 +1085,7 @@ export function SenderPanel({ compact, canCompact, onExpandedChange }: SenderPan
                 type="button"
                 key={command.id}
                 className="sender-more-item"
+                style={senderColorStyle(command.color)}
                 disabled={running}
                 onClick={() => {
                   closeMore();
@@ -1116,6 +1123,28 @@ export function SenderPanel({ compact, canCompact, onExpandedChange }: SenderPan
             label: "Send Repeatedly",
             icon: "watch",
             action: () => beginRepeat(command.text, command.ending),
+          },
+          {
+            label: "Color",
+            icon: "symbol-color",
+            children: [
+              {
+                label: "None",
+                checked: senderColor(command.color) === null,
+                mark: "radio" as const,
+                swatch: null,
+                disabled: libraryBusy,
+                action: () => void updateSaved(command, { color: null }),
+              },
+              ...SENDER_COLORS.map(([value, label]) => ({
+                label,
+                checked: command.color === value,
+                mark: "radio" as const,
+                swatch: senderColorValue(value),
+                disabled: libraryBusy,
+                action: () => void updateSaved(command, { color: value }),
+              })),
+            ],
           },
           {
             label: "Line ending",

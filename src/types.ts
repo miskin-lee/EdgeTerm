@@ -253,6 +253,8 @@ export interface SavedCommand {
   text: string;
   ending: LineEnding;
   scope: CommandScope;
+  /** A `SENDER_COLORS` name tinting the tag; absent for the default look. */
+  color?: string | null;
 }
 
 /**

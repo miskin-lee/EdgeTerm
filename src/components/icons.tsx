@@ -21,7 +21,6 @@ import cloudUpload from "@vscode/codicons/src/icons/cloud-upload.svg?raw";
 import copy from "@vscode/codicons/src/icons/copy.svg?raw";
 import debugStop from "@vscode/codicons/src/icons/debug-stop.svg?raw";
 import edit from "@vscode/codicons/src/icons/edit.svg?raw";
-import ellipsis from "@vscode/codicons/src/icons/ellipsis.svg?raw";
 import error from "@vscode/codicons/src/icons/error.svg?raw";
 import folder from "@vscode/codicons/src/icons/folder.svg?raw";
 import folderOpened from "@vscode/codicons/src/icons/folder-opened.svg?raw";
@@ -46,6 +45,7 @@ import send from "@vscode/codicons/src/icons/send.svg?raw";
 import server from "@vscode/codicons/src/icons/server.svg?raw";
 import splitHorizontal from "@vscode/codicons/src/icons/split-horizontal.svg?raw";
 import splitVertical from "@vscode/codicons/src/icons/split-vertical.svg?raw";
+import symbolColor from "@vscode/codicons/src/icons/symbol-color.svg?raw";
 import tag from "@vscode/codicons/src/icons/tag.svg?raw";
 import target from "@vscode/codicons/src/icons/target.svg?raw";
 import terminal from "@vscode/codicons/src/icons/terminal.svg?raw";
@@ -73,7 +73,6 @@ const SVGS = {
   copy,
   "debug-stop": debugStop,
   edit,
-  ellipsis,
   error,
   folder,
   "folder-opened": folderOpened,
@@ -98,6 +97,7 @@ const SVGS = {
   server,
   "split-horizontal": splitHorizontal,
   "split-vertical": splitVertical,
+  "symbol-color": symbolColor,
   tag,
   target,
   terminal,

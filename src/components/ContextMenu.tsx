@@ -27,6 +27,11 @@ export interface MenuAction {
   mark?: MenuMark;
   /** A Codicon in the leading column, before the label. */
   icon?: IconName;
+  /**
+   * A CSS color drawn as a dot before the label, for color choices; null
+   * draws the empty ring of a "no color" choice.
+   */
+  swatch?: string | null;
   /** The key combination that runs the same command, shown at the right. */
   shortcut?: string;
   /** Extra left padding in tree levels, for nested choices in a submenu. */
@@ -254,6 +259,13 @@ export function ContextMenu({
           }}
         >
           {showLeading && <MenuLeading entry={item} />}
+          {item.swatch !== undefined && (
+            <span
+              className={`menu-swatch${item.swatch === null ? " is-empty" : ""}`}
+              style={item.swatch ? { background: item.swatch } : undefined}
+              aria-hidden="true"
+            />
+          )}
           <span className="menu-entry-label">{item.label}</span>
           {item.shortcut && (
             <span className="menu-shortcut">{item.shortcut}</span>
