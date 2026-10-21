@@ -2081,6 +2081,17 @@ textarea:focus {
   box-shadow: inset 2px 0 0 var(--accent);
 }
 
+/* Which of the two lists takes typed keys; see `.filer-list:focus`. */
+.ftp-browser-list:focus {
+  outline: none;
+}
+
+.ftp-browser-list:focus .ftp-file-row.is-selected {
+  box-shadow:
+    inset 2px 0 0 var(--accent),
+    inset 0 0 0 1px color-mix(in srgb, var(--accent) 55%, transparent);
+}
+
 .ftp-file-row.is-directory .ftp-file-name {
   color: var(--dir-label);
   font-weight: 600;
@@ -4902,6 +4913,17 @@ textarea:focus {
 .filer-entry .filer-col-date {
   font-size: calc(var(--panel-font-size) - 2px);
   font-variant-numeric: tabular-nums;
+}
+
+/* A clicked list takes the keys for type-to-select (issue #108). The ring on
+   its selection says so, the way a focused VS Code list does, instead of the
+   browser outline around the whole list. */
+.filer-list:focus {
+  outline: none;
+}
+
+.filer-list:focus .filer-entry.is-active {
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 55%, transparent);
 }
 
 .filer-footer {

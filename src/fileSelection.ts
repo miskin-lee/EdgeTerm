@@ -84,6 +84,82 @@ export function selectedEntries(
   return entries.filter((entry) => picked.has(entry.path));
 }
 
+/** A pause this long ends a type-to-select run; the next key starts afresh. */
+export const TYPE_SELECT_RESET_MS = 1000;
+
+/** What has been typed into a file list so far; see `typeToSelect`. */
+export interface TypeRun {
+  text: string;
+  /** When its last key arrived, in `performance.now()` time. */
+  at: number;
+}
+
+/** The parts of a key press `typeToSelect` reads. */
+export type TypedKey = Pick<
+  KeyboardEvent,
+  "key" | "ctrlKey" | "metaKey" | "altKey" | "isComposing"
+>;
+
+/**
+ * Type-to-select (issue #108), the way Finder, Explorer and VS Code lists do
+ * it: typing the start of a name selects the first entry whose name starts
+ * with what was typed, ignoring case, and keys that follow within
+ * `TYPE_SELECT_RESET_MS` extend it. A new run searches from the entry after
+ * the selected one, so the same letter pressed again after a pause steps to
+ * the next name with it; a run keeps its entry while that still matches.
+ * Typing one letter over and over steps through the names starting with it
+ * unless some name starts with the repeated letters ("ss" finds `ssh`).
+ *
+ * Null for a key that is not typing, which the list leaves alone: modified
+ * keys are shortcuts, named keys (Enter, the arrows) are not text, and a
+ * space only continues a run, since otherwise it scrolls the list. Otherwise
+ * the continued run and the index of the entry to select, -1 when no name
+ * starts with what was typed and the selection should stay.
+ */
+export function typeToSelect(
+  entries: readonly FileEntry[],
+  selection: FileSelection,
+  run: TypeRun | null,
+  key: TypedKey,
+  now: number,
+): { run: TypeRun; index: number } | null {
+  if (key.ctrlKey || key.metaKey || key.altKey || key.isComposing) return null;
+  if (key.key.length !== 1) return null;
+  const live = run !== null && now - run.at < TYPE_SELECT_RESET_MS ? run : null;
+  if (key.key === " " && !live) return null;
+
+  const text = (live?.text ?? "") + key.key;
+  const current = entries.findIndex((entry) => entry.path === selection.anchor);
+  let index = findByPrefix(entries, text, live ? current : current + 1);
+  if (index < 0 && text.length > 1 && [...text].every((c) => c === text[0])) {
+    index = findByPrefix(entries, text[0], current + 1);
+  }
+  return { run: { text, at: now }, index };
+}
+
+/** The first entry from `start` on, wrapping around, whose name starts with `prefix`. */
+function findByPrefix(
+  entries: readonly FileEntry[],
+  prefix: string,
+  start: number,
+): number {
+  const wanted = foldName(prefix);
+  const from = Math.max(start, 0);
+  for (let offset = 0; offset < entries.length; offset++) {
+    const index = (from + offset) % entries.length;
+    if (foldName(entries[index].name).startsWith(wanted)) return index;
+  }
+  return -1;
+}
+
+/**
+ * A name as type-to-select compares it. Keyboards type composed characters,
+ * while a name may hold decomposed ones (HFS+ stored every name that way).
+ */
+function foldName(name: string): string {
+  return name.normalize("NFC").toLowerCase();
+}
+
 /** What copying several entries into one folder runs into; see `batchCollisions`. */
 export interface BatchCollisions {
   /** Why the batch cannot start at all, or null. */

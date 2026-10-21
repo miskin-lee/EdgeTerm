@@ -5,6 +5,7 @@ import {
   useEffect,
   useRef,
   useState,
+  type KeyboardEvent as ReactKeyboardEvent,
   type MouseEvent,
   type PointerEvent as ReactPointerEvent,
 } from "react";
@@ -20,7 +21,9 @@ import {
   selectEntry,
   selectForMenu,
   selectedEntries,
+  typeToSelect,
   type FileSelection,
+  type TypeRun,
 } from "../../fileSelection";
 import {
   ask,
@@ -220,6 +223,7 @@ export function FilerPanel() {
   const transferClearTimer = useRef<number | null>(null);
   const transferRateSamples = useRef<TransferRateSample[]>([]);
   const activeTransfer = useRef<ActiveTransfer | null>(null);
+  const typeRun = useRef<TypeRun | null>(null);
 
   remoteIdRef.current = remoteId;
   offlineReasonRef.current = offlineReason;
@@ -1331,6 +1335,28 @@ export function FilerPanel() {
   const selected = selectedEntries(entries, selection);
   const entryOrder = entries.map((entry) => entry.path);
 
+  /** Typing a name's first letters selects it (issue #108); see `typeToSelect`. */
+  const onListKeyDown = (event: ReactKeyboardEvent<HTMLDivElement>) => {
+    // Keys typed into the new entry's name field bubble up through the list.
+    if (event.target !== event.currentTarget) return;
+    const typed = typeToSelect(
+      entries,
+      selection,
+      typeRun.current,
+      event.nativeEvent,
+      performance.now(),
+    );
+    if (!typed) return;
+    event.preventDefault();
+    typeRun.current = typed.run;
+    const entry = entries[typed.index];
+    if (!entry) return;
+    setSelection(selectEntry(selection, entryOrder, entry.path, "replace"));
+    event.currentTarget
+      .querySelectorAll(".filer-entry")
+      [typed.index]?.scrollIntoView({ block: "nearest" });
+  };
+
   return (
     <div
       ref={panelRef}
@@ -1474,6 +1500,8 @@ export function FilerPanel() {
 
       <div
         className="panel-body filer-list"
+        tabIndex={0}
+        onKeyDown={onListKeyDown}
         onContextMenu={(event) => openMenu(event, folderMenu())}
         aria-label={
           remote

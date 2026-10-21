@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   EMPTY_SELECTION,
+  TYPE_SELECT_RESET_MS,
   batchCollisions,
   batchItemName,
   clickMode,
@@ -9,6 +10,8 @@ import {
   selectEntry,
   selectForMenu,
   selectedEntries,
+  typeToSelect,
+  type TypeRun,
 } from "./fileSelection";
 import type { FileEntry } from "./types";
 
@@ -119,6 +122,120 @@ describe("selectedEntries", () => {
       anchor: "/srv/a",
     });
     expect(picked.map((item) => item.name)).toEqual(["a", "c"]);
+  });
+});
+
+describe("typeToSelect", () => {
+  const key = (
+    name: string,
+    modifiers: Partial<
+      Record<"ctrlKey" | "metaKey" | "altKey" | "isComposing", boolean>
+    > = {},
+  ) => ({
+    key: name,
+    ctrlKey: false,
+    metaKey: false,
+    altKey: false,
+    isComposing: false,
+    ...modifiers,
+  });
+
+  /**
+   * Types `text` into a list of `names`, a key every `gap` ms, the way the
+   * panels do; the name selected after each key, or "-" for none.
+   */
+  const typeInto = (names: string[], text: string, gap = 100) => {
+    const entries = names.map((name) => entry(name));
+    let selection = EMPTY_SELECTION;
+    let run: TypeRun | null = null;
+    return [...text].map((char, index) => {
+      const typed = typeToSelect(
+        entries,
+        selection,
+        run,
+        key(char),
+        index * gap,
+      );
+      if (!typed) throw new Error(`"${char}" was not taken as typing`);
+      run = typed.run;
+      const picked = entries[typed.index];
+      if (!picked) return "-";
+      selection = { paths: [picked.path], anchor: picked.path };
+      return picked.name;
+    });
+  };
+
+  const home = ["Desktop", "docs", "Downloads", "etc", "Music"];
+
+  it("selects the first name starting with what was typed, ignoring case", () => {
+    expect(typeInto(home, "dow")).toEqual(["Desktop", "docs", "Downloads"]);
+    expect(typeInto(home, "MU")).toEqual(["Music", "Music"]);
+  });
+
+  it("starts over after a pause, moving on from the selected entry", () => {
+    expect(typeInto(home, "dd", TYPE_SELECT_RESET_MS)).toEqual([
+      "Desktop",
+      "docs",
+    ]);
+    expect(typeInto(home, "ddd", TYPE_SELECT_RESET_MS)).toEqual([
+      "Desktop",
+      "docs",
+      "Downloads",
+    ]);
+  });
+
+  it("steps through the names a repeated letter starts", () => {
+    expect(typeInto(["a", "s1", "s2", "s3"], "ssss")).toEqual([
+      "s1",
+      "s2",
+      "s3",
+      "s1",
+    ]);
+    // Unless a name starts with the repeats themselves.
+    expect(typeInto(["s3.txt", "src", "ssh", "sudo"], "sss")).toEqual([
+      "s3.txt",
+      "ssh",
+      "sudo",
+    ]);
+  });
+
+  it("keeps the selection when no name matches", () => {
+    expect(typeInto(home, "dx")).toEqual(["Desktop", "-"]);
+    expect(typeInto(home, "q")).toEqual(["-"]);
+  });
+
+  it("takes a space only inside a run", () => {
+    const entries = [entry("Mydata"), entry("My Documents")];
+    expect(
+      typeToSelect(entries, EMPTY_SELECTION, null, key(" "), 0),
+    ).toBeNull();
+    expect(typeInto(["Mydata", "My Documents"], "my d")).toEqual([
+      "Mydata",
+      "Mydata",
+      "My Documents",
+      "My Documents",
+    ]);
+  });
+
+  it("matches a decomposed name against a composed key", () => {
+    expect(typeInto(["etc", "E\u0301cran.png"], "\u00e9")).toEqual([
+      "E\u0301cran.png",
+    ]);
+  });
+
+  it("leaves shortcuts, named keys and composition alone", () => {
+    const entries = home.map((name) => entry(name));
+    const ignored = [
+      key("d", { metaKey: true }),
+      key("d", { ctrlKey: true }),
+      key("d", { altKey: true }),
+      key("d", { isComposing: true }),
+      key("Enter"),
+      key("ArrowDown"),
+    ];
+    for (const press of ignored) {
+      expect(typeToSelect(entries, EMPTY_SELECTION, null, press, 0)).toBeNull();
+    }
   });
 });
 
