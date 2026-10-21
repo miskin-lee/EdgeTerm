@@ -4780,10 +4780,12 @@ textarea:focus {
   border-color: var(--accent);
 }
 
-/* Column captions, aligned with the row content (6px inset + 6px padding). */
+/* Column captions, aligned with the row content (6px inset + 6px padding,
+   and the rows' 7px gap so right-aligned captions sit over their values). */
 .filer-columns {
   display: flex;
   align-items: center;
+  gap: 7px;
   height: 22px;
   padding: 0 12px;
   border-bottom: 1px solid var(--border);
@@ -4839,6 +4841,11 @@ textarea:focus {
   flex: 1;
 }
 
+.filer-col-size {
+  width: 56px;
+  text-align: right;
+}
+
 .filer-col-date {
   width: 74px;
   text-align: right;
@@ -4883,8 +4890,16 @@ textarea:focus {
   color: var(--symlink-label);
 }
 
+.filer-entry .filer-col-size {
+  flex: 0 0 56px;
+}
+
 .filer-entry .filer-col-date {
   flex: 0 0 74px;
+}
+
+.filer-entry .filer-col-size,
+.filer-entry .filer-col-date {
   font-size: calc(var(--panel-font-size) - 2px);
   font-variant-numeric: tabular-nums;
 }

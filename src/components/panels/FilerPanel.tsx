@@ -94,6 +94,13 @@ interface DragPress {
 const DRAG_OUT_THRESHOLD = 5;
 
 /**
+ * Panel width from which the Size column is shown (issue #107). The column
+ * and its gap take 63px, so the default 220px sidebar would leave names only
+ * about 30px; narrower than this the size stays in the entry's tooltip.
+ */
+const SIZE_COLUMN_MIN_WIDTH = 300;
+
+/**
  * Whether a drop on the panel would be uploaded. `reason` carries the message
  * to show when it would not; null means say nothing (this panel's own drag
  * out is passing over the window).
@@ -189,6 +196,7 @@ export function FilerPanel() {
   const [transfer, setTransfer] = useState<TransferState | null>(null);
   const [dragOver, setDragOver] = useState<DropVerdict | null>(null);
   const [dragOut, setDragOut] = useState<DragOutState | null>(null);
+  const [showSize, setShowSize] = useState(false);
   const panelRef = useRef<HTMLDivElement>(null);
   const remoteIdRef = useRef(remoteId);
   const offlineReasonRef = useRef(offlineReason);
@@ -426,6 +434,16 @@ export function FilerPanel() {
     const target = claimTarget();
     if (target !== null) void load(target);
   }, [filerTarget, load]);
+
+  useEffect(() => {
+    const panel = panelRef.current;
+    if (!panel) return;
+    const observer = new ResizeObserver(() =>
+      setShowSize(panel.clientWidth >= SIZE_COLUMN_MIN_WIDTH),
+    );
+    observer.observe(panel);
+    return () => observer.disconnect();
+  }, []);
 
   useEffect(
     () => () => {
@@ -1450,6 +1468,7 @@ export function FilerPanel() {
 
       <div className="filer-columns">
         <span className="filer-col-name">Name</span>
+        {showSize && <span className="filer-col-size">Size</span>}
         <span className="filer-col-date">Modified</span>
       </div>
 
@@ -1524,6 +1543,11 @@ export function FilerPanel() {
                 theme={theme}
               />
               <span className="row-label">{entry.name}</span>
+              {showSize && (
+                <span className="filer-col-size row-meta">
+                  {formatEntrySize(entry)}
+                </span>
+              )}
               <span className="filer-col-date row-meta">
                 {formatDate(entry.modified)}
               </span>
@@ -1765,7 +1789,8 @@ function entryKindLabel(kind: FilerEntryKind): string {
 function entryTitle(entry: FileEntry): string {
   const kind = entryKind(entry);
   const attributes = [entryKindLabel(kind)];
-  if (!entry.isDir) attributes.push(formatBytes(entry.size));
+  const size = formatEntrySize(entry);
+  if (size) attributes.push(size);
   if (entry.permissions !== null) {
     attributes.push(
       `Mode ${(entry.permissions & 0o7777).toString(8).padStart(4, "0")}`,
@@ -1775,6 +1800,15 @@ function entryTitle(entry: FileEntry): string {
     attributes.push(entry.group ? `${entry.owner}:${entry.group}` : entry.owner);
   }
   return `${entry.path}\n${attributes.join(" · ")}`;
+}
+
+/**
+ * A file's size, or "" for a folder (its stat size is the directory block)
+ * and for a link: SFTP lists the link itself, so its size is the length of
+ * the target path, while a local listing follows it to the target.
+ */
+function formatEntrySize(entry: FileEntry): string {
+  return entry.isDir || entry.isSymlink ? "" : formatBytes(entry.size);
 }
 
 function formatEntrySummary(entries: FileEntry[]): string {
