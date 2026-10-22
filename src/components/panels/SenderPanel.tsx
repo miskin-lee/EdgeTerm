@@ -92,7 +92,6 @@ export function SenderPanel({ compact, canCompact, onExpandedChange }: SenderPan
   const activeId = useStore((s) => s.activeId);
   const profiles = useStore((s) => s.profiles);
   const groups = useStore((s) => s.groups);
-  const setStatus = useStore((s) => s.setStatus);
   const libraryVersion = useStore((s) => s.senderLibraryVersion);
 
   const [text, setText] = useState("");
@@ -168,7 +167,7 @@ export function SenderPanel({ compact, canCompact, onExpandedChange }: SenderPan
         setEditing(null);
       })
       .catch((error) => {
-        if (!cancelled) setStatus(`Sender: failed to load saved commands: ${error}`);
+        if (!cancelled) console.error("Sender: failed to load saved commands:", error);
       })
       .finally(() => {
         if (!cancelled) setCommandsLoading(false);
@@ -176,7 +175,7 @@ export function SenderPanel({ compact, canCompact, onExpandedChange }: SenderPan
     return () => {
       cancelled = true;
     };
-  }, [setStatus, libraryVersion]);
+  }, [libraryVersion]);
 
   useEffect(() => () => {
     if (tooltipTimer.current) clearTimeout(tooltipTimer.current);
@@ -292,22 +291,12 @@ export function SenderPanel({ compact, canCompact, onExpandedChange }: SenderPan
 
   /**
    * Save and Update both go through the picker: it checks the input first
-   * so an empty command is reported instead of asking where to file it.
+   * so an empty command never asks where to file it.
    */
   const openSavePicker = () => {
     if (commandsLoading || libraryBusy) return;
-    if (text.length === 0) {
-      setStatus(
-        editing
-          ? "Sender: enter a command before updating"
-          : "Sender: enter a command before saving",
-      );
-      return;
-    }
-    if (!editing && savedCommands.length >= MAX_SAVED_COMMANDS) {
-      setStatus(`Sender: saved command limit is ${MAX_SAVED_COMMANDS}`);
-      return;
-    }
+    if (text.length === 0) return;
+    if (!editing && savedCommands.length >= MAX_SAVED_COMMANDS) return;
     const rect = saveButtonRef.current?.getBoundingClientRect();
     if (!rect) return;
     setSavePicker({ x: rect.right, y: rect.bottom + 2 });
@@ -322,14 +311,7 @@ export function SenderPanel({ compact, canCompact, onExpandedChange }: SenderPan
 
   const saveCommand = async (scope: CommandScope) => {
     if (commandsLoading || libraryBusy) return;
-    if (text.length === 0) {
-      setStatus("Sender: enter a command before saving");
-      return;
-    }
-    if (savedCommands.length >= MAX_SAVED_COMMANDS) {
-      setStatus(`Sender: saved command limit is ${MAX_SAVED_COMMANDS}`);
-      return;
-    }
+    if (text.length === 0 || savedCommands.length >= MAX_SAVED_COMMANDS) return;
 
     const newCommand: SavedCommand = {
       id: "",
@@ -338,18 +320,14 @@ export function SenderPanel({ compact, canCompact, onExpandedChange }: SenderPan
       ending,
       scope,
     };
-    const nextLength = savedCommands.length + 1;
     setLibraryBusy(true);
     try {
       const saved = await api.saveSenderCommand(newCommand);
       setSavedCommands((current) => [...current, saved]);
       setSelectedCommandId(saved.id);
       setTagName("");
-      setStatus(
-        `Sender: saved command ${nextLength}/${MAX_SAVED_COMMANDS} (${labelOf(saved.scope)})`,
-      );
     } catch (error) {
-      setStatus(`Sender: failed to save command: ${error}`);
+      console.error("Sender: failed to save command:", error);
     } finally {
       setLibraryBusy(false);
     }
@@ -379,7 +357,7 @@ export function SenderPanel({ compact, canCompact, onExpandedChange }: SenderPan
       );
       if (editing?.command.id === saved.id) setEnding(saved.ending);
     } catch (error) {
-      setStatus(`Sender: failed to update command: ${error}`);
+      console.error("Sender: failed to update command:", error);
     } finally {
       setLibraryBusy(false);
     }
@@ -414,11 +392,7 @@ export function SenderPanel({ compact, canCompact, onExpandedChange }: SenderPan
   };
 
   const updateCommand = async (scope: CommandScope) => {
-    if (!editing || libraryBusy) return;
-    if (text.length === 0) {
-      setStatus("Sender: enter a command before updating");
-      return;
-    }
+    if (!editing || libraryBusy || text.length === 0) return;
     setLibraryBusy(true);
     try {
       const saved = await api.saveSenderCommand({
@@ -432,9 +406,8 @@ export function SenderPanel({ compact, canCompact, onExpandedChange }: SenderPan
       setSelectedCommandId(saved.id);
       setEditing(null);
       setTagName("");
-      setStatus(`Sender: updated saved command (${labelOf(saved.scope)})`);
     } catch (error) {
-      setStatus(`Sender: failed to update command: ${error}`);
+      console.error("Sender: failed to update command:", error);
     } finally {
       setLibraryBusy(false);
     }
@@ -452,7 +425,7 @@ export function SenderPanel({ compact, canCompact, onExpandedChange }: SenderPan
       if (contextMenu?.commandId === id) setContextMenu(null);
       if (editing?.command.id === id) cancelEdit();
     } catch (error) {
-      setStatus(`Sender: failed to delete command: ${error}`);
+      console.error("Sender: failed to delete command:", error);
     } finally {
       setLibraryBusy(false);
     }
@@ -464,10 +437,7 @@ export function SenderPanel({ compact, canCompact, onExpandedChange }: SenderPan
   ) => {
     if (running) return;
     const targetIds = targets();
-    if (targetIds.length === 0) {
-      setStatus("Sender: no session selected");
-      return;
-    }
+    if (targetIds.length === 0) return;
 
     const units: SendUnit[] = buildUnits(commandText, commandEnding);
     if (units.length === 0) return;
@@ -476,29 +446,9 @@ export function SenderPanel({ compact, canCompact, onExpandedChange }: SenderPan
     stopRef.current = stop;
     setRunning(true);
     try {
-      const { sent, skipped } = await sendUnits(
-        targetIds,
-        units,
-        commandEnding,
-        stop,
-      );
-      if (sent.length === 0) {
-        setStatus(
-          "Sender: blocked while a file transfer or another send is running",
-        );
-      } else if (stop.stopped) {
-        setStatus("Sender: stopped");
-      } else {
-        const what =
-          units.length > 1 ? `sent ${units.length} lines` : "sent command";
-        setStatus(
-          skipped.length === 0
-            ? `Sender: ${what}`
-            : `Sender: ${what}; skipped ${skipped.length} session(s) with a file transfer or another send running`,
-        );
-      }
+      await sendUnits(targetIds, units, commandEnding, stop);
     } catch (e) {
-      setStatus(`Sender: ${e}`);
+      console.error("Sender:", e);
     } finally {
       stopRef.current = null;
       setRunning(false);
@@ -524,10 +474,7 @@ export function SenderPanel({ compact, canCompact, onExpandedChange }: SenderPan
       every: settings.every,
       times: settings.times,
     });
-    if (problem) {
-      setStatus(`Sender: ${problem}`);
-      return;
-    }
+    if (problem) return;
     setRepeatOpen(true);
   };
 

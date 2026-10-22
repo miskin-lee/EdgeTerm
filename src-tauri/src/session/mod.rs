@@ -370,9 +370,6 @@ pub fn make_info(id: &str, profile: &SessionProfile) -> SessionInfo {
             profile.kind,
             SessionKind::Ssh | SessionKind::Ftp | SessionKind::Sftp
         ),
-        recording: None,
-        legacy_algorithms: Vec::new(),
-        shared_connection: false,
     }
 }
 
@@ -396,9 +393,6 @@ mod tests {
                 address: "example.test:22".into(),
                 color: None,
                 supports_remote_files: true,
-                recording: None,
-                legacy_algorithms: Vec::new(),
-                shared_connection: false,
             },
             tx,
             encoding: encoding_rs::UTF_8,
@@ -445,9 +439,6 @@ mod tests {
                 address: "example.test:22".into(),
                 color: None,
                 supports_remote_files: true,
-                recording: None,
-                legacy_algorithms: Vec::new(),
-                shared_connection: false,
             },
             tx,
             encoding: encoding_rs::GBK,

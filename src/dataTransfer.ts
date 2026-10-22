@@ -50,7 +50,7 @@ const datestamp = (date: Date) =>
   ].join("-");
 
 export async function exportAppData(): Promise<void> {
-  const { exportSettings, setStatus } = useStore.getState();
+  const { exportSettings } = useStore.getState();
   try {
     const now = new Date();
     const picked = await saveDialog({
@@ -59,17 +59,13 @@ export async function exportAppData(): Promise<void> {
       filters: FILE_FILTERS,
     });
     if (!picked) return;
-    const path = withDataExtension(picked);
-    const summary = await api.exportAppData(
-      path,
+    await api.exportAppData(
+      withDataExtension(picked),
       exportSettings(),
       now.toISOString(),
     );
-    setStatus(
-      `Exported ${describe(summary)} and settings to ${basename(path)} (passwords are not included)`,
-    );
   } catch (error) {
-    setStatus(`Export failed: ${error}`);
+    console.error("Export failed:", error);
   }
 }
 
@@ -84,14 +80,6 @@ export async function importAppData(): Promise<void> {
     });
     const path = typeof picked === "string" ? picked : null;
     if (!path) return;
-    // The dialog filter already narrows the list, but "All files" and typed
-    // paths get through on some platforms; say what was expected up front.
-    if (!hasDataExtension(path)) {
-      store.setStatus(
-        `Import failed: “${basename(path)}” is not an EdgeTerm data file (expected .${DATA_FILE_EXTENSION})`,
-      );
-      return;
-    }
 
     // Parse first so the confirmation can say exactly what is coming in.
     const data: AppData = await api.readAppData(path);
@@ -114,17 +102,12 @@ export async function importAppData(): Promise<void> {
     );
     if (!confirmed) return;
 
-    const result = await api.importAppData(data);
+    await api.importAppData(data);
     if (hasSettings) store.applySettings(data.settings);
     await store.loadProfiles();
     store.bumpSenderLibrary();
-    let status = `Imported ${describe(result)}${hasSettings ? " and settings" : ""}`;
-    if (result.skippedSenderCommands > 0) {
-      status += `; skipped ${plural(result.skippedSenderCommands, "Sender command")} (library full)`;
-    }
-    store.setStatus(status);
   } catch (error) {
-    store.setStatus(`Import failed: ${error}`);
+    console.error("Import failed:", error);
   }
 }
 
@@ -146,12 +129,8 @@ export async function importSshConfig(): Promise<void> {
     const path = typeof picked === "string" ? picked : null;
     if (!path) return;
     const preview = await api.readSshConfig(path);
-    if (preview.entries.length === 0) {
-      store.setStatus(`No Host entries found in ${basename(path)}`);
-      return;
-    }
-    store.setSshConfigImport(preview);
+    if (preview.entries.length > 0) store.setSshConfigImport(preview);
   } catch (error) {
-    store.setStatus(`Import failed: ${error}`);
+    console.error("Import failed:", error);
   }
 }

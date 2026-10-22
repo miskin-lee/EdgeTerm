@@ -600,13 +600,23 @@ export function SessionDialog({ initial, onClose }: Props) {
       // Saving first keeps the profile in the tree and stores its credentials
       // in the operating system's secure credential vault.
       const saved = candidate.name ? await upsertProfile(candidate) : candidate;
+      const opened = new Set(
+        useStore.getState().tabs.map((tab) => tab.info.id),
+      );
       const id = await openSession({
         ...saved,
         password: candidate.password,
         passphrase: candidate.passphrase,
       });
       if (id) onClose();
-      else setError(useStore.getState().error ?? "connection failed");
+      else {
+        // The tab openSession added is left on the failure, which says why.
+        const { tabs } = useStore.getState();
+        const failed = tabs.find(
+          (tab) => !opened.has(tab.info.id) && tab.state === "error",
+        );
+        setError(failed?.message ?? "connection failed");
+      }
     } catch (e) {
       setError(String(e));
     } finally {

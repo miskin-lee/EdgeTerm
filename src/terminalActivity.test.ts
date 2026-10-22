@@ -16,7 +16,6 @@ function createController(states: string[], commands: string[] = []) {
     {
       onData() {},
       onResize() {},
-      onStatus() {},
       onCommand: (command) => commands.push(command),
       onCommandState: (state) => states.push(state),
       suggest: () => [],

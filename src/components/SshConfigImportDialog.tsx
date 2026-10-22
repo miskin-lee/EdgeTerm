@@ -14,9 +14,6 @@ interface Props {
 
 const basename = (path: string) => path.split(/[\\/]/).pop() || path;
 
-const plural = (count: number, noun: string) =>
-  `${count} ${noun}${count === 1 ? "" : "s"}`;
-
 /** `user@host`, with the port when it is not the default. */
 const target = (entry: SshConfigEntry) =>
   `${entry.username}@${entry.host}${entry.port === 22 ? "" : `:${entry.port}`}`;
@@ -37,7 +34,6 @@ function authLabel(entry: SshConfigEntry): string {
  */
 export function SshConfigImportDialog({ preview, onClose }: Props) {
   const groups = useStore((s) => s.groups);
-  const setStatus = useStore((s) => s.setStatus);
   const loadProfiles = useStore((s) => s.loadProfiles);
   const dialogRef = useRef<HTMLDivElement>(null);
   const [selected, setSelected] = useState<Set<string>>(
@@ -103,28 +99,8 @@ export function SshConfigImportDialog({ preview, onClose }: Props) {
       const aliases = preview.entries
         .filter((entry) => selected.has(entry.alias))
         .map((entry) => entry.alias);
-      const summary = await api.importSshConfig(
-        preview.path,
-        aliases,
-        groupId || null,
-      );
+      await api.importSshConfig(preview.path, aliases, groupId || null);
       await loadProfiles();
-      const parts: string[] = [];
-      if (summary.added > 0) parts.push(`${plural(summary.added, "session")} added`);
-      if (summary.updated > 0) {
-        parts.push(`${plural(summary.updated, "session")} updated`);
-      }
-      if (summary.jumpHosts > 0) {
-        parts.push(`${plural(summary.jumpHosts, "jump host")} added`);
-      }
-      if (summary.jumpsIgnored > 0) {
-        parts.push(`${plural(summary.jumpsIgnored, "multi-hop jump")} skipped`);
-      }
-      let status = `Imported from ${basename(preview.path)}: ${parts.join(", ") || "nothing to do"}`;
-      if (summary.warnings.length > 0) {
-        status += `; ${summary.warnings.join("; ")}`;
-      }
-      setStatus(status);
       onClose();
     } catch (e) {
       setError(String(e));

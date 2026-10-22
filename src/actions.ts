@@ -2,7 +2,7 @@ import * as api from "./api";
 import { fontStack } from "./fonts";
 import { commandHistory } from "./history";
 import { IS_WINDOWS } from "./platform";
-import { tabTitle, useStore, type HostKeyPrompt, type Tab } from "./store";
+import { useStore, type HostKeyPrompt, type Tab } from "./store";
 import type { TerminalController } from "./terminal";
 import {
   disposeController,
@@ -61,11 +61,6 @@ function pendingSessionInfo(
     address,
     color: profile.color ?? null,
     supportsRemoteFiles: profile.kind === "ssh" || isFileSession(profile.kind),
-    // Known once the backend has opened the file.
-    recording: null,
-    // Known once the backend has connected.
-    legacyAlgorithms: [],
-    sharedConnection: false,
   };
 }
 
@@ -117,12 +112,6 @@ export async function ensureController(id: string): Promise<TerminalController> 
       onResize: (cols, rows) => {
         useStore.getState().setSize(id, cols, rows);
         void api.resizeSession(id, cols, rows).catch(() => undefined);
-      },
-      onStatus: (message, error = false) => {
-        const store = useStore.getState();
-        store.setStatus(message);
-        if (error) store.setError(message, id);
-        else if (store.errorSessionId === id) store.setError(null);
       },
     },
     useStore.getState().bufferFontSize,
@@ -246,8 +235,6 @@ export async function disconnectSession(id: string): Promise<void> {
   // The backend stays silent for a close it was asked for, so echo the same
   // notice into the terminal that a peer-initiated close gets (see App.tsx).
   getController(id)?.writeText(SESSION_CLOSED_NOTICE);
-  if (failure) store.setError(failure, id);
-  else store.setStatus(`Disconnected from ${tabTitle(current)}`);
 }
 
 /**
@@ -292,15 +279,7 @@ async function connectSession(
   profile: SessionProfile,
   reuseSessionId?: string,
 ): Promise<string | null> {
-  const store = useStore.getState();
-  const pending = store.tabs.find((item) => item.info.id === id);
-  const label = pending
-    ? tabTitle(pending)
-    : profile.name || profile.host || profile.portName || "session";
-
-  store.setStatus(`Connecting to ${label}…`);
-  store.setError(null);
-  store.applyState(id, "connecting");
+  useStore.getState().applyState(id, "connecting");
 
   // The decoder for the profile's encoding must be in place before the
   // first byte of the banner arrives; a reconnect may carry a re-edited
@@ -335,11 +314,6 @@ async function connectSession(
     const { info } = outcome;
     connectedStore.updateTabInfo(id, info);
     connectedStore.applyState(id, "connected");
-    connectedStore.setStatus(
-      info.sharedConnection
-        ? `Connected to ${tabTitle({ info, ordinal: tab.ordinal })} on the same connection`
-        : `Connected to ${tabTitle({ info, ordinal: tab.ordinal })}`,
-    );
 
     // The pane was fitted while the backend was still connecting, so its
     // first resize command could not be delivered. Re-send the current size.
@@ -364,8 +338,6 @@ async function connectSession(
 function failSession(id: string, message: string): void {
   const store = useStore.getState();
   store.applyState(id, "error", message);
-  store.setError(message, id);
-  store.setStatus(`Failed: ${message}`);
   const terminalMessage = message.replace(/[\x00-\x1f\x7f]/g, " ");
   getController(id)?.writeText(
     `\r\n\x1b[31m[connection failed: ${terminalMessage}]\x1b[0m Press Enter to retry.\r\n`,
@@ -446,24 +418,10 @@ async function shellCwd(tab: Tab): Promise<string> {
  * all land here. One query per request; nothing follows the shell around.
  */
 export async function revealCwdInFiler(id: string): Promise<void> {
-  const store = useStore.getState();
-  const tab = store.tabs.find((item) => item.info.id === id);
-  if (!tab) return;
-  if (tab.info.kind !== "local" && tab.info.kind !== "ssh") {
-    store.setStatus(
-      "Filer: only shell and SSH sessions have a working directory",
-    );
-    return;
-  }
-  if (tab.state !== "connected") {
-    store.setStatus("Filer: the session is not connected");
-    return;
-  }
-  try {
-    const path = await shellCwd(tab);
-    useStore.getState().revealInFiler(id, path);
-    useStore.getState().setStatus(`Filer: ${path}`);
-  } catch (error) {
-    useStore.getState().setError(`Filer: ${String(error)}`, id);
-  }
+  const tab = useStore.getState().tabs.find((item) => item.info.id === id);
+  // Only a connected shell or SSH session has a working directory to ask for.
+  if (!tab || tab.state !== "connected") return;
+  if (tab.info.kind !== "local" && tab.info.kind !== "ssh") return;
+  const path = await shellCwd(tab).catch(() => null);
+  if (path !== null) useStore.getState().revealInFiler(id, path);
 }

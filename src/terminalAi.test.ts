@@ -17,7 +17,6 @@ function createController(events: string[]) {
     {
       onData() {},
       onResize() {},
-      onStatus() {},
       onCommand() {},
       onCommandState: (state, kind) => events.push(`${state}:${kind}`),
       suggest: () => [],

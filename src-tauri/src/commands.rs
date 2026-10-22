@@ -270,21 +270,15 @@ pub async fn open_session(
         session_id
     };
     let (tx, rx) = mpsc::unbounded_channel();
-    let mut info = session::make_info(&id, &profile);
+    let info = session::make_info(&id, &profile);
     // The recording a terminal profile asked for. Opened right before the
     // session starts producing output — after an SSH handshake, so a
     // refused key or a wrong password leaves no empty file behind.
-    let start_recording = |info: &mut SessionInfo| -> Result<Option<Recorder>> {
+    let start_recording = || -> Result<Option<Recorder>> {
         if !profile.record {
             return Ok(None);
         }
-        let recorder = Recorder::start(
-            &id,
-            &profile,
-            recording::report_to_ui(app.clone(), id.clone()),
-        )?;
-        info.recording = Some(recorder.path().display().to_string());
-        Ok(Some(recorder))
+        Recorder::start(&id, &profile).map(Some)
     };
 
     let owner_thread = match profile.kind {
@@ -297,12 +291,12 @@ pub async fn open_session(
             None
         }
         SessionKind::Local => {
-            let recorder = start_recording(&mut info)?;
+            let recorder = start_recording()?;
             session::local::spawn(app.clone(), id.clone(), &profile, rx, recorder)?;
             None
         }
         SessionKind::Serial => {
-            let recorder = start_recording(&mut info)?;
+            let recorder = start_recording()?;
             Some(session::serial::spawn(
                 app.clone(),
                 id.clone(),
@@ -313,7 +307,7 @@ pub async fn open_session(
         }
         SessionKind::Telnet => {
             let stream = session::telnet::connect(&profile).await?;
-            let recorder = start_recording(&mut info)?;
+            let recorder = start_recording()?;
             session::telnet::spawn(
                 app.clone(),
                 id.clone(),
@@ -343,7 +337,6 @@ pub async fn open_session(
                 ),
                 None => None,
             };
-            info.shared_connection = shared.is_some();
             let conn = match shared {
                 Some(conn) => conn,
                 None => {
@@ -365,16 +358,14 @@ pub async fn open_session(
                     }
                 }
             };
-            info.legacy_algorithms = conn.legacy_algorithms().to_vec();
             state.ssh_transports.register(&id, &conn.transport());
-            let recorder = start_recording(&mut info)?;
+            let recorder = start_recording()?;
             session::ssh::spawn(app.clone(), id.clone(), conn, rx, recorder);
             None
         }
         SessionKind::Sftp => {
             let shared = reuse(&state, &reuse_session_id)
                 .and_then(|transport| session::ssh::connect_sftp_on(transport, &profile).ok());
-            info.shared_connection = shared.is_some();
             let conn = match shared {
                 Some(conn) => conn,
                 None => {
@@ -395,7 +386,6 @@ pub async fn open_session(
                     }
                 }
             };
-            info.legacy_algorithms = conn.legacy_algorithms().to_vec();
             state.ssh_transports.register(&id, &conn.transport());
             session::ssh::spawn_sftp(app.clone(), id.clone(), conn, rx);
             None

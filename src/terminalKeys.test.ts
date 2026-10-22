@@ -21,7 +21,6 @@ function createController(onReconnect = () => {}) {
     {
       onData() {},
       onResize() {},
-      onStatus() {},
       onCommand() {},
       onCommandState() {},
       suggest: () => [],

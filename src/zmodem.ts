@@ -407,7 +407,6 @@ export class ZmodemController {
   }
 
   private report(message: string, kind: TransferNoticeKind = "active") {
-    this.callbacks.onStatus(message, kind === "error");
     this.callbacks.onNotice(message, kind);
   }
 

@@ -151,7 +151,6 @@ export function startSchedule(spec: ScheduleSpec): string | null {
   active = entry;
   notify();
 
-  const setStatus = (message: string) => useStore.getState().setStatus(message);
   const tick = async () => {
     if (active !== entry) return;
     entry.timer = null;
@@ -161,14 +160,13 @@ export function startSchedule(spec: ScheduleSpec): string | null {
     const { ids, gone } = targetsOf(spec);
     if (gone) {
       stopSchedule();
-      setStatus("Sender: stopped repeating, the session was closed");
       return;
     }
     if (ids.length > 0) {
       try {
         await sendUnits(ids, entry.units, spec.ending, entry.stop);
       } catch (error) {
-        setStatus(`Sender: ${error}`);
+        console.error("Sender:", error);
       }
     }
     if (active !== entry) return;
@@ -177,7 +175,6 @@ export function startSchedule(spec: ScheduleSpec): string | null {
     if (spec.times > 0 && sent >= spec.times) {
       active = null;
       notify();
-      setStatus(`Sender: repeated the command ${sent} times, done`);
       return;
     }
     const nextAt = Date.now() + spec.every * 1000;

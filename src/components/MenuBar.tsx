@@ -290,7 +290,6 @@ export function MenuBar(props: Props) {
   // the tab-number keys are fixed.
   const shortcuts = useStore((s) => s.shortcuts);
   const accel = (command: ShortcutCommand) => chordLabel(shortcuts[command]);
-  const setStatus = useStore((s) => s.setStatus);
   const requestCloseTab = useStore((s) => s.requestCloseTab);
   const activateAdjacentTab = useStore((s) => s.activateAdjacentTab);
   const activateAdjacentPane = useStore((s) => s.activateAdjacentPane);
@@ -318,7 +317,6 @@ export function MenuBar(props: Props) {
     withActive((id) => {
       const terminal = getController(id);
       if (terminal) fn(terminal);
-      else setStatus("File transfers need a terminal session");
     });
 
   // One gutter mode and one theme are in force at a time: radios, not boxes.
@@ -429,11 +427,7 @@ export function MenuBar(props: Props) {
             },
             {
               label: "Cancel Transfer",
-              action: withTerminal((terminal) => {
-                if (!terminal.cancelTransfer()) {
-                  setStatus("No file transfer is running");
-                }
-              }),
+              action: withTerminal((terminal) => terminal.cancelTransfer()),
             },
           ],
         },
@@ -544,12 +538,9 @@ export function MenuBar(props: Props) {
                 },
               );
               if (!confirmed) return;
-              try {
-                await commandHistory.clear();
-                setStatus("Command history cleared");
-              } catch (error) {
-                setStatus(`Failed to clear command history: ${error}`);
-              }
+              await commandHistory.clear().catch((error) => {
+                console.error("Failed to clear command history:", error);
+              });
             })();
           },
         },
@@ -631,7 +622,7 @@ export function MenuBar(props: Props) {
           label: "Tutorial",
           action: () => {
             void openUrl(TUTORIAL_URL).catch((error) => {
-              setStatus(`Failed to open tutorial: ${error}`);
+              console.error("Failed to open tutorial:", error);
             });
           },
         },
@@ -652,7 +643,6 @@ export function MenuBar(props: Props) {
               );
               if (!confirmed) return;
               resetSettings();
-              setStatus("Default settings restored");
             })();
           },
         },

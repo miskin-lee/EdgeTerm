@@ -827,7 +827,6 @@ export class XmodemController {
 
   private report(message: string, kind: TransferNoticeKind = "active") {
     if (this.disposed) return;
-    this.callbacks.onStatus(message, kind === "error");
     this.callbacks.onNotice(message, kind);
   }
 }

@@ -234,31 +234,6 @@ pub struct SessionInfo {
     pub color: Option<String>,
     /// Whether the Filer pane can browse this session's remote filesystem.
     pub supports_remote_files: bool,
-    /// Path of the file this session's output is being recorded to, when
-    /// the profile asked for a recording; see `session::recording`.
-    pub recording: Option<String>,
-    /// The SSH transports of this session — its jump hosts, first hop first,
-    /// then the target — that only connected on algorithms kept for old
-    /// servers; empty when none did. See `session::ssh::LEGACY_KEX`.
-    #[serde(default)]
-    pub legacy_algorithms: Vec<LegacyAlgorithms>,
-    /// Whether this session was opened on another session's SSH connection
-    /// rather than one of its own (`open_session`'s `reuse_session_id`), so
-    /// the UI can say the login was not repeated — and that the tabs sharing
-    /// the connection go down together.
-    #[serde(default)]
-    pub shared_connection: bool,
-}
-
-/// The legacy algorithms one SSH server was connected with, because it
-/// offered nothing newer.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct LegacyAlgorithms {
-    /// `host:port` of the server.
-    pub address: String,
-    /// Algorithm names as SSH spells them, e.g. `diffie-hellman-group14-sha1`.
-    pub algorithms: Vec<String>,
 }
 
 /// An SSH host whose key no longer matches the one recorded for it in
@@ -280,7 +255,7 @@ pub struct HostKeyChange {
     pub known_hosts: String,
     /// Line of the conflicting entry in that file.
     pub line: usize,
-    /// One-line explanation for the terminal and status bar.
+    /// One-line explanation for the terminal.
     pub message: String,
 }
 

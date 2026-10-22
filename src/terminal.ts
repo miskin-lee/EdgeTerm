@@ -350,7 +350,6 @@ const FIND_COLORS: Record<ThemeMode, FindColors> = {
 interface Callbacks {
   onData: (data: string) => void;
   onResize: (cols: number, rows: number) => void;
-  onStatus: (message: string, error?: boolean) => void;
   /** An executed command line, captured from the buffer after Enter. */
   onCommand: (command: string) => void;
   /**
@@ -565,7 +564,6 @@ export class TerminalController {
 
     const transferCallbacks = {
       toTerminal: (bytes: Uint8Array) => this.feed(bytes),
-      onStatus: callbacks.onStatus,
       onNotice: (message: string, kind: TransferNoticeKind) =>
         this.showTransferNotice(message, kind),
     };
@@ -1273,25 +1271,16 @@ export class TerminalController {
 
   /** Sends a local file (chosen in a dialog) with XMODEM; see xmodem.ts. */
   sendXmodem(blockSize: XmodemBlockSize) {
-    if (this.canStartTransfer("XMODEM")) void this.xmodem.send(blockSize);
+    if (this.canStartTransfer()) void this.xmodem.send(blockSize);
   }
 
   /** Receives a file (saved where a dialog says) with XMODEM. */
   receiveXmodem() {
-    if (this.canStartTransfer("XMODEM")) void this.xmodem.receive();
+    if (this.canStartTransfer()) void this.xmodem.receive();
   }
 
-  private canStartTransfer(label: string): boolean {
-    if (this.disposed) return false;
-    if (this.locked) {
-      this.callbacks.onStatus(`${label}: the session is not connected`, true);
-      return false;
-    }
-    if (this.isTransferActive()) {
-      this.callbacks.onStatus(`${label}: a transfer is already running`, true);
-      return false;
-    }
-    return true;
+  private canStartTransfer(): boolean {
+    return !this.disposed && !this.locked && !this.isTransferActive();
   }
 
   focus() {

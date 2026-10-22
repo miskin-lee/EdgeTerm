@@ -15,7 +15,6 @@ function createController(scrollback = 1000) {
     {
       onData() {},
       onResize() {},
-      onStatus() {},
       onCommand() {},
       onCommandState() {},
       suggest: () => [],

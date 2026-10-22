@@ -35,7 +35,6 @@ import {
 import { ShortcutsDialog } from "./components/ShortcutsDialog";
 import { SshConfigImportDialog } from "./components/SshConfigImportDialog";
 import { Splitter } from "./components/Splitter";
-import { StatusBar } from "./components/StatusBar";
 import { UpdateDialog } from "./components/UpdateDialog";
 import { Workspace } from "./components/Workspace";
 import { FilerPanel } from "./components/panels/FilerPanel";
@@ -259,20 +258,6 @@ export default function App() {
       void unlisten.then((off) => off());
     };
   }, [addAuthPrompt]);
-
-  // A recording the backend had to give up on (disk full, folder gone) is
-  // reported against its session; the session itself carries on.
-  useEffect(() => {
-    const unlisten = api.onRecordingError(({ id, path, message }) => {
-      const store = useStore.getState();
-      store.setError(`Recording stopped: ${message} (${path})`, id);
-      const tab = store.tabs.find((item) => item.info.id === id);
-      if (tab) store.updateTabInfo(id, { ...tab.info, recording: null });
-    });
-    return () => {
-      void unlisten.then((off) => off());
-    };
-  }, []);
 
   // A tab-close prompt open underneath would race this dialog for
   // Enter/Esc (both listen on window in the capture phase), so drop it.
@@ -547,8 +532,6 @@ export default function App() {
         )}
         <PanelDropOverlay />
       </div>
-
-      <StatusBar />
 
       <UpdateDialog
         appVersion={updater.appVersion}

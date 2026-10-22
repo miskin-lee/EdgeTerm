@@ -582,9 +582,6 @@ interface AppStore {
   shortcuts: ShortcutBindings;
   panels: Record<PanelName, boolean>;
   panelDocks: PanelDocks;
-  status: string;
-  error: string | null;
-  errorSessionId: string | null;
   /**
    * A refused SSH host key awaiting the user's decision. It lives in the
    * store so the dialog is shown from App no matter which UI started the
@@ -735,8 +732,6 @@ interface AppStore {
    */
   applySettings: (settings: unknown) => void;
   bumpSenderLibrary: () => void;
-  setStatus: (status: string) => void;
-  setError: (error: string | null, sessionId?: string) => void;
   setHostKeyPrompt: (prompt: HostKeyPrompt | null) => void;
   setSshConfigImport: (preview: SshConfigPreview | null) => void;
   addAuthPrompt: (prompt: AuthPrompt) => void;
@@ -887,9 +882,6 @@ export const useStore = create<AppStore>((set, get) => ({
   shortcuts: initialShortcuts,
   panels: loadPanels(),
   panelDocks: loadPanelDocks(),
-  status: "Ready",
-  error: null,
-  errorSessionId: null,
   hostKeyPrompt: null,
   sshConfigImport: null,
   authPrompts: [],
@@ -1026,15 +1018,11 @@ export const useStore = create<AppStore>((set, get) => ({
     const settled = closing
       ? settlePane({ ...paneState(current), tabs: remaining }, closing.paneId)
       : { ...paneState(current), tabs: remaining };
-    const clearsSessionError = current.errorSessionId === id;
     const closePrompt =
       current.closePrompt?.filter((pending) => pending !== id) ?? null;
     set({
       ...settled,
       tabs: acknowledgeTab(settled.tabs, settled.activeId),
-      status: clearsSessionError ? "Ready" : current.status,
-      error: clearsSessionError ? null : current.error,
-      errorSessionId: clearsSessionError ? null : current.errorSessionId,
       hostKeyPrompt:
         current.hostKeyPrompt?.sessionId === id ? null : current.hostKeyPrompt,
       pastePrompt:
@@ -1537,14 +1525,6 @@ export const useStore = create<AppStore>((set, get) => ({
 
   bumpSenderLibrary() {
     set({ senderLibraryVersion: get().senderLibraryVersion + 1 });
-  },
-
-  setStatus(status) {
-    set({ status });
-  },
-
-  setError(error, sessionId) {
-    set({ error, errorSessionId: error ? (sessionId ?? null) : null });
   },
 
   addAuthPrompt(prompt) {

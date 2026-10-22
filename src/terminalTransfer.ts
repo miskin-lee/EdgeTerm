@@ -3,7 +3,7 @@ import * as api from "./api";
 /**
  * Pieces shared by the terminal file-transfer protocols (ZMODEM in
  * zmodem.ts, XMODEM in xmodem.ts): local file I/O through the bounded IPC
- * chunks, progress formatting, and the notice / status reporting contract
+ * chunks, progress formatting, and the notice reporting contract
  * with the TerminalController.
  */
 
@@ -14,7 +14,6 @@ export type TransferNoticeKind = "active" | "success" | "error";
 
 export interface TransferCallbacks {
   toTerminal: (bytes: Uint8Array) => void;
-  onStatus: (message: string, error?: boolean) => void;
   onNotice: (message: string, kind: TransferNoticeKind) => void;
 }
 

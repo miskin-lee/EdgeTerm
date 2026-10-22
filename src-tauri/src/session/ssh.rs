@@ -12,9 +12,9 @@ use russh::keys::agent::client::{AgentClient, AgentStream};
 use russh::keys::known_hosts::{
     check_known_hosts_path, known_host_keys_path, learn_known_hosts_path,
 };
-use russh::keys::{Algorithm, HashAlg, PrivateKeyWithHashAlg, PublicKey};
+use russh::keys::{HashAlg, PrivateKeyWithHashAlg, PublicKey};
 use russh::{
-    cipher, kex, mac, AlgorithmKind, Channel, ChannelMsg, MethodKind, MethodSet, Names, Preferred,
+    cipher, kex, mac, AlgorithmKind, Channel, ChannelMsg, MethodKind, MethodSet, Preferred,
 };
 use russh_sftp::client::error::Error as SftpError;
 use russh_sftp::client::SftpSession;
@@ -35,8 +35,7 @@ use super::{
 };
 use crate::error::{AppError, Result};
 use crate::model::{
-    AuthKind, AuthPromptField, DirListing, FileEntry, HostKeyChange, LegacyAlgorithms,
-    SessionProfile,
+    AuthKind, AuthPromptField, DirListing, FileEntry, HostKeyChange, SessionProfile,
 };
 
 /// How long output may sit in the pump before it is flushed to the UI.
@@ -86,8 +85,7 @@ const KEX_ORDER: &[kex::Name] = &[
 /// choice and the client's order decides, so a server that supports anything
 /// better gets that. Nobody in the middle can strip the better choices to
 /// force these either: both sides' lists are part of the exchange hash the
-/// host key signs. A connection that does end up on one is listed in
-/// `SessionInfo::legacy_algorithms`, which the status bar shows.
+/// host key signs.
 ///
 /// group14-sha1 comes before group-exchange-sha1 because the size of an
 /// exchanged group is only known once the method is settled: a device whose
@@ -117,14 +115,6 @@ const LEGACY_CIPHERS: &[cipher::Name] = &[
     cipher::AES_256_CBC,
     cipher::AES_192_CBC,
     cipher::AES_128_CBC,
-];
-
-/// Ciphers that authenticate what they encrypt. russh still settles a MAC
-/// next to one when the lists allow, but never uses it.
-const AEAD_CIPHERS: &[cipher::Name] = &[
-    cipher::CHACHA20_POLY1305,
-    cipher::AES_256_GCM,
-    cipher::AES_128_GCM,
 ];
 
 const MAC_ORDER: &[mac::Name] = &[
@@ -167,57 +157,6 @@ fn client_config() -> client::Config {
     }
 }
 
-/// The legacy algorithms (see `LEGACY_KEX`) among those a key exchange
-/// settled on, by name.
-fn legacy_choices(
-    kex: &kex::Name,
-    key: &Algorithm,
-    cipher: &cipher::Name,
-    macs: [&mac::Name; 2],
-) -> Vec<String> {
-    let mut legacy = Vec::new();
-    if LEGACY_KEX.contains(kex) {
-        legacy.push(kex.as_ref().to_string());
-    }
-    // An RSA host key signing with SHA-1. russh offers it for the same
-    // servers the lists above are for; OpenSSH stopped accepting it in 8.8.
-    if *key == (Algorithm::Rsa { hash: None }) {
-        legacy.push(key.as_str().to_string());
-    }
-    if LEGACY_CIPHERS.contains(cipher) {
-        legacy.push(cipher.as_ref().to_string());
-    }
-    if !AEAD_CIPHERS.contains(cipher) {
-        for mac in macs {
-            let name = mac.as_ref().to_string();
-            if LEGACY_MACS.contains(mac) && !legacy.contains(&name) {
-                legacy.push(name);
-            }
-        }
-    }
-    legacy
-}
-
-/// Where a transport's handler leaves the legacy algorithms its latest key
-/// exchange settled on, for `connect_hop` to read once the handshake is done.
-#[derive(Clone, Default)]
-struct LegacyRecord(Arc<Mutex<Vec<String>>>);
-
-impl LegacyRecord {
-    fn record(&self, names: &Names) {
-        *self.0.lock() = legacy_choices(
-            &names.kex,
-            &names.key,
-            &names.cipher,
-            [&names.client_mac, &names.server_mac],
-        );
-    }
-
-    fn get(&self) -> Vec<String> {
-        self.0.lock().clone()
-    }
-}
-
 /// russh's report of a failed negotiation lists our algorithms before the
 /// server's: a wall of names in which the part the user needs, what the
 /// server offers, comes last.
@@ -252,7 +191,6 @@ fn handshake_failure(e: &russh::Error) -> String {
 struct Client {
     host: String,
     port: u16,
-    legacy: LegacyRecord,
     /// The file the policy checks against. Every session leaves it unset and
     /// gets the user's own `~/.ssh/known_hosts`; tests point it at a scratch
     /// file so a handshake can be run without touching that one.
@@ -295,16 +233,6 @@ impl client::Handler for Client {
             // to record into.
             None => Ok(true),
         }
-    }
-
-    async fn kex_done(
-        &mut self,
-        _shared_secret: Option<&[u8]>,
-        names: &Names,
-        _session: &mut client::Session,
-    ) -> std::result::Result<(), Self::Error> {
-        self.legacy.record(names);
-        Ok(())
     }
 }
 
@@ -434,7 +362,6 @@ pub struct SharedTransport {
     handle: Arc<Handle<Client>>,
     /// Taken by `Drop`, which needs to own the hops to tear them down.
     hops: Option<Hops>,
-    legacy: Vec<LegacyAlgorithms>,
     /// Who this transport logged in as, and where; see `Endpoint`.
     endpoint: Endpoint,
 }
@@ -467,12 +394,6 @@ impl Endpoint {
 }
 
 impl SharedTransport {
-    /// The transports that could only connect on legacy algorithms — this
-    /// one and the jump hosts it runs over.
-    pub fn legacy_algorithms(&self) -> &[LegacyAlgorithms] {
-        &self.legacy
-    }
-
     /// Whether a session for `profile` may run on this transport: it has to
     /// be the same login, and the transport has to still be up.
     fn carries(&self, profile: &SessionProfile) -> Result<()> {
@@ -520,11 +441,6 @@ pub struct SshConnection {
 }
 
 impl SshConnection {
-    /// The transports that could only connect on legacy algorithms.
-    pub fn legacy_algorithms(&self) -> &[LegacyAlgorithms] {
-        self.transport.legacy_algorithms()
-    }
-
     /// The transport this session runs on, for [`SshTransports`] to hand to
     /// the next session opened on it.
     pub fn transport(&self) -> Arc<SharedTransport> {
@@ -597,11 +513,6 @@ pub struct SftpConnection {
 }
 
 impl SftpConnection {
-    /// The transports that could only connect on legacy algorithms.
-    pub fn legacy_algorithms(&self) -> &[LegacyAlgorithms] {
-        self.transport.legacy_algorithms()
-    }
-
     /// The transport this session runs on; see [`SshConnection::transport`].
     pub fn transport(&self) -> Arc<SharedTransport> {
         self.transport.clone()
@@ -614,11 +525,10 @@ pub enum SftpConnectOutcome {
 }
 
 /// An authenticated transport together with the jump-host transports it
-/// runs over, and every one of them that only connected on legacy algorithms.
+/// runs over.
 struct Transport {
     handle: Handle<Client>,
     hops: Hops,
-    legacy: Vec<LegacyAlgorithms>,
 }
 
 /// An authenticated transport, or the host-key decision that has to be made
@@ -628,11 +538,10 @@ enum HandleOutcome {
     HostKeyChanged(HostKeyChange),
 }
 
-/// One hop of a connection: its transport and the legacy algorithms it
-/// connected on, if any, or the host-key decision that stopped the chain
-/// there.
+/// One hop of a connection: its transport, or the host-key decision that
+/// stopped the chain there.
 enum HopOutcome {
-    Ready(Handle<Client>, Option<LegacyAlgorithms>),
+    Ready(Handle<Client>),
     HostKeyChanged(HostKeyChange),
 }
 
@@ -651,17 +560,13 @@ async fn connect_handle(
     prompter: &AuthPrompter<'_>,
 ) -> Result<HandleOutcome> {
     let mut hops: Vec<Handle<Client>> = Vec::with_capacity(jumps.len());
-    let mut legacy = Vec::new();
     for (index, jump) in jumps.iter().enumerate() {
         let via = index.checked_sub(1).map(|previous| Via {
             handle: &hops[previous],
             label: jumps[previous].address(),
         });
         match connect_hop(jump, via.as_ref(), prompter).await? {
-            HopOutcome::Ready(handle, weak) => {
-                hops.push(handle);
-                legacy.extend(weak);
-            }
+            HopOutcome::Ready(handle) => hops.push(handle),
             HopOutcome::HostKeyChanged(change) => {
                 return Ok(HandleOutcome::HostKeyChanged(change));
             }
@@ -672,14 +577,10 @@ async fn connect_handle(
         label: jump.address(),
     });
     match connect_hop(profile, via.as_ref(), prompter).await? {
-        HopOutcome::Ready(handle, weak) => {
-            legacy.extend(weak);
-            Ok(HandleOutcome::Ready(Transport {
-                handle,
-                hops: Hops(hops),
-                legacy,
-            }))
-        }
+        HopOutcome::Ready(handle) => Ok(HandleOutcome::Ready(Transport {
+            handle,
+            hops: Hops(hops),
+        })),
         HopOutcome::HostKeyChanged(change) => Ok(HandleOutcome::HostKeyChanged(change)),
     }
 }
@@ -714,11 +615,9 @@ async fn connect_hop(
         .ok_or_else(|| AppError::new("session is missing a username"))?;
 
     let config = Arc::new(client_config());
-    let legacy = LegacyRecord::default();
     let handler = Client {
         host: host.clone(),
         port,
-        legacy: legacy.clone(),
         known_hosts: None,
     };
 
@@ -774,12 +673,7 @@ async fn connect_hop(
         prompter,
     )
     .await?;
-    let algorithms = legacy.get();
-    let weak = (!algorithms.is_empty()).then(|| LegacyAlgorithms {
-        address: format!("{host}:{port}"),
-        algorithms,
-    });
-    Ok(HopOutcome::Ready(handle, weak))
+    Ok(HopOutcome::Ready(handle))
 }
 
 pub async fn connect(
@@ -787,11 +681,7 @@ pub async fn connect(
     jumps: &[SessionProfile],
     prompter: &AuthPrompter<'_>,
 ) -> Result<ConnectOutcome> {
-    let Transport {
-        handle,
-        hops,
-        legacy,
-    } = match connect_handle(profile, jumps, prompter).await? {
+    let Transport { handle, hops } = match connect_handle(profile, jumps, prompter).await? {
         HandleOutcome::Ready(transport) => transport,
         HandleOutcome::HostKeyChanged(change) => {
             return Ok(ConnectOutcome::HostKeyChanged(change));
@@ -800,7 +690,6 @@ pub async fn connect(
     let transport = Arc::new(SharedTransport {
         handle: Arc::new(handle),
         hops: Some(hops),
-        legacy,
         endpoint: Endpoint::of(profile),
     });
 
@@ -855,18 +744,15 @@ pub async fn connect_sftp(
     prompter: &AuthPrompter<'_>,
 ) -> Result<SftpConnectOutcome> {
     match connect_handle(profile, jumps, prompter).await? {
-        HandleOutcome::Ready(Transport {
-            handle,
-            hops,
-            legacy,
-        }) => Ok(SftpConnectOutcome::Ready(SftpConnection {
-            transport: Arc::new(SharedTransport {
-                handle: Arc::new(handle),
-                hops: Some(hops),
-                legacy,
-                endpoint: Endpoint::of(profile),
-            }),
-        })),
+        HandleOutcome::Ready(Transport { handle, hops }) => {
+            Ok(SftpConnectOutcome::Ready(SftpConnection {
+                transport: Arc::new(SharedTransport {
+                    handle: Arc::new(handle),
+                    hops: Some(hops),
+                    endpoint: Endpoint::of(profile),
+                }),
+            }))
+        }
         HandleOutcome::HostKeyChanged(change) => Ok(SftpConnectOutcome::HostKeyChanged(change)),
     }
 }
@@ -1974,10 +1860,10 @@ mod tests {
 
     use super::{
         auth_failure, authenticate, client_config, connect, connect_on, connect_sftp,
-        copy_in_chunks, ensure_sftp, handshake_failure, legacy_choices, open_shell,
-        replace_host_key, run_sftp, saved_answer, verify_host_key, AuthPrompter, CancelFlag,
-        Client, ConnectOutcome, Endpoint, Handle, HandshakeError, Hops, LegacyRecord, Prompt,
-        SftpConnectOutcome, SftpRequest, SftpResponse, SharedTransport, SshTransports,
+        copy_in_chunks, ensure_sftp, handshake_failure, open_shell, replace_host_key, run_sftp,
+        saved_answer, verify_host_key, AuthPrompter, CancelFlag, Client, ConnectOutcome, Endpoint,
+        Handle, HandshakeError, Hops, Prompt, SftpConnectOutcome, SftpRequest, SftpResponse,
+        SharedTransport, SshTransports, LEGACY_CIPHERS, LEGACY_KEX, LEGACY_MACS,
         SAVED_PASSWORD_REJECTED, TRANSFER_CHUNK_SIZE,
     };
     use crate::model::{AuthKind, AuthPromptField, SessionKind, SessionProfile};
@@ -1989,7 +1875,6 @@ mod tests {
     use russh::keys::ssh_key::private::Ed25519Keypair;
     use russh::keys::ssh_key::LineEnding;
     use russh::keys::PrivateKey;
-    use russh::keys::{Algorithm, HashAlg};
     use russh::server::{Auth, Response};
     use russh::{cipher, kex, mac, AlgorithmKind, Names, Preferred};
     use russh::{ChannelMsg, MethodKind, MethodSet};
@@ -2434,7 +2319,6 @@ mod tests {
             Client {
                 host: "127.0.0.1".into(),
                 port: address.port(),
-                legacy: LegacyRecord::default(),
                 known_hosts: Some(known_hosts.to_path_buf()),
             },
         )
@@ -2453,7 +2337,6 @@ mod tests {
         Arc::new(SharedTransport {
             handle: Arc::new(handle),
             hops: Some(Hops(Vec::new())),
-            legacy: Vec::new(),
             endpoint: Endpoint::of(&profile_for(address)),
         })
     }
@@ -2782,9 +2665,10 @@ mod tests {
         }
     }
 
-    /// Accepts any host key and keeps what each key exchange settled on, the
-    /// way `Client` does.
-    struct Negotiated(LegacyRecord);
+    /// Accepts any host key and keeps what the latest key exchange settled
+    /// on.
+    #[derive(Clone, Default)]
+    struct Negotiated(Arc<Mutex<Option<Names>>>);
 
     impl client::Handler for Negotiated {
         type Error = russh::Error;
@@ -2802,31 +2686,31 @@ mod tests {
             names: &Names,
             _session: &mut client::Session,
         ) -> std::result::Result<(), Self::Error> {
-            self.0.record(names);
+            *self.0.lock() = Some(names.clone());
             Ok(())
         }
     }
 
     /// Connects with `config` to an `OldDevice` offering `offered` and logs
-    /// in, handing back the legacy algorithms the connection settled on.
+    /// in, handing back what the connection settled on.
     async fn connect_to_old_device(
         offered: Preferred,
         config: client::Config,
-    ) -> std::result::Result<Vec<String>, russh::Error> {
+    ) -> std::result::Result<Names, russh::Error> {
         let address = serve_once(OldDevice, offered).await;
-        let legacy = LegacyRecord::default();
-        let mut handle =
-            client::connect(Arc::new(config), address, Negotiated(legacy.clone())).await?;
+        let negotiated = Negotiated::default();
+        let mut handle = client::connect(Arc::new(config), address, negotiated.clone()).await?;
         let login = handle.authenticate_none("admin").await?;
         assert!(login.success(), "the device lets the session in");
-        Ok(legacy.get())
+        let names = negotiated.0.lock().clone();
+        Ok(names.expect("a finished key exchange"))
     }
 
     /// A device with nothing newer than SHA-1 key exchange, CBC and SHA-1
-    /// MACs (issue #60) is out of reach with russh's defaults, connects with
-    /// EdgeTerm's lists, and the session reports what it connected on.
+    /// MACs (issue #60) is out of reach with russh's defaults and connects
+    /// with EdgeTerm's lists.
     #[tokio::test]
-    async fn a_device_that_only_speaks_legacy_algorithms_connects_and_says_so() {
+    async fn a_device_that_only_speaks_legacy_algorithms_connects() {
         let offered = || Preferred {
             kex: vec![
                 kex::DH_G14_SHA1,
@@ -2855,17 +2739,16 @@ mod tests {
              diffie-hellman-group14-sha1"
         );
 
-        let legacy = connect_to_old_device(offered(), client_config())
+        let names = connect_to_old_device(offered(), client_config())
             .await
             .expect("EdgeTerm connects to the device");
-        assert_eq!(
-            legacy,
-            ["diffie-hellman-group14-sha1", "aes128-cbc", "hmac-sha1"]
-        );
+        assert_eq!(names.kex, kex::DH_G14_SHA1);
+        assert_eq!(names.cipher, cipher::AES_128_CBC);
+        assert_eq!(names.client_mac, mac::HMAC_SHA1);
     }
 
     /// The H3C switch from issue #60 offers the NIST curves ahead of its SHA-1
-    /// groups. Those are what it gets, so nothing is reported as legacy.
+    /// groups. Those are what it gets.
     #[tokio::test]
     async fn a_device_offering_nist_curves_gets_them_rather_than_sha1() {
         let offered = || Preferred {
@@ -2886,10 +2769,10 @@ mod tests {
                 .is_err(),
             "russh's defaults leave the switch out"
         );
-        let legacy = connect_to_old_device(offered(), client_config())
+        let names = connect_to_old_device(offered(), client_config())
             .await
             .expect("EdgeTerm connects to the switch");
-        assert!(legacy.is_empty(), "{legacy:?}");
+        assert_eq!(names.kex, kex::ECDH_SHA2_NISTP256);
     }
 
     /// A group exchange is only sized once the method is settled, and russh
@@ -2912,10 +2795,10 @@ mod tests {
                 .is_err(),
             "a 2048-bit group is refused under russh's default floor"
         );
-        let legacy = connect_to_old_device(offered(), client_config())
+        let names = connect_to_old_device(offered(), client_config())
             .await
             .expect("EdgeTerm takes the 2048-bit group");
-        assert_eq!(legacy, ["diffie-hellman-group-exchange-sha1"]);
+        assert_eq!(names.kex, kex::DH_GEX_SHA1);
     }
 
     /// A modern server never lands on a legacy algorithm just because it
@@ -2931,10 +2814,12 @@ mod tests {
             .into(),
             ..client_config().preferred
         };
-        let legacy = connect_to_old_device(offered, client_config())
+        let names = connect_to_old_device(offered, client_config())
             .await
             .expect("connects");
-        assert!(legacy.is_empty(), "{legacy:?}");
+        assert!(!LEGACY_KEX.contains(&names.kex), "{names:?}");
+        assert!(!LEGACY_CIPHERS.contains(&names.cipher), "{names:?}");
+        assert!(!LEGACY_MACS.contains(&names.client_mac), "{names:?}");
     }
 
     /// EdgeTerm spells out its own lists, so a russh upgrade that adds an
@@ -2961,62 +2846,6 @@ mod tests {
             assert!(ours.mac.contains(name), "{name:?}");
         }
         assert_eq!(ours.key, defaults.key);
-    }
-
-    #[test]
-    fn legacy_choices_name_what_is_weak_and_nothing_else() {
-        let sha2_mac = [&mac::HMAC_SHA256, &mac::HMAC_SHA256];
-        assert!(legacy_choices(
-            &kex::CURVE25519,
-            &Algorithm::Ed25519,
-            &cipher::AES_128_CTR,
-            sha2_mac
-        )
-        .is_empty());
-
-        assert_eq!(
-            legacy_choices(
-                &kex::ECDH_SHA2_NISTP256,
-                &Algorithm::Rsa { hash: None },
-                &cipher::AES_128_CTR,
-                sha2_mac
-            ),
-            ["ssh-rsa"],
-            "an RSA host key signing with SHA-1"
-        );
-        assert!(legacy_choices(
-            &kex::ECDH_SHA2_NISTP256,
-            &Algorithm::Rsa {
-                hash: Some(HashAlg::Sha256)
-            },
-            &cipher::AES_128_CTR,
-            sha2_mac
-        )
-        .is_empty());
-
-        assert!(
-            legacy_choices(
-                &kex::CURVE25519,
-                &Algorithm::Ed25519,
-                &cipher::AES_256_GCM,
-                [&mac::HMAC_SHA1, &mac::HMAC_SHA1]
-            )
-            .is_empty(),
-            "the MAC settled beside an AEAD cipher is never used"
-        );
-        assert_eq!(
-            legacy_choices(
-                &kex::DH_G1_SHA1,
-                &Algorithm::Ed25519,
-                &cipher::AES_256_CTR,
-                [&mac::HMAC_SHA1, &mac::HMAC_SHA1_ETM]
-            ),
-            [
-                "diffie-hellman-group1-sha1",
-                "hmac-sha1",
-                "hmac-sha1-etm@openssh.com"
-            ]
-        );
     }
 
     fn public_key_profile(key: &SecretKeyFile) -> SessionProfile {

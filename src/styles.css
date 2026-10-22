@@ -3366,66 +3366,6 @@ textarea:focus {
   font-size: 11px;
 }
 
-/* --- status bar ----------------------------------------------------------- */
-
-.statusbar {
-  flex: 0 0 24px;
-  height: 24px;
-  display: flex;
-  align-items: center;
-  gap: 16px;
-  padding: 0 12px;
-  background: var(--bg-app);
-  border-top: 1px solid var(--border);
-  color: var(--fg-dim);
-  font-size: 11px;
-}
-
-.status-spacer {
-  flex: 1;
-}
-
-.status-item {
-  font-variant-numeric: tabular-nums;
-  white-space: nowrap;
-}
-
-.status-item.is-error {
-  color: var(--red);
-}
-
-/* The active session is being recorded to a file; the button opens the
-   folder. The dot is the Codicon, tinted the recording red. */
-.status-recording {
-  display: inline-flex;
-  align-items: center;
-  gap: 3px;
-  padding: 0 4px;
-  border-radius: 4px;
-  color: var(--fg);
-  font-weight: 600;
-  letter-spacing: 0.02em;
-  cursor: pointer;
-}
-.status-recording .icon {
-  color: var(--red);
-}
-.status-recording:hover {
-  background: var(--bg-hover);
-}
-
-/* The active SSH session only connected on algorithms kept for old devices;
-   the tooltip names them. */
-.status-legacy {
-  display: inline-flex;
-  align-items: center;
-  gap: 3px;
-  cursor: default;
-}
-.status-legacy .icon {
-  color: var(--yellow);
-}
-
 /* --- splitters ------------------------------------------------------------ */
 
 /* The splitter is the 1px divider itself; an 11px hit area (`::after`)

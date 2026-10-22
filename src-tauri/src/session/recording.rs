@@ -15,7 +15,7 @@
 //! terminal. Every batch is flushed to the OS as soon as the channel is
 //! drained, so an application exit loses nothing that was already on
 //! screen. A write failure (disk full, folder removed) stops the recording
-//! and is reported to the frontend once; the session itself carries on.
+//! and is logged once; the session itself carries on.
 
 use std::fs::{self, File};
 use std::io::{BufWriter, ErrorKind, Write};
@@ -23,20 +23,10 @@ use std::path::{Path, PathBuf};
 use std::sync::mpsc::{self, Receiver, Sender};
 
 use chrono::{DateTime, Local};
-use serde::Serialize;
-use tauri::{AppHandle, Emitter};
 
 use crate::error::{AppError, Result};
 use crate::model::SessionProfile;
 use crate::store;
-
-/// Raised once when a recording can no longer be written; the frontend
-/// shows it against the session.
-pub const EVENT_RECORDING_ERROR: &str = "session:recording-error";
-
-/// Told once, from the writer thread, when the recording at the path can no
-/// longer be written; see `report_to_ui`.
-pub type ErrorReport = Box<dyn FnOnce(&Path, &std::io::Error) + Send>;
 
 /// Extension of every recording; the contents are the raw byte stream.
 const EXTENSION: &str = "log";
@@ -65,7 +55,6 @@ pub fn default_dir() -> PathBuf {
 /// thread writes the trailer, flushes and exits.
 pub struct Recorder {
     tx: Sender<Vec<u8>>,
-    path: PathBuf,
 }
 
 impl Recorder {
@@ -73,7 +62,7 @@ impl Recorder {
     /// default one) and starts the thread that writes it. An unusable folder
     /// or file is an error rather than a silently unrecorded session: the
     /// user asked for the file and would only find out it was missing later.
-    pub fn start(id: &str, profile: &SessionProfile, on_error: ErrorReport) -> Result<Recorder> {
+    pub fn start(id: &str, profile: &SessionProfile) -> Result<Recorder> {
         let dir = profile
             .record_dir
             .as_deref()
@@ -101,18 +90,13 @@ impl Recorder {
         let writer = Writer {
             rx,
             out: BufWriter::with_capacity(64 * 1024, file),
-            on_error: Some(on_error),
-            path: path.clone(),
+            path,
         };
         std::thread::Builder::new()
             .name(format!("edgeterm-record-{id}"))
             .spawn(move || writer.run(header))
             .map_err(|e| AppError::new(format!("cannot start the recording thread: {e}")))?;
-        Ok(Recorder { tx, path })
-    }
-
-    pub fn path(&self) -> &Path {
-        &self.path
+        Ok(Recorder { tx })
     }
 
     /// Queues output for the file. Never blocks; after a write failure the
@@ -124,26 +108,9 @@ impl Recorder {
     }
 }
 
-/// Reports a failed recording of session `id` to the frontend as
-/// `EVENT_RECORDING_ERROR`.
-pub fn report_to_ui(app: AppHandle, id: String) -> ErrorReport {
-    Box::new(move |path, error| {
-        let _ = app.emit(
-            EVENT_RECORDING_ERROR,
-            RecordingErrorEvent {
-                id,
-                path: path.display().to_string(),
-                message: error.to_string(),
-            },
-        );
-    })
-}
-
 struct Writer {
     rx: Receiver<Vec<u8>>,
     out: BufWriter<File>,
-    /// Taken by the first (and only) report.
-    on_error: Option<ErrorReport>,
     path: PathBuf,
 }
 
@@ -176,19 +143,13 @@ impl Writer {
         self.out.flush()
     }
 
-    fn report(&mut self, error: &std::io::Error) {
-        if let Some(on_error) = self.on_error.take() {
-            on_error(&self.path, error);
-        }
+    /// Every failure ends the thread, so this runs at most once.
+    fn report(&self, error: &std::io::Error) {
+        eprintln!(
+            "EdgeTerm: recording stopped, cannot write {}: {error}",
+            self.path.display()
+        );
     }
-}
-
-#[derive(Clone, Serialize)]
-#[serde(rename_all = "camelCase")]
-struct RecordingErrorEvent {
-    id: String,
-    path: String,
-    message: String,
 }
 
 fn stamp(time: &DateTime<Local>) -> String {
@@ -290,14 +251,14 @@ mod tests {
         profile.record = true;
         profile.record_dir = Some(dir.display().to_string());
 
-        let recorder = Recorder::start(
-            "s1",
-            &profile,
-            Box::new(|path, error| panic!("unexpected error on {}: {error}", path.display())),
-        )
-        .expect("start recording");
-        let path = recorder.path().to_path_buf();
-        assert_eq!(path.parent(), Some(dir.as_path()));
+        let recorder = Recorder::start("s1", &profile).expect("start recording");
+        // The profile's folder was empty, so the one file in it is the recording.
+        let files: Vec<PathBuf> = fs::read_dir(&dir)
+            .unwrap()
+            .map(|entry| entry.unwrap().path())
+            .collect();
+        assert_eq!(files.len(), 1, "{files:?}");
+        let path = files[0].clone();
         let name = path.file_name().unwrap().to_str().unwrap();
         assert!(name.starts_with("rec_ test_"), "{name}");
         assert!(name.ends_with(".log"), "{name}");
@@ -333,7 +294,7 @@ mod tests {
         let blocker = dir.join("not-a-folder");
         fs::write(&blocker, b"x").unwrap();
         profile.record_dir = Some(blocker.display().to_string());
-        let error = Recorder::start("s2", &profile, Box::new(|_, _| {}))
+        let error = Recorder::start("s2", &profile)
             .err()
             .expect("a file in the folder's place must fail");
         assert!(error.0.contains("recording folder"), "{error}");

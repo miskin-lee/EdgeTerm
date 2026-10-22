@@ -344,7 +344,6 @@ describe("Esc in the terminal", () => {
       {
         onData() {},
         onResize() {},
-        onStatus() {},
         onCommand() {},
         onCommandState() {},
         suggest: () => [],

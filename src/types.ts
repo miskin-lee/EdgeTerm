@@ -137,27 +137,6 @@ export interface SessionInfo {
   address: string;
   color: string | null;
   supportsRemoteFiles: boolean;
-  /** Path of the file the session's output is recorded to, if it is. */
-  recording: string | null;
-  /**
-   * The SSH servers of this session (jump hosts first) that only connected
-   * on algorithms kept for old devices; empty when none did.
-   */
-  legacyAlgorithms: LegacyAlgorithms[];
-  /**
-   * Whether the session runs on another tab's SSH connection instead of one
-   * of its own (Duplicate SSH Channel): the login was not repeated, and the tabs
-   * sharing the connection go down together.
-   */
-  sharedConnection: boolean;
-}
-
-/** The legacy algorithms one SSH server was connected with (issue #60). */
-export interface LegacyAlgorithms {
-  /** host:port of the server. */
-  address: string;
-  /** SSH algorithm names, e.g. "diffie-hellman-group14-sha1". */
-  algorithms: string[];
 }
 
 /** An SSH host whose key no longer matches the one recorded in known_hosts. */
@@ -173,7 +152,7 @@ export interface HostKeyChange {
   /** known_hosts file and line holding the conflicting entry. */
   knownHosts: string;
   line: number;
-  /** One-line explanation for the terminal and status bar. */
+  /** One-line explanation for the terminal. */
   message: string;
 }
 

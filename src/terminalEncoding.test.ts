@@ -15,7 +15,6 @@ function createController() {
     {
       onData() {},
       onResize() {},
-      onStatus() {},
       onCommand() {},
       onCommandState() {},
       suggest: () => [],
