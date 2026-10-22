@@ -29,7 +29,6 @@ import {
   type SearchResults,
 } from "./terminalSearch";
 import {
-  isShellPrompt,
   semanticLine,
   setSemanticColorTheme,
   shellPromptEnd,
@@ -47,6 +46,7 @@ import {
   type PaintLine,
 } from "./semanticPaint";
 import { needsPasteWarning } from "./terminalPaste";
+import { isInputPrompt } from "./terminalPrompt";
 import { errorMessage, type TransferNoticeKind } from "./terminalTransfer";
 import type { BackspaceKey, ThemeMode } from "./types";
 import { XmodemController, type XmodemBlockSize } from "./xmodem";
@@ -1754,9 +1754,7 @@ export class TerminalController {
     this.commandMarker?.dispose();
     this.commandMarker = this.term.registerMarker(0);
     this.commandPrompt = prompt;
-    // Appending a space lets a compact bare prompt such as `$` satisfy the
-    // same look-ahead rule as `$ command` in semantic coloring.
-    this.commandPromptRecognized = isShellPrompt(`${prompt} `);
+    this.commandPromptRecognized = isInputPrompt(prompt);
     this.commandOutputAdvanced = false;
     this.commandRunning = true;
     this.aiSession = isAiSessionCommand(sent ?? this.submittedCommand(prompt));
@@ -1831,8 +1829,11 @@ export class TerminalController {
     const samePrompt =
       this.commandPrompt.trim().length > 0 &&
       current.text.startsWith(this.commandPrompt);
+    // A recognized prompt of another shape counts too: a REPL's continuation
+    // prompt, a device prompt naming the view just entered, or the prompt
+    // back after the statement (see `terminalPrompt.ts`).
     const knownPrompt =
-      this.commandPromptRecognized && isShellPrompt(`${current.text} `);
+      this.commandPromptRecognized && isInputPrompt(current.text);
     if (samePrompt || knownPrompt) this.finishCommand();
   }
 

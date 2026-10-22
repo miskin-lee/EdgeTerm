@@ -300,7 +300,8 @@ const WINDOWS_PROMPT =
  * End column of a shell prompt at the start of `text`, or -1 when the line
  * does not look like a prompt. Terminal activity tracking shares the exact
  * prompt vocabulary used by semantic coloring so command completion and the
- * visible prompt never disagree.
+ * visible prompt never disagree; it only adds the whole-line prompts of
+ * `terminalPrompt.ts`, which are never colored.
  */
 export function shellPromptEnd(text: string): number {
   const windowsPrompt = WINDOWS_PROMPT.exec(text);

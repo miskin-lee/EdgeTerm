@@ -7,6 +7,7 @@ vi.mock("./platform", () => ({
 
 import { isShellPrompt, shellPromptEnd } from "./semanticColors";
 import { TerminalController } from "./terminal";
+import { isInputPrompt } from "./terminalPrompt";
 
 const controllers: TerminalController[] = [];
 
@@ -56,6 +57,44 @@ describe("shell prompt recognition", () => {
       expect(isShellPrompt(output)).toBe(false);
     },
   );
+});
+
+describe("input prompt recognition", () => {
+  it.each([
+    "alice@server:~/work$ ",
+    "$",
+    "SQL> ",
+    "  2  ",
+    " 10  ",
+    "2> ",
+    "... ",
+    "   ...> ",
+    "    -> ",
+    "    '> ",
+    "    > ",
+    "postgres=# ",
+    "postgres-# ",
+    "app=*> ",
+    "<HUAWEI>",
+    "[HUAWEI]",
+    "[~HUAWEI-GigabitEthernet0/0/1]",
+    "Router(config-if)#",
+    "Ruijie(config-if-GigabitEthernet 0/1)#",
+    "user@router# ",
+  ])("recognises %j", (prompt) => {
+    expect(isInputPrompt(prompt)).toBe(true);
+  });
+
+  it.each([
+    "Password: ",
+    "[sudo] password for alice: ",
+    "Warning: The current configuration will be written to the device. Continue? [Y/N]:",
+    "[INFO] Building module",
+    "         1",
+    "Building configuration...",
+  ])("does not mistake %j for a prompt", (output) => {
+    expect(isInputPrompt(output)).toBe(false);
+  });
 });
 
 describe("terminal command activity", () => {
@@ -195,5 +234,71 @@ describe("terminal command activity", () => {
     await new Promise((resolve) => setTimeout(resolve, 200));
 
     expect(commands).toEqual(["top", "ls"]);
+  });
+});
+
+/**
+ * The Sender sends a script's next line once the program asks for it
+ * (issue #110). Programs that change the prompt on every line must not leave
+ * each line waiting out the Sender's timeout.
+ */
+describe("sent script lines", () => {
+  it("follows a multi-line SQL*Plus statement line by line", async () => {
+    const states: string[] = [];
+    const controller = createController(states);
+    await write(controller, "SQL> ");
+
+    expect(controller.noteCommandSent("SELECT")).toBe(true);
+    const continued = controller.waitForCommand(30_000);
+    await write(controller, "SELECT\r\n  2  ");
+    await continued;
+
+    expect(controller.noteCommandSent("FROM dual;")).toBe(true);
+    const executed = controller.waitForCommand(30_000);
+    await write(controller, "FROM dual;\r\n\r\nD\r\n-\r\nX\r\n\r\nSQL> ");
+    await executed;
+
+    expect(states).toEqual(["running", "complete", "running", "complete"]);
+  });
+
+  it.each([
+    ["mysql> ", "SELECT", "SELECT\r\n    -> "],
+    ["postgres=# ", "SELECT", "SELECT\r\npostgres-# "],
+    [">>> ", "def f():", "def f():\r\n... "],
+    [
+      "<HUAWEI>",
+      "system-view",
+      "system-view\r\nEnter system view, return user view with return command.\r\n[HUAWEI]",
+    ],
+    [
+      "[HUAWEI]",
+      "interface GigabitEthernet0/0/1",
+      "interface GigabitEthernet0/0/1\r\n[HUAWEI-GigabitEthernet0/0/1]",
+    ],
+    [
+      "Router#",
+      "configure terminal",
+      "configure terminal\r\nEnter configuration commands, one per line.  End with CNTL/Z.\r\nRouter(config)#",
+    ],
+  ])("completes when %j turns into the next prompt", async (prompt, line, reply) => {
+    const states: string[] = [];
+    const controller = createController(states);
+    await write(controller, prompt);
+
+    expect(controller.noteCommandSent(line)).toBe(true);
+    await write(controller, reply);
+
+    expect(states).toEqual(["running", "complete"]);
+  });
+
+  it("keeps waiting at a password prompt", async () => {
+    const states: string[] = [];
+    const controller = createController(states);
+    await write(controller, "alice@server:~$ ");
+
+    expect(controller.noteCommandSent("sudo ls")).toBe(true);
+    await write(controller, "sudo ls\r\n[sudo] password for alice: ");
+
+    expect(states).toEqual(["running"]);
   });
 });
