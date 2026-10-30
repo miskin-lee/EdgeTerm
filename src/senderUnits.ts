@@ -7,17 +7,21 @@ import type { LineEnding } from "./types";
 export type SendUnit = string;
 
 /**
- * The lines of the command box. Blank lines are skipped: they would only
- * send bare Enters, and a script pasted with a trailing newline should not
- * end with one either.
+ * The lines of the command box, including empty and whitespace-only lines:
+ * a here-document or interactive program may need those bare Enters (#115).
+ * A final newline terminates the last line rather than starting another one;
+ * the chosen line ending is appended by `buildUnits`.
  */
 export function splitLines(text: string): string[] {
-  return text.split(/\r?\n/).filter((line) => line.trim().length > 0);
+  if (text.length === 0) return [];
+  const lines = text.split(/\r?\n/);
+  if (lines[lines.length - 1] === "") lines.pop();
+  return lines;
 }
 
-/** The first line of the command box, as a name for the whole of it. */
+/** The first nonblank line of the command box, as a name for the whole of it. */
 export function firstLine(text: string): string {
-  return splitLines(text)[0] ?? text;
+  return splitLines(text).find((line) => line.trim().length > 0) ?? text;
 }
 
 export function buildUnits(text: string, ending: LineEnding): SendUnit[] {
