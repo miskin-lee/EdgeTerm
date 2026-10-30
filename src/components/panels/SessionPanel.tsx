@@ -107,7 +107,7 @@ type GroupDialogState =
 
 interface Props {
   onEditProfile: (profile: SessionProfile) => void;
-  onNewSession: () => void;
+  onNewSession: (group?: SessionGroup) => void;
 }
 
 export function SessionPanel({ onEditProfile, onNewSession }: Props) {
@@ -300,6 +300,11 @@ export function SessionPanel({ onEditProfile, onNewSession }: Props) {
 
   const groupMenu = (group: SessionGroup): MenuItem[] => [
     {
+      label: "New Session…",
+      icon: "add",
+      action: () => onNewSession(group),
+    },
+    {
       label: "New Subgroup…",
       icon: "new-folder",
       action: () =>
@@ -491,7 +496,7 @@ export function SessionPanel({ onEditProfile, onNewSession }: Props) {
         </button>
         <button
           className="panel-action"
-          onClick={onNewSession}
+          onClick={() => onNewSession()}
           title="New session"
           aria-label="New session"
         >

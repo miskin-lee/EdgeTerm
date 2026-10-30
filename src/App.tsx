@@ -47,7 +47,12 @@ import { IS_WINDOWS } from "./platform";
 import { matchAppShortcut } from "./shortcuts";
 import { type PanelName, tabTitle, useActiveTab, useStore } from "./store";
 import { allControllers, getController } from "./terminalRegistry";
-import { isFileSession, type SessionProfile, type SessionState } from "./types";
+import {
+  isFileSession,
+  type SessionGroup,
+  type SessionProfile,
+  type SessionState,
+} from "./types";
 import { useUpdater } from "./updater";
 
 // The largest dialog in the application, and one nothing shows until the user
@@ -132,9 +137,10 @@ export default function App() {
     [closePrompt, tabs],
   );
 
-  const [dialog, setDialog] = useState<{ profile: SessionProfile | null } | null>(
-    null,
-  );
+  const [dialog, setDialog] = useState<{
+    profile: SessionProfile | null;
+    group?: SessionGroup;
+  } | null>(null);
   const [searchOpen, setSearchOpen] = useState(false);
   const searchRef = useRef<SearchOverlayHandle>(null);
   const [aboutOpen, setAboutOpen] = useState(false);
@@ -427,7 +433,7 @@ export default function App() {
   const renderPanel = (panel: PanelName) =>
     panel === "sessions" ? (
       <SessionPanel
-        onNewSession={newSession}
+        onNewSession={(group) => setDialog({ profile: null, group })}
         onEditProfile={(profile) => setDialog({ profile })}
       />
     ) : panel === "filer" ? (
@@ -546,6 +552,7 @@ export default function App() {
         <Suspense fallback={null}>
           <SessionDialog
             initial={dialog.profile}
+            initialGroup={dialog.group}
             onClose={() => setDialog(null)}
           />
         </Suspense>

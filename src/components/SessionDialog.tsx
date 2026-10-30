@@ -31,6 +31,7 @@ import {
   SESSION_COLORS,
   type BackspaceKey,
   type SerialPortDesc,
+  type SessionGroup,
   type SessionKind,
   type SessionProfile,
 } from "../types";
@@ -39,6 +40,7 @@ import { Icon, type IconName } from "./icons";
 
 interface Props {
   initial: SessionProfile | null;
+  initialGroup?: SessionGroup;
   onClose: () => void;
 }
 
@@ -212,19 +214,31 @@ function nextColorIndex(
   }
 }
 
-export function SessionDialog({ initial, onClose }: Props) {
+export function SessionDialog({ initial, initialGroup, onClose }: Props) {
   const colorPickerRef = useRef<HTMLDivElement>(null);
   const { dialogRef, handleProps: dragHandleProps } =
     useDialogDrag<HTMLDivElement>();
-  const [profile, setProfile] = useState<SessionProfile>(() =>
-    initial
-      ? {
-          ...initial,
-          color:
-            initial.color ?? colorForSession(initial.id || initial.name),
-        }
-      : { ...BLANK, color: randomSessionColor() },
-  );
+  const [profile, setProfile] = useState<SessionProfile>(() => {
+    if (initial) {
+      return {
+        ...initial,
+        color: initial.color ?? colorForSession(initial.id || initial.name),
+      };
+    }
+    // File-session groups use the canonical "ftp" kind; start with the
+    // picker's encrypted default, just as when (S)FTP is selected manually.
+    const kind =
+      initialGroup?.kind === "ftp"
+        ? "sftp"
+        : (initialGroup?.kind ?? BLANK.kind);
+    return {
+      ...BLANK,
+      kind,
+      groupId: initialGroup?.id,
+      port: defaultPort(kind),
+      color: randomSessionColor(),
+    };
+  });
   const [ports, setPorts] = useState<SerialPortDesc[]>([]);
   // Where recordings go when the profile names no folder; the placeholder.
   const [defaultRecordDir, setDefaultRecordDir] = useState("");
