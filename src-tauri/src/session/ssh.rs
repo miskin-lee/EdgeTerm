@@ -4,7 +4,6 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use parking_lot::Mutex;
 use russh::client::{
     self, AuthResult, GexParams, Handle, KeyboardInteractiveAuthResponse, Msg, Prompt,
 };
@@ -348,77 +347,17 @@ fn describe_host_key_change(
     })
 }
 
-/// One authenticated SSH transport, and everything that has to outlive the
-/// sessions running on it. A shell is one channel of it, the Filer's SFTP
-/// subsystem another, and a duplicated tab is simply one more — which is why
-/// this is shared: a server behind MFA asks for the second factor when the
-/// transport is built, so every session that rides on this one gets in
-/// without asking again.
-///
-/// The transport goes down when the last session holding it lets go (see
-/// `Drop`), not when the session that opened it ends: a duplicate outlives
-/// the tab it was duplicated from.
-pub struct SharedTransport {
+/// One session's authenticated SSH transport and its jump-host connections.
+/// The shell and Filer use channels of this transport; ending the session
+/// disconnects it and then tears down the jump chain.
+struct SessionTransport {
     handle: Arc<Handle<Client>>,
     /// Taken by `Drop`, which needs to own the hops to tear them down.
     hops: Option<Hops>,
-    /// Who this transport logged in as, and where; see `Endpoint`.
-    endpoint: Endpoint,
 }
 
-/// The login a transport is: a session may only be opened on one that went
-/// to the same place as the profile asking. The frontend passes a tab's own
-/// profile, so this never fires in practice — but a shell on a host other
-/// than the one the tab names is the kind of mix-up that is worth an error
-/// rather than trust, so the two are compared before a channel is opened.
-///
-/// The jump host is part of it: the same address behind a different jump
-/// host is a different machine on a different network.
-#[derive(Clone, PartialEq, Eq)]
-struct Endpoint {
-    username: String,
-    host: String,
-    port: u16,
-    jump_profile_id: Option<String>,
-}
-
-impl Endpoint {
-    fn of(profile: &SessionProfile) -> Self {
-        Self {
-            username: profile.username.clone().unwrap_or_default(),
-            host: profile.host.clone().unwrap_or_default(),
-            port: profile.port.unwrap_or(22),
-            jump_profile_id: profile.jump_profile_id.clone().filter(|id| !id.is_empty()),
-        }
-    }
-}
-
-impl SharedTransport {
-    /// Whether a session for `profile` may run on this transport: it has to
-    /// be the same login, and the transport has to still be up.
-    fn carries(&self, profile: &SessionProfile) -> Result<()> {
-        if self.endpoint != Endpoint::of(profile) {
-            return Err(AppError::new(
-                "that session is connected to a different server",
-            ));
-        }
-        if self.is_closed() {
-            return Err(AppError::new(
-                "the connection this session would share has gone down",
-            ));
-        }
-        Ok(())
-    }
-
-    /// Whether the transport has gone down, so a session that asked to run
-    /// on it is told rather than left with a channel that will never open.
-    fn is_closed(&self) -> bool {
-        self.handle.is_closed()
-    }
-}
-
-impl Drop for SharedTransport {
-    /// Ends the transport once nothing runs on it any more. Disconnecting is
+impl Drop for SessionTransport {
+    /// Ends the transport when its session closes. Disconnecting is
     /// asynchronous and dropping is not, so the goodbye is sent from a task;
     /// the handle and the hops are moved into it and released there.
     fn drop(&mut self) {
@@ -436,49 +375,8 @@ impl Drop for SharedTransport {
 }
 
 pub struct SshConnection {
-    transport: Arc<SharedTransport>,
+    transport: SessionTransport,
     channel: Channel<Msg>,
-}
-
-impl SshConnection {
-    /// The transport this session runs on, for [`SshTransports`] to hand to
-    /// the next session opened on it.
-    pub fn transport(&self) -> Arc<SharedTransport> {
-        self.transport.clone()
-    }
-}
-
-/// The transports open sessions are running on, keyed by session id, so
-/// `open_session` can put a new session on one instead of authenticating
-/// again (`reuse_session_id`).
-///
-/// The entries are weak: a transport stays up only while a session holds it,
-/// and an id whose transport has gone is simply one that has to be dialled
-/// again. Dead entries are swept whenever one is added.
-#[derive(Default)]
-pub struct SshTransports {
-    open: Mutex<std::collections::HashMap<String, std::sync::Weak<SharedTransport>>>,
-}
-
-impl SshTransports {
-    /// Records the transport `session_id` runs on. The same transport is
-    /// registered once per session using it, so duplicating a duplicate
-    /// works and closing the first tab changes nothing for the others.
-    pub fn register(&self, session_id: &str, transport: &Arc<SharedTransport>) {
-        let mut open = self.open.lock();
-        open.retain(|_, weak| weak.strong_count() > 0);
-        open.insert(session_id.to_string(), Arc::downgrade(transport));
-    }
-
-    pub fn forget(&self, session_id: &str) {
-        self.open.lock().remove(session_id);
-    }
-
-    /// The transport `session_id` is running on, while it is still up.
-    pub fn get(&self, session_id: &str) -> Option<Arc<SharedTransport>> {
-        let transport = self.open.lock().get(session_id)?.upgrade()?;
-        (!transport.is_closed()).then_some(transport)
-    }
 }
 
 /// The jump-host transports a session runs over, first hop first (empty for
@@ -509,14 +407,7 @@ pub enum ConnectOutcome {
 /// An SSH transport that carries only the SFTP subsystem: a file-transfer
 /// session with no shell channel or PTY. See `spawn_sftp`.
 pub struct SftpConnection {
-    transport: Arc<SharedTransport>,
-}
-
-impl SftpConnection {
-    /// The transport this session runs on; see [`SshConnection::transport`].
-    pub fn transport(&self) -> Arc<SharedTransport> {
-        self.transport.clone()
-    }
+    transport: SessionTransport,
 }
 
 pub enum SftpConnectOutcome {
@@ -687,31 +578,18 @@ pub async fn connect(
             return Ok(ConnectOutcome::HostKeyChanged(change));
         }
     };
-    let transport = Arc::new(SharedTransport {
+    let transport = SessionTransport {
         handle: Arc::new(handle),
         hops: Some(hops),
-        endpoint: Endpoint::of(profile),
-    });
+    };
 
     Ok(ConnectOutcome::Ready(open_shell(transport, profile).await?))
-}
-
-/// Opens another shell on a transport that is already authenticated: one
-/// more channel of the same SSH connection, which is what a duplicated tab
-/// runs on. Nothing is negotiated and nothing is asked — the point of it for
-/// anyone behind MFA, who would otherwise answer a challenge per tab.
-pub async fn connect_on(
-    transport: Arc<SharedTransport>,
-    profile: &SessionProfile,
-) -> Result<SshConnection> {
-    transport.carries(profile)?;
-    open_shell(transport, profile).await
 }
 
 /// Requests one interactive shell — a channel with a PTY on it — of an
 /// authenticated transport.
 async fn open_shell(
-    transport: Arc<SharedTransport>,
+    transport: SessionTransport,
     profile: &SessionProfile,
 ) -> Result<SshConnection> {
     let channel = transport.handle.channel_open_session().await?;
@@ -746,26 +624,14 @@ pub async fn connect_sftp(
     match connect_handle(profile, jumps, prompter).await? {
         HandleOutcome::Ready(Transport { handle, hops }) => {
             Ok(SftpConnectOutcome::Ready(SftpConnection {
-                transport: Arc::new(SharedTransport {
+                transport: SessionTransport {
                     handle: Arc::new(handle),
                     hops: Some(hops),
-                    endpoint: Endpoint::of(profile),
-                }),
+                },
             }))
         }
         HandleOutcome::HostKeyChanged(change) => Ok(SftpConnectOutcome::HostKeyChanged(change)),
     }
-}
-
-/// A file session on a transport that is already authenticated; the SFTP
-/// counterpart of [`connect_on`]. The UI offers Duplicate SSH Channel on
-/// shell tabs only, so nothing asks for this yet.
-pub fn connect_sftp_on(
-    transport: Arc<SharedTransport>,
-    profile: &SessionProfile,
-) -> Result<SftpConnection> {
-    transport.carries(profile)?;
-    Ok(SftpConnection { transport })
 }
 
 /// Authenticates one hop. The profile's own method goes first; a server that
@@ -1195,8 +1061,7 @@ pub fn spawn(
 ) {
     tauri::async_runtime::spawn(async move {
         let SshConnection { transport, channel } = conn;
-        // Held for as long as this session runs; the transport goes down
-        // when the last session on it drops its share (see SharedTransport).
+        // Keep the transport and jump hosts alive until this session ends.
         let handle = transport.handle.clone();
         let (mut reader, writer) = channel.split();
         let mut pump = OutputPump::new(app.clone(), id.clone(), recorder);
@@ -1280,8 +1145,7 @@ pub fn spawn(
                 exit_status.map(|c| format!("exit status {c}")),
             );
         }
-        // Only the channel is this session's own; whether the connection
-        // under it closes now depends on the other tabs sharing it.
+        // Close this session's connection and its jump hosts.
         drop(handle);
         drop(transport);
     });
@@ -1345,8 +1209,7 @@ pub fn spawn_sftp(
         if !close_requested {
             emit_state(&app, &id, "closed", None);
         }
-        // See the shell session's end: the transport may still carry other
-        // tabs, and closes itself once none are left.
+        // Close this session's connection and its jump hosts.
         drop(handle);
         drop(transport);
     });
@@ -1859,12 +1722,11 @@ mod tests {
     use russh::keys::PublicKey;
 
     use super::{
-        auth_failure, authenticate, client_config, connect, connect_on, connect_sftp,
-        copy_in_chunks, ensure_sftp, handshake_failure, open_shell, replace_host_key, run_sftp,
-        saved_answer, verify_host_key, AuthPrompter, CancelFlag, Client, ConnectOutcome, Endpoint,
-        Handle, HandshakeError, Hops, Prompt, SftpConnectOutcome, SftpRequest, SftpResponse,
-        SharedTransport, SshTransports, LEGACY_CIPHERS, LEGACY_KEX, LEGACY_MACS,
-        SAVED_PASSWORD_REJECTED, TRANSFER_CHUNK_SIZE,
+        auth_failure, authenticate, client_config, connect, connect_sftp, copy_in_chunks,
+        ensure_sftp, handshake_failure, open_shell, replace_host_key, run_sftp, saved_answer,
+        verify_host_key, AuthPrompter, CancelFlag, Client, ConnectOutcome, Handle, HandshakeError,
+        Hops, Prompt, SessionTransport, SftpConnectOutcome, SftpRequest, SftpResponse,
+        LEGACY_CIPHERS, LEGACY_KEX, LEGACY_MACS, SAVED_PASSWORD_REJECTED, TRANSFER_CHUNK_SIZE,
     };
     use crate::model::{AuthKind, AuthPromptField, SessionKind, SessionProfile};
     use crate::session::auth::CannedAnswers;
@@ -2248,10 +2110,9 @@ mod tests {
         );
     }
 
-    // --- one connection, several sessions -------------------------------------
+    // --- session transport lifetime ------------------------------------------
 
-    /// A server that lets anyone in and counts what it is asked for, so a
-    /// test can tell one login and two channels from two logins.
+    /// A server that lets anyone in and counts its logins and shell channels.
     #[derive(Clone, Default)]
     struct ShellServer {
         logins: Arc<Mutex<usize>>,
@@ -2310,9 +2171,8 @@ mod tests {
         profile
     }
 
-    /// Logs in to `address` the way a session does, and hands back the
-    /// transport its sessions would share.
-    async fn transport_to(address: SocketAddr, known_hosts: &Path) -> Arc<SharedTransport> {
+    /// Logs in to `address` and hands back the session's transport.
+    async fn transport_to(address: SocketAddr, known_hosts: &Path) -> SessionTransport {
         let mut handle = client::connect(
             Arc::new(client_config()),
             address,
@@ -2334,74 +2194,37 @@ mod tests {
         )
         .await
         .expect("the server lets the session in");
-        Arc::new(SharedTransport {
+        SessionTransport {
             handle: Arc::new(handle),
             hops: Some(Hops(Vec::new())),
-            endpoint: Endpoint::of(&profile_for(address)),
-        })
+        }
     }
 
-    /// What Duplicate SSH Channel is for (issues #63, #73): the second
-    /// terminal is another channel of the connection the first one logged in
-    /// on, so a server behind MFA asks once however many tabs are opened on it.
     #[tokio::test]
-    async fn a_duplicated_session_is_another_channel_of_the_same_connection() {
+    async fn a_shell_keeps_its_transport_alive_until_it_closes() {
         let file = KnownHosts::new();
         let server = ShellServer::default();
         let address = serve_once(server.clone(), Preferred::default()).await;
         let profile = profile_for(address);
 
         let transport = transport_to(address, file.path()).await;
-        let first = open_shell(transport.clone(), &profile)
+        let handle = transport.handle.clone();
+        let shell = open_shell(transport, &profile)
             .await
-            .expect("the first shell");
-        let second = connect_on(transport.clone(), &profile)
-            .await
-            .expect("a second shell on the same connection");
+            .expect("open the shell");
 
         assert_eq!(*server.logins.lock(), 1, "the login happened once");
-        assert_eq!(*server.sessions.lock(), 2, "each tab has its own channel");
-        // Both sessions hold the same transport, so neither closing tab can
-        // take the connection away from the other.
-        assert!(Arc::ptr_eq(&first.transport(), &second.transport()));
-        assert!(!transport.is_closed());
+        assert_eq!(*server.sessions.lock(), 1, "one shell channel was opened");
+        assert!(!handle.is_closed(), "the shell keeps its connection alive");
 
-        // A profile that names another server never rides this connection,
-        // however the request reached the backend: a shell somewhere other
-        // than where the tab says is worse than logging in again.
-        let mut elsewhere = profile.clone();
-        elsewhere.host = Some("10.0.0.9".into());
-        let refused = match connect_on(transport.clone(), &elsewhere).await {
-            Ok(_) => panic!("a profile for another server was let onto this connection"),
-            Err(error) => error.to_string(),
-        };
-        assert!(refused.contains("different server"), "{refused}");
-        assert_eq!(*server.sessions.lock(), 2, "nothing was opened for it");
-    }
-
-    /// The registry `open_session` looks a shared connection up in: it hands
-    /// out the transports sessions are still holding, and nothing else.
-    #[tokio::test]
-    async fn the_registry_only_offers_connections_that_are_still_held() {
-        let file = KnownHosts::new();
-        let address = serve_once(ShellServer::default(), Preferred::default()).await;
-        let transports = SshTransports::default();
-
-        let transport = transport_to(address, file.path()).await;
-        transports.register("first", &transport);
-        assert!(transports.get("first").is_some());
-
-        // A duplicate registers the same connection under its own id, so the
-        // tab it was duplicated from can close without taking it down.
-        transports.register("second", &transport);
-        transports.forget("first");
-        assert!(transports.get("first").is_none());
-        assert!(transports.get("second").is_some());
-
-        // Once the last session has let go there is nothing left to share:
-        // a tab that asks for this connection dials its own instead.
-        drop(transport);
-        assert!(transports.get("second").is_none());
+        drop(shell);
+        tokio::time::timeout(Duration::from_secs(2), async {
+            while !handle.is_closed() {
+                tokio::time::sleep(Duration::from_millis(10)).await;
+            }
+        })
+        .await
+        .expect("closing the shell disconnects its transport");
     }
 
     // --- keyboard-interactive authentication ---------------------------------
