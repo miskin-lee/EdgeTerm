@@ -9,7 +9,7 @@ import {
   type MouseEvent as ReactMouseEvent,
 } from "react";
 
-import { splitSession } from "../actions";
+import { duplicateSession, splitSession } from "../actions";
 import { tabTitle, useStore, type DropTarget, type Tab } from "../store";
 import { colorForSession } from "../types";
 import { ContextMenu, type MenuItem } from "./ContextMenu";
@@ -31,6 +31,7 @@ const SPLIT_ZONE = 0.25;
 
 interface Props {
   paneId: string;
+  onSaveSession: (id: string) => void;
 }
 
 /**
@@ -138,7 +139,7 @@ const dropTargetAt = (
   return null;
 };
 
-export function TabStrip({ paneId }: Props) {
+export function TabStrip({ paneId, onSaveSession }: Props) {
   const allTabs = useStore((s) => s.tabs);
   // The strip is the pane's tabs in list order; see `placeTab` in the store.
   const tabs = useMemo(
@@ -257,7 +258,20 @@ export function TabStrip({ paneId }: Props) {
   const tabMenuItems = (id: string): MenuItem[] => {
     const ids = tabs.map((tab) => tab.info.id);
     const index = ids.indexOf(id);
+    const tab = tabs[index];
     return [
+      {
+        label: "Save Session…",
+        icon: "save",
+        disabled: !tab || tab.state === "connecting",
+        action: () => onSaveSession(id),
+      },
+      {
+        label: "Duplicate Session",
+        icon: "copy",
+        action: () => void duplicateSession(id),
+      },
+      "separator",
       {
         label: "Close",
         shortcut: closeKey,

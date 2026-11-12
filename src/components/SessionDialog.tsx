@@ -41,6 +41,8 @@ import { Icon, type IconName } from "./icons";
 interface Props {
   initial: SessionProfile | null;
   initialGroup?: SessionGroup;
+  /** Save an open tab's settings without starting another connection. */
+  saveSessionId?: string;
   onClose: () => void;
 }
 
@@ -214,7 +216,12 @@ function nextColorIndex(
   }
 }
 
-export function SessionDialog({ initial, initialGroup, onClose }: Props) {
+export function SessionDialog({
+  initial,
+  initialGroup,
+  saveSessionId,
+  onClose,
+}: Props) {
   const colorPickerRef = useRef<HTMLDivElement>(null);
   const { dialogRef, handleProps: dragHandleProps } =
     useDialogDrag<HTMLDivElement>();
@@ -246,6 +253,7 @@ export function SessionDialog({ initial, initialGroup, onClose }: Props) {
   const [busy, setBusy] = useState(false);
 
   const upsertProfile = useStore((s) => s.upsertProfile);
+  const saveTabProfile = useStore((s) => s.saveTabProfile);
   const groups = useStore((s) => s.groups);
   const profiles = useStore((s) => s.profiles);
   const groupChoices = flattenGroups(groups, profile.kind);
@@ -591,7 +599,8 @@ export function SessionDialog({ initial, initialGroup, onClose }: Props) {
     setBusy(true);
     setError(null);
     try {
-      await upsertProfile(candidate);
+      if (saveSessionId) await saveTabProfile(saveSessionId, candidate);
+      else await upsertProfile(candidate);
       onClose();
     } catch (e) {
       setError(String(e));
@@ -682,7 +691,11 @@ export function SessionDialog({ initial, initialGroup, onClose }: Props) {
           </span>
           <div className="session-dialog-heading">
             <div id="session-dialog-title" className="session-dialog-title">
-              {initial?.id ? "Edit Session" : "New Session"}
+              {saveSessionId
+                ? "Save Session"
+                : initial?.id
+                  ? "Edit Session"
+                  : "New Session"}
             </div>
             <div className="session-dialog-subtitle">{summary()}</div>
           </div>
@@ -1299,19 +1312,26 @@ export function SessionDialog({ initial, initialGroup, onClose }: Props) {
           <button type="button" className="btn" onClick={onClose}>
             Cancel
           </button>
-          <button type="button" className="btn" onClick={save} disabled={busy}>
-            <Icon name="save" />
-            Save
-          </button>
           <button
             type="button"
-            className="btn is-primary"
-            onClick={connect}
+            className={`btn${saveSessionId ? " is-primary" : ""}`}
+            onClick={save}
             disabled={busy}
           >
-            <Icon name="plug" />
-            {busy ? "Connecting…" : "Connect"}
+            <Icon name="save" />
+            {saveSessionId && busy ? "Saving…" : "Save"}
           </button>
+          {!saveSessionId && (
+            <button
+              type="button"
+              className="btn is-primary"
+              onClick={connect}
+              disabled={busy}
+            >
+              <Icon name="plug" />
+              {busy ? "Connecting…" : "Connect"}
+            </button>
+          )}
         </div>
       </div>
     </div>

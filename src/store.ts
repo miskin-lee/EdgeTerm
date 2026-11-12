@@ -620,6 +620,8 @@ interface AppStore {
   /** Fetches saved profiles and their groups together. */
   loadProfiles: () => Promise<void>;
   upsertProfile: (profile: SessionProfile) => Promise<SessionProfile>;
+  /** Saves a tab's settings and links it to the saved profile without reconnecting. */
+  saveTabProfile: (id: string, profile: SessionProfile) => Promise<SessionProfile>;
   /** Saves a copy of a profile right after it; resolves to the copy. */
   duplicateProfile: (id: string) => Promise<SessionProfile>;
   /** Deletes a saved profile with everything that belongs to it. */
@@ -912,6 +914,29 @@ export const useStore = create<AppStore>((set, get) => ({
         index === -1
           ? [...profiles, saved]
           : profiles.map((p) => (p.id === saved.id ? saved : p)),
+    });
+    return saved;
+  },
+
+  async saveTabProfile(id, profile) {
+    const saved = await get().upsertProfile(profile);
+    set({
+      tabs: get().tabs.map((tab) =>
+        tab.info.id === id
+          ? {
+              ...tab,
+              profile: saved,
+              // The transport and address still describe the live connection;
+              // edited connection settings take effect on its next reconnect.
+              info: {
+                ...tab.info,
+                profileId: saved.id,
+                name: saved.name,
+                color: saved.color ?? null,
+              },
+            }
+          : tab,
+      ),
     });
     return saved;
   },

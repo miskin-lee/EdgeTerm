@@ -140,6 +140,7 @@ export default function App() {
   const [dialog, setDialog] = useState<{
     profile: SessionProfile | null;
     group?: SessionGroup;
+    saveSessionId?: string;
   } | null>(null);
   const [searchOpen, setSearchOpen] = useState(false);
   const searchRef = useRef<SearchOverlayHandle>(null);
@@ -302,6 +303,11 @@ export default function App() {
   // --- actions --------------------------------------------------------------
 
   const newSession = useCallback(() => setDialog({ profile: null }), []);
+  const saveSession = useCallback((id: string) => {
+    const tab = useStore.getState().tabs.find((item) => item.info.id === id);
+    if (!tab) return;
+    setDialog({ profile: tab.profile, saveSessionId: id });
+  }, []);
 
   // Opening the box focuses it via its mount effect; when it is already
   // open that effect does not re-run, so refocus it explicitly.
@@ -486,7 +492,7 @@ export default function App() {
           )}
 
           <div className="center">
-            <Workspace onNewSession={newSession}>
+            <Workspace onNewSession={newSession} onSaveSession={saveSession}>
               {searchOpen && (
                 <SearchOverlay
                   ref={searchRef}
@@ -554,6 +560,7 @@ export default function App() {
           <SessionDialog
             initial={dialog.profile}
             initialGroup={dialog.group}
+            saveSessionId={dialog.saveSessionId}
             onClose={() => setDialog(null)}
           />
         </Suspense>

@@ -159,6 +159,15 @@ export async function openSession(
   return connectSession(id, profile);
 }
 
+/** Opens an independent connection in the source tab's pane. */
+export function duplicateSession(id: string): Promise<string | null> {
+  const store = useStore.getState();
+  const tab = store.tabs.find((item) => item.info.id === id);
+  if (!tab) return Promise.resolve(null);
+  store.setActivePane(tab.paneId);
+  return openSession(tab.profile);
+}
+
 /**
  * Split Right / Split Down: opens another session of the tab's profile in
  * a new pane beside the tab's own — what a terminal's split means (iTerm2,
