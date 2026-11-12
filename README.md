@@ -54,7 +54,7 @@ Download from [Releases](https://github.com/miskin-lee/EdgeTerm/releases):
 ## Getting started
 
 1. **Session → New Session…** (`⌘N` / `Alt+N`) creates a session; double-click it in the Session panel to connect. Right-click a session to edit, duplicate, move or delete it.
-2. The **Filer** on the right follows the active tab. Drop files onto it to upload, drag entries out to download, or press `⌘J` / `Ctrl+Shift+J` to jump to the shell's working directory.
+2. The **Filer** on the right shows the active tab's files and transfer progress. Drop files onto it to upload, drag entries out to download, or press `⌘J` / `Ctrl+Shift+J` to jump to the shell's working directory.
 3. The **Sender** at the bottom sends text to the current session or to all sessions. Save frequently used commands as tags.
 4. Right-click a tab to **Save Session…** (connection settings), **Duplicate Session** (a new connection), or **Split Right / Split Down**. Splits are also in **View**; drag a tab onto another pane to move it there.
 5. **Edit** holds the copy/paste behavior (right click, Copy on Select, OSC 52), and **View** holds the theme, fonts and **Keyboard Shortcuts…**.

@@ -54,7 +54,7 @@
 ## 快速上手
 
 1. **Session → New Session…**（`⌘N` / `Alt+N`）新建会话，在 Session 面板里双击连接；右键会话可编辑、复制、移动或删除。
-2. 右侧 **Filer** 跟随当前标签：把文件拖进去即上传，拖出来即下载；`⌘J` / `Ctrl+Shift+J` 跳到 shell 的当前目录。
+2. 右侧 **Filer** 显示当前标签的文件和传输进度：把文件拖进去即上传，拖出来即下载；`⌘J` / `Ctrl+Shift+J` 跳到 shell 的当前目录。
 3. 底部 **Sender** 把文本发到当前会话或全部会话，常用命令可存成标签。
 4. 标签右键菜单可 **Save Session…**（保存连接配置）、**Duplicate Session**（新开连接）或 **Split Right / Split Down**；**View** 里也可分栏，把标签拖到别的分栏即可移过去。
 5. **Edit** 里是复制粘贴相关设置（右键行为、选中即复制、OSC 52），**View** 里是主题、字体和 **Keyboard Shortcuts…**。
