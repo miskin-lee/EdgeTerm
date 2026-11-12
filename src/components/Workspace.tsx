@@ -1,4 +1,4 @@
-import { useMemo, useRef, type CSSProperties } from "react";
+import { useMemo, useRef, type CSSProperties, type ReactNode } from "react";
 
 import appIcon from "../../src-tauri/icons/128x128@2x.png";
 import { layoutRects, type Rect, type SplitterRect } from "../layout";
@@ -10,6 +10,8 @@ import { SessionPane } from "./TerminalPane";
 
 interface Props {
   onNewSession: () => void;
+  /** An overlay that follows the active pane without remounting. */
+  children?: ReactNode;
 }
 
 /** A pane keeps at least this much room, in pixels, when a splitter is dragged. */
@@ -59,7 +61,7 @@ const splitterStyle = (splitter: SplitterRect): CSSProperties =>
  * element (the tree knows no pixels), and the splitters overlay the
  * boundaries, so a pane's box is exactly its share.
  */
-export function Workspace({ onNewSession }: Props) {
+export function Workspace({ onNewSession, children }: Props) {
   const layout = useStore((s) => s.layout);
   const panes = useStore((s) => s.panes);
   const tabs = useStore((s) => s.tabs);
@@ -70,6 +72,7 @@ export function Workspace({ onNewSession }: Props) {
   const newSessionKey = useStore((s) => chordLabel(s.shortcuts.newSession));
   const ref = useRef<HTMLDivElement>(null);
   const rects = useMemo(() => layoutRects(layout), [layout]);
+  const activeRect = rects.panes.get(activePaneId);
 
   // A splitter drag arrives in pixels; the tree takes fractions of the split
   // the splitter belongs to.
@@ -163,6 +166,12 @@ export function Workspace({ onNewSession }: Props) {
           />
         </div>
       ))}
+
+      {activeRect && (
+        <div className="pane-overlay" style={slotStyle(activeRect)}>
+          {children}
+        </div>
+      )}
     </div>
   );
 }

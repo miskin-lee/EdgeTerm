@@ -486,13 +486,14 @@ export default function App() {
           )}
 
           <div className="center">
-            <Workspace onNewSession={newSession} />
-            {searchOpen && (
-              <SearchOverlay
-                ref={searchRef}
-                onClose={() => setSearchOpen(false)}
-              />
-            )}
+            <Workspace onNewSession={newSession}>
+              {searchOpen && (
+                <SearchOverlay
+                  ref={searchRef}
+                  onClose={() => setSearchOpen(false)}
+                />
+              )}
+            </Workspace>
           </div>
 
           {right.length > 0 && (
