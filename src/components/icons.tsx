@@ -43,6 +43,7 @@ import save from "@vscode/codicons/src/icons/save.svg?raw";
 import search from "@vscode/codicons/src/icons/search.svg?raw";
 import send from "@vscode/codicons/src/icons/send.svg?raw";
 import server from "@vscode/codicons/src/icons/server.svg?raw";
+import sortPrecedence from "@vscode/codicons/src/icons/sort-precedence.svg?raw";
 import splitHorizontal from "@vscode/codicons/src/icons/split-horizontal.svg?raw";
 import splitVertical from "@vscode/codicons/src/icons/split-vertical.svg?raw";
 import symbolColor from "@vscode/codicons/src/icons/symbol-color.svg?raw";
@@ -95,6 +96,7 @@ const SVGS = {
   search,
   send,
   server,
+  "sort-precedence": sortPrecedence,
   "split-horizontal": splitHorizontal,
   "split-vertical": splitVertical,
   "symbol-color": symbolColor,

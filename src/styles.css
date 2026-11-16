@@ -4812,6 +4812,45 @@ textarea:focus {
   text-transform: uppercase;
 }
 
+.filer-sort-column {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 2px;
+  height: 100%;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  letter-spacing: inherit;
+  text-transform: inherit;
+}
+
+.filer-sort-column.filer-col-name {
+  justify-content: flex-start;
+}
+
+.filer-sort-column.filer-col-date {
+  padding-left: 0;
+}
+
+.filer-sort-column:hover {
+  color: var(--fg);
+  background: var(--bg-hover);
+}
+
+.filer-sort-column.is-sorted {
+  color: var(--accent);
+}
+
+.filer-sort-column:focus-visible {
+  outline: 1px solid var(--accent);
+  outline-offset: -1px;
+}
+
 /* The whole panel is the drop target, so the ring goes around all of it and
    the list underneath only tints. */
 .filer-panel {

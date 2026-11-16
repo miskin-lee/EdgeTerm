@@ -31,7 +31,7 @@ A small, fast terminal, SSH, Telnet, SFTP, FTP and serial client built with **Ru
 - **SSH**: password, public key, ssh-agent and keyboard-interactive (MFA / one-time codes), jump hosts, and older network gear that only speaks legacy algorithms.
 - **Readable output**: a timestamp and line-number gutter, and semantic coloring of IPs, URLs, log levels, HTTP methods, paths, sizes and more.
 - **Split panes and tabs**: split right or down, drag tabs between panes, and see at a glance which background tab is busy or done.
-- **Filer**: browse over SFTP, FTP or the local disk, with drag and drop to and from your desktop.
+- **Filer**: browse over SFTP, FTP or the local disk, with drag and drop to and from your desktop. Sort the Filer by name, size or modification time.
 - **Sender**: saved commands and multi-line scripts, sent to one session or all of them, optionally on a timer.
 - **File transfer in the terminal**: ZMODEM (`rz` / `sz`) and XMODEM.
 - **Everyday details**: themes, fonts and cursor style, custom encodings and locale, session recording, Copy on Select, a warning before multi-line pastes, rebindable shortcuts, and export / import of all settings.
