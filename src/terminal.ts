@@ -405,6 +405,9 @@ export class TerminalController {
 
   private root: HTMLElement | null = null;
   private host: HTMLElement | null = null;
+  private remoteSize: { cols: number; rows: number } | null = null;
+  /** tmux owns grid dimensions; the UI reports available space separately. */
+  onAvailableSize: ((cols: number, rows: number) => void) | null = null;
   private gutter: HTMLElement | null = null;
   private rowPool: HTMLElement[] = [];
 
@@ -1127,7 +1130,10 @@ export class TerminalController {
   fit(): { cols: number; rows: number } | null {
     if (!this.host || this.host.clientWidth === 0) return null;
     try {
-      this.fitAddon.fit();
+      if (this.remoteSize) {
+        const size = this.fitAddon.proposeDimensions();
+        if (size) this.onAvailableSize?.(size.cols, size.rows);
+      } else this.fitAddon.fit();
     } catch {
       return null;
     }
@@ -1144,8 +1150,22 @@ export class TerminalController {
     // XMODEM is started by the user and takes the whole stream while it
     // runs; otherwise the ZMODEM sentry watches for its handshake and
     // passes ordinary output through to xterm.
-    if (this.xmodem.isActive()) this.xmodem.consume(data);
+    if (this.remoteSize) this.feed(data);
+    else if (this.xmodem.isActive()) this.xmodem.consume(data);
     else this.zmodem.consume(data);
+  }
+
+  setRemoteSize(cols: number, rows: number) {
+    if (this.remoteSize?.cols === cols && this.remoteSize.rows === rows) return;
+    this.remoteSize = { cols, rows };
+    // A tmux layout event is ordered with the byte stream. xterm parses writes
+    // asynchronously, so resizing synchronously here would reflow *before*
+    // earlier bytes (including a restored screen) have actually been parsed.
+    this.term.write("", () => {
+      if (!this.disposed && (this.term.cols !== cols || this.term.rows !== rows)) {
+        this.term.resize(cols, rows);
+      }
+    });
   }
 
   /**
@@ -1280,6 +1300,13 @@ export class TerminalController {
   }
 
   private canStartTransfer(): boolean {
+    if (this.remoteSize) {
+      this.showTransferNotice(
+        "Use SFTP for file transfers while tmux integration is active.",
+        "error",
+      );
+      return false;
+    }
     return !this.disposed && !this.locked && !this.isTransferActive();
   }
 

@@ -47,6 +47,7 @@ import { IS_WINDOWS } from "./platform";
 import { matchAppShortcut } from "./shortcuts";
 import { type PanelName, tabTitle, useActiveTab, useStore } from "./store";
 import { allControllers, getController } from "./terminalRegistry";
+import { getTmux } from "./tmuxRegistry";
 import {
   isFileSession,
   type SessionGroup,
@@ -125,7 +126,7 @@ export default function App() {
   const setProgramClipboard = useStore((s) => s.setProgramClipboard);
   const clipboardTab = useStore((s) =>
     clipboardPrompt
-      ? s.tabs.find((tab) => tab.info.id === clipboardPrompt.sessionId)
+      ? s.tabs.find((tab) => tab.info.id === clipboardPrompt.sessionId.split(":tmux:")[0])
       : undefined,
   );
   const tabs = useStore((s) => s.tabs);
@@ -240,7 +241,10 @@ export default function App() {
 
   useEffect(() => {
     const unlisten = api.onSessionOutput(({ id, data }) => {
-      getController(id)?.write(api.base64ToBytes(data));
+      const bytes = api.base64ToBytes(data);
+      const tmux = getTmux(id);
+      if (tmux) tmux.receive(bytes);
+      else getController(id)?.write(bytes);
     });
     return () => {
       void unlisten.then((off) => off());

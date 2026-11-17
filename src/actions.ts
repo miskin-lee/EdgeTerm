@@ -6,9 +6,11 @@ import { useStore, type HostKeyPrompt, type Tab } from "./store";
 import type { TerminalController } from "./terminal";
 import {
   disposeController,
+  getBaseController,
   getController,
   setController,
 } from "./terminalRegistry";
+import { getTmux, setTmux } from "./tmuxRegistry";
 import { isFileSession, type SessionInfo, type SessionProfile } from "./types";
 
 /**
@@ -86,30 +88,39 @@ function historyHost(id: string): string {
  * session needs them until one is opened, so they arrive with the first
  * terminal instead of with the window.
  */
-export async function ensureController(id: string): Promise<TerminalController> {
-  const existing = getController(id);
+export async function ensureController(
+  id: string,
+  route?: { ownerId: string; write(text: string): Promise<void> },
+): Promise<TerminalController> {
+  const existing = getBaseController(id);
   if (existing) return existing;
 
   const { TerminalController } = await import("./terminal");
   // A second caller may have finished while this one waited for the module.
-  const raced = getController(id);
+  const raced = getBaseController(id);
   if (raced) return raced;
 
+  const ownerId = route?.ownerId ?? id;
   const controller = new TerminalController(
     id,
     {
-      onData: (data) => void api.writeSession(id, data).catch(() => undefined),
-      onCommand: (command) => commandHistory.record(command, historyHost(id)),
+      onData: (data) =>
+        void (route ? route.write(data) : api.writeSession(id, data)).catch(
+          () => undefined,
+        ),
+      onCommand: (command) =>
+        commandHistory.record(command, historyHost(ownerId)),
       onCommandState: (state, kind) => {
         const store = useStore.getState();
-        if (state === "running") store.markCommandStarted(id, kind);
-        else if (state === "complete") store.markCommandCompleted(id, kind);
-        else store.clearCommandActivity(id);
+        if (state === "running") store.markCommandStarted(ownerId, kind);
+        else if (state === "complete") store.markCommandCompleted(ownerId, kind);
+        else store.clearCommandActivity(ownerId);
       },
-      suggest: (input) => commandHistory.suggest(input, historyHost(id)),
+      suggest: (input) => commandHistory.suggest(input, historyHost(ownerId)),
       forgetSuggestion: (command) => commandHistory.remove(command),
-      onReconnect: () => void reconnectSession(id),
+      onReconnect: () => void reconnectSession(ownerId),
       onResize: (cols, rows) => {
+        if (route) return;
         useStore.getState().setSize(id, cols, rows);
         void api.resizeSession(id, cols, rows).catch(() => undefined);
       },
@@ -140,6 +151,15 @@ export async function ensureController(id: string): Promise<TerminalController> 
     useStore.getState().setPastePrompt({ sessionId: id, text }),
   );
   setController(id, controller);
+  const profile = useStore.getState().tabs.find(
+    (tab) => tab.info.id === id,
+  )?.profile;
+  if (!route && (profile?.kind === "local" || profile?.kind === "ssh")) {
+    const { TmuxSession } = await import("./tmux");
+    if (getBaseController(id) === controller) {
+      setTmux(id, new TmuxSession(id, controller));
+    }
+  }
   return controller;
 }
 
@@ -179,6 +199,11 @@ export async function splitSession(
   id: string,
   side: "right" | "down",
 ): Promise<string | null> {
+  const tmux = getTmux(id);
+  if (tmux?.snapshot()) {
+    await tmux.split(side).catch(() => undefined);
+    return id;
+  }
   const store = useStore.getState();
   const tab = store.tabs.find((item) => item.info.id === id);
   if (!tab) return null;
@@ -378,6 +403,8 @@ function localPathFromUrlPath(path: string): string {
  */
 async function shellCwd(tab: Tab): Promise<string> {
   const id = tab.info.id;
+  const tmux = getTmux(id);
+  if (tmux?.snapshot()) return tmux.cwd();
   const reported = getController(id)?.reportedCwd ?? null;
   if (tab.info.kind === "ssh") {
     if (reported) return reported.path;

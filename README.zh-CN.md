@@ -31,6 +31,7 @@
 - **SSH**：密码、公钥、ssh-agent、keyboard-interactive（MFA / 验证码）、跳板机，也能连只支持旧算法的网络设备。
 - **易读的输出**：时间戳与行号栏，IP、URL、日志级别、HTTP 方法、路径、容量等语义着色。
 - **分栏与标签**：向右 / 向下分栏，标签可在分栏间拖动，后台标签的运行 / 完成状态一眼可见。
+- **tmux 集成**：在本地或 SSH 会话运行 `tmux -CC`，以原生标签和分栏显示 tmux 窗口，支持回滚、查找、调整尺寸和分离 / 重新挂接。
 - **Filer**：通过 SFTP、FTP 或本地磁盘浏览文件，支持与桌面之间双向拖拽，可按名称、大小或修改时间排序。
 - **Sender**：保存常用命令和多行脚本，发送到当前会话或全部会话，可定时重复。
 - **终端内文件传输**：ZMODEM（`rz` / `sz`）与 XMODEM。
@@ -58,6 +59,7 @@
 3. 底部 **Sender** 把文本发到当前会话或全部会话，常用命令可存成标签。
 4. 标签右键菜单可 **Save Session…**（保存连接配置）、**Duplicate Session**（新开连接）或 **Split Right / Split Down**；**View** 里也可分栏，把标签拖到别的分栏即可移过去。
 5. **Edit** 里是复制粘贴相关设置（右键行为、选中即复制、OSC 52），**View** 里是主题、字体和 **Keyboard Shortcuts…**。
+6. 使用 tmux 时运行 `tmux -CC new-session` 或 `tmux -CC attach`，窗口和分栏会显示在当前连接标签内。**Detach** 保留远端程序，**Close tmux Pane** 终止对应分栏。断线重连后再次运行 attach 命令即可恢复；tmux 模式下用 Filer 传输文件。
 
 ## 快捷键
 

@@ -15,7 +15,8 @@ import { IS_MAC } from "../platform";
 import { chordLabel, type ShortcutCommand } from "../shortcuts";
 import { useStore, type Tab } from "../store";
 import type { TerminalController } from "../terminal";
-import { getController } from "../terminalRegistry";
+import { getBaseController } from "../terminalRegistry";
+import { useTmux } from "../useTmux";
 import { isFileSession } from "../types";
 import { ContextMenu, type MenuItem } from "./ContextMenu";
 
@@ -24,6 +25,7 @@ import { ContextMenu, type MenuItem } from "./ContextMenu";
 const FtpPane = lazy(() =>
   import("./FtpPane").then((module) => ({ default: module.FtpPane })),
 );
+const TmuxWorkspace = lazy(() => import("./TmuxWorkspace"));
 
 interface Props {
   tab: Tab;
@@ -42,6 +44,7 @@ export const useAccelerator = (command: ShortcutCommand): string =>
 export function SessionPane({ tab, visible, focused, style }: Props) {
   const setActive = useStore((s) => s.setActive);
   const id = tab.info.id;
+  const { session: tmux, snapshot } = useTmux(id);
 
   // A press or keyboard focus anywhere in the pane makes its session the
   // active one — menus, the Filer and the Sender follow it — the way a
@@ -63,7 +66,26 @@ export function SessionPane({ tab, visible, focused, style }: Props) {
           <FtpPane tab={tab} active={visible} />
         </Suspense>
       ) : (
-        <TerminalHost tab={tab} visible={visible} focused={focused} />
+        <>
+          <div className={`terminal-shell${snapshot ? " is-hidden" : ""}`}>
+            <TerminalHost
+              tab={tab}
+              visible={visible && !snapshot}
+              focused={focused && !snapshot}
+            />
+          </div>
+          {snapshot && tmux && (
+            <Suspense fallback={null}>
+              <TmuxWorkspace
+                tab={tab}
+                session={tmux}
+                snapshot={snapshot}
+                visible={visible}
+                focused={focused}
+              />
+            </Suspense>
+          )}
+        </>
       )}
     </div>
   );
@@ -85,14 +107,16 @@ interface TerminalMenu {
  * treats as "bypass the program" (macOS has no such key: Option is Meta
  * there).
  */
-function TerminalHost({
+export function TerminalHost({
   tab,
   visible,
   focused,
+  controllerId,
 }: {
   tab: Tab;
   visible: boolean;
   focused: boolean;
+  controllerId?: string;
 }) {
   const ref = useRef<HTMLDivElement>(null);
   const gutterMode = useStore((s) => s.gutterMode);
@@ -110,7 +134,7 @@ function TerminalHost({
   const rightClickAction = useStore((s) => s.rightClickAction);
   const [menu, setMenu] = useState<TerminalMenu | null>(null);
   const closeMenu = useCallback(() => setMenu(null), []);
-  const id = tab.info.id;
+  const id = controllerId ?? tab.info.id;
   // xterm loads on demand, so the terminal can arrive a tick after the pane
   // first renders (see ensureController). Effects that looked it up in the
   // registry right away found nothing and silently did nothing — which cost
@@ -125,7 +149,7 @@ function TerminalHost({
   const revealCwdKey = useAccelerator("revealCwd");
 
   const ownsClick = (event: ReactMouseEvent) => {
-    const controller = getController(id);
+    const controller = getBaseController(id);
     if (!controller) return null;
     if (controller.isMouseTracked() && (IS_MAC || !event.shiftKey)) {
       return null;
@@ -175,7 +199,7 @@ function TerminalHost({
   // Menu entries run after the menu closed; the terminal takes focus back
   // from the clicked entry so a paste lands in it and typing continues.
   const withTerminal = (fn: (controller: TerminalController) => void) => () => {
-    const controller = getController(id);
+    const controller = getBaseController(id);
     if (!controller) return;
     controller.focus();
     fn(controller);
@@ -213,7 +237,7 @@ function TerminalHost({
       label: "Reveal Working Directory in Filer",
       icon: "folder-opened",
       shortcut: revealCwdKey,
-      action: withTerminal(() => void revealCwdInFiler(id)),
+      action: withTerminal(() => void revealCwdInFiler(tab.info.id)),
     },
   ];
 
@@ -231,7 +255,7 @@ function TerminalHost({
     });
 
     const observer = new ResizeObserver(() => {
-      getController(id)?.fit();
+      getBaseController(id)?.fit();
     });
     observer.observe(element);
     return () => {
@@ -296,7 +320,10 @@ function TerminalHost({
     // The pane is hidden while its strip shows another tab, so it can only
     // be measured once it is on screen again.
     const frame = requestAnimationFrame(() => terminal.fit());
-    return () => cancelAnimationFrame(frame);
+    return () => {
+      cancelAnimationFrame(frame);
+      terminal.setVisible(false);
+    };
   }, [visible, terminal]);
 
   // Keys go to the active tab of the active pane; a tab shown in another

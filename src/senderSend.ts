@@ -1,6 +1,7 @@
 import * as api from "./api";
 import type { SendUnit } from "./senderUnits";
 import { getController } from "./terminalRegistry";
+import { getTmux } from "./tmuxRegistry";
 import type { LineEnding } from "./types";
 
 // The Sender's write path, shared by the panel's Run button and the repeat
@@ -90,10 +91,13 @@ async function sendSequence(
   ending: LineEnding,
   stop: StopSignal,
 ): Promise<void> {
+  const tmux = getTmux(id);
+  const pane = tmux?.snapshot()?.activePane;
+  const target = pane && tmux ? tmux.paneControllerId(pane) : id;
   for (let index = 0; index < units.length; index += 1) {
     if (stop.stopped) return;
     const unit = units[index];
-    const controller = getController(id);
+    const controller = getController(target);
     // Told before the write so the prompt on screen becomes the completion
     // signature; false when the terminal cannot track this line.
     const tracked =
@@ -101,7 +105,8 @@ async function sendSequence(
       controller !== undefined &&
       controller.noteCommandSent(unit);
     try {
-      await api.writeSession(id, unit);
+      if (pane && tmux) await tmux.writePane(pane, unit);
+      else await api.writeSession(id, unit);
     } catch (error) {
       if (tracked) controller.cancelCommandSent();
       throw error;

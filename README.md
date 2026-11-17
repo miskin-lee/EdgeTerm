@@ -31,6 +31,7 @@ A small, fast terminal, SSH, Telnet, SFTP, FTP and serial client built with **Ru
 - **SSH**: password, public key, ssh-agent and keyboard-interactive (MFA / one-time codes), jump hosts, and older network gear that only speaks legacy algorithms.
 - **Readable output**: a timestamp and line-number gutter, and semantic coloring of IPs, URLs, log levels, HTTP methods, paths, sizes and more.
 - **Split panes and tabs**: split right or down, drag tabs between panes, and see at a glance which background tab is busy or done.
+- **tmux integration**: run `tmux -CC` in a local or SSH session for native window tabs and split panes, with scrollback, search, resizing and detach/reattach.
 - **Filer**: browse over SFTP, FTP or the local disk, with drag and drop to and from your desktop. Sort the Filer by name, size or modification time.
 - **Sender**: saved commands and multi-line scripts, sent to one session or all of them, optionally on a timer.
 - **File transfer in the terminal**: ZMODEM (`rz` / `sz`) and XMODEM.
@@ -58,6 +59,7 @@ Download from [Releases](https://github.com/miskin-lee/EdgeTerm/releases):
 3. The **Sender** at the bottom sends text to the current session or to all sessions. Save frequently used commands as tags.
 4. Right-click a tab to **Save Session…** (connection settings), **Duplicate Session** (a new connection), or **Split Right / Split Down**. Splits are also in **View**; drag a tab onto another pane to move it there.
 5. **Edit** holds the copy/paste behavior (right click, Copy on Select, OSC 52), and **View** holds the theme, fonts and **Keyboard Shortcuts…**.
+6. For tmux, run `tmux -CC new-session` or `tmux -CC attach`. Its windows and panes appear inside the connection tab. **Detach** keeps remote programs running; **Close tmux Pane** terminates that pane. After reconnecting, run the attach command again. Use the Filer for file transfers in tmux mode.
 
 ## Keyboard shortcuts
 

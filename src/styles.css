@@ -1873,6 +1873,127 @@ textarea:focus {
   overflow: hidden;
 }
 
+.terminal-shell {
+  position: absolute;
+  inset: 0;
+}
+.terminal-shell.is-hidden,
+.tmux-pane.is-hidden {
+  visibility: hidden;
+  pointer-events: none;
+  z-index: -1;
+}
+.tmux-workspace {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.tmux-toolbar {
+  display: flex;
+  align-items: stretch;
+  flex: none;
+  min-width: 0;
+  height: 30px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-panel);
+}
+.tmux-label {
+  align-self: center;
+  color: var(--fg-dim);
+  padding: 0 9px;
+  font-size: 11px;
+}
+.tmux-windows {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  overflow-x: auto;
+  scrollbar-width: thin;
+}
+.tmux-window {
+  flex: none;
+  max-width: 180px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  padding: 0 12px;
+  color: var(--fg-dim);
+  border-right: 1px solid var(--border);
+}
+.tmux-window.is-active {
+  color: var(--fg);
+  background: var(--bg-terminal);
+  box-shadow: inset 0 2px var(--accent);
+}
+.tmux-actions {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 2px;
+  padding: 0 4px;
+}
+.tmux-actions button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 4px;
+  min-width: 24px;
+  white-space: nowrap;
+}
+.tmux-actions button:hover,
+.tmux-window:hover {
+  background: var(--bg-hover);
+}
+.tmux-actions button:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+.tmux-content {
+  flex: 1;
+  position: relative;
+  min-height: 0;
+  overflow: hidden;
+  background: var(--bg-terminal);
+}
+.tmux-pane {
+  position: absolute;
+  overflow: hidden;
+}
+.tmux-pane.is-focused {
+  outline: 1px solid var(--accent);
+  outline-offset: -1px;
+}
+.tmux-divider {
+  display: flex;
+  justify-content: center;
+  position: absolute;
+  z-index: 5;
+  background: var(--bg-terminal);
+}
+.tmux-divider.is-column {
+  flex-direction: column;
+}
+.tmux-error,
+.tmux-notice {
+  padding: 5px 10px;
+  flex: none;
+  font-size: 12px;
+}
+.tmux-error {
+  color: var(--notice-error-fg);
+  background: var(--notice-error-bg);
+}
+.tmux-notice {
+  color: var(--fg-dim);
+  background: var(--bg-panel);
+}
+.tmux-loading {
+  padding: 16px;
+  color: var(--fg-dim);
+}
+
 /*
  * A boundary between panes. The 1px line sits on the last pixel of the pane
  * before it, so the panes tile the workspace exactly; the grab area is the

@@ -1,4 +1,5 @@
 import type { TerminalController } from "./terminal";
+import { deleteTmux, getTmux } from "./tmuxRegistry";
 
 /**
  * Terminal instances outlive the React components that display them, so that
@@ -12,10 +13,16 @@ export function setController(id: string, controller: TerminalController) {
 }
 
 export function getController(id: string): TerminalController | undefined {
+  return getTmux(id)?.activeController() ?? registry.get(id);
+}
+
+/** The underlying terminal, even when a tmux pane is currently selected. */
+export function getBaseController(id: string): TerminalController | undefined {
   return registry.get(id);
 }
 
 export function disposeController(id: string) {
+  deleteTmux(id);
   registry.get(id)?.dispose();
   registry.delete(id);
 }

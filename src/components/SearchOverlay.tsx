@@ -26,6 +26,7 @@ import {
   type SearchResults,
 } from "../terminalSearch";
 import { getController } from "../terminalRegistry";
+import { useTmux } from "../useTmux";
 import { isFileSession } from "../types";
 import { Icon, type IconName } from "./icons";
 
@@ -135,7 +136,11 @@ const formatResults = ({ resultIndex, resultCount }: SearchResults) => {
 export const SearchOverlay = forwardRef<SearchOverlayHandle, Props>(
   function SearchOverlay({ onClose }, ref) {
     const tab = useActiveTab();
-    const activeId = useStore((s) => s.activeId);
+    const tabId = useStore((s) => s.activeId);
+    const { session: tmux, snapshot } = useTmux(tabId);
+    const activeId = snapshot?.activePane && tmux
+      ? tmux.paneControllerId(snapshot.activePane)
+      : tabId;
     const [query, setQuery] = useState(() => selectedText(activeId));
     const [options, setOptions] = useState(lastOptions);
     const [inSelection, setInSelection] = useState(false);
