@@ -42,6 +42,7 @@ import { SenderPanel } from "./components/panels/SenderPanel";
 import { SessionPanel } from "./components/panels/SessionPanel";
 import { applyFonts, symbolFallbacks } from "./fonts";
 import { commandHistory } from "./history";
+import { t } from "./i18n";
 import type { PanelDock } from "./panelDock";
 import { IS_WINDOWS } from "./platform";
 import { matchAppShortcut } from "./shortcuts";
@@ -618,7 +619,7 @@ export default function App() {
       {clipboardPrompt && (
         <ClipboardWriteDialog
           key={clipboardPrompt.sessionId}
-          session={clipboardTab ? tabTitle(clipboardTab) : "a session"}
+          session={clipboardTab ? tabTitle(clipboardTab) : t("a session")}
           text={clipboardPrompt.text}
           onAllow={(always) => {
             const { sessionId, text } = clipboardPrompt;
@@ -700,18 +701,20 @@ export default function App() {
             style={{ width: 380 }}
             onMouseDown={(event) => event.stopPropagation()}
           >
-            <div className="dialog-header">About EdgeTerm</div>
+            <div className="dialog-header">{t("About EdgeTerm")}</div>
             <div className="dialog-body" style={{ lineHeight: 1.7 }}>
               <strong>
                 EdgeTerm{updater.appVersion ? ` ${updater.appVersion}` : ""}
               </strong>
               <span>
-                A small, fast terminal, SSH, SFTP, FTP and serial client. The
-                installer is tiny, it starts instantly, and it stays out of
-                your way.
+                {t(
+                  "A small, fast terminal, SSH, SFTP, FTP and serial client. The " +
+                    "installer is tiny, it starts instantly, and it stays out of " +
+                    "your way.",
+                )}
               </span>
               <span style={{ color: "var(--fg-faint)" }}>
-                Made by miskin ·{" "}
+                {t("Made by miskin")} ·{" "}
                 <a
                   className="about-link"
                   href={REPO_URL}
@@ -728,7 +731,7 @@ export default function App() {
             </div>
             <div className="dialog-footer">
               <button className="btn" onClick={() => setAboutOpen(false)}>
-                Close
+                {t("Close")}
               </button>
             </div>
           </div>

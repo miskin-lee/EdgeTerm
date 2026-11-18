@@ -1,5 +1,6 @@
 import { useEffect, useRef } from "react";
 import { reconnectSession } from "../actions";
+import { t, tf } from "../i18n";
 import { ask } from "../nativeDialog";
 import { chordLabel } from "../shortcuts";
 import { useStore, type Tab } from "../store";
@@ -65,12 +66,15 @@ export default function TmuxWorkspace({
     const pane = snapshot.activePane;
     if (
       await ask(
-        `Close tmux pane ${pane}? The program running in it will be terminated. Use Detach to keep all programs running.`,
+        tf(
+          "Close tmux pane {pane}? The program running in it will be terminated. Use Detach to keep all programs running.",
+          { pane },
+        ),
         {
-          title: "Close tmux Pane",
+          title: t("Close tmux Pane"),
           kind: "warning",
-          okLabel: "Close Pane",
-          cancelLabel: "Cancel",
+          okLabel: t("Close Pane"),
+          cancelLabel: t("Cancel"),
         },
       )
     )
@@ -129,7 +133,7 @@ export default function TmuxWorkspace({
     <div className="tmux-workspace">
       <div className="tmux-toolbar">
         <span className="tmux-label">tmux</span>
-        <div className="tmux-windows" role="tablist" aria-label="tmux windows">
+        <div className="tmux-windows" role="tablist" aria-label={t("tmux windows")}>
           {snapshot.windows.map((item) => (
             <button
               key={item.id}
@@ -149,8 +153,8 @@ export default function TmuxWorkspace({
         <div className="tmux-actions">
           <button
             disabled={!ready}
-            title="New tmux Window"
-            aria-label="New tmux Window"
+            title={t("New tmux Window")}
+            aria-label={t("New tmux Window")}
             onMouseDown={(event) => event.preventDefault()}
             onClick={() => run(session.newWindow())}
           >
@@ -158,8 +162,8 @@ export default function TmuxWorkspace({
           </button>
           <button
             disabled={!ready}
-            title={`Split Right${splitRight ? ` (${splitRight})` : ""}`}
-            aria-label="Split tmux Pane Right"
+            title={splitRight ? tf("Split Right ({shortcut})", { shortcut: splitRight }) : t("Split Right")}
+            aria-label={t("Split tmux Pane Right")}
             onMouseDown={(event) => event.preventDefault()}
             onClick={() => run(session.split("right"))}
           >
@@ -167,8 +171,8 @@ export default function TmuxWorkspace({
           </button>
           <button
             disabled={!ready}
-            title={`Split Down${splitDown ? ` (${splitDown})` : ""}`}
-            aria-label="Split tmux Pane Down"
+            title={splitDown ? tf("Split Down ({shortcut})", { shortcut: splitDown }) : t("Split Down")}
+            aria-label={t("Split tmux Pane Down")}
             onMouseDown={(event) => event.preventDefault()}
             onClick={() => run(session.split("down"))}
           >
@@ -176,8 +180,8 @@ export default function TmuxWorkspace({
           </button>
           <button
             disabled={!ready}
-            title="Close tmux Pane"
-            aria-label="Close tmux Pane"
+            title={t("Close tmux Pane")}
+            aria-label={t("Close tmux Pane")}
             onMouseDown={(event) => event.preventDefault()}
             onClick={() => run(closePane())}
           >
@@ -187,11 +191,11 @@ export default function TmuxWorkspace({
             disabled={!snapshot.connected}
             onClick={() => run(session.detach())}
           >
-            Detach
+            {t("Detach")}
           </button>
           {!snapshot.connected && (
             <button onClick={() => run(reconnectSession(tab.info.id))}>
-              Reconnect
+              {t("Reconnect")}
             </button>
           )}
         </div>
@@ -203,12 +207,11 @@ export default function TmuxWorkspace({
       )}
       {!snapshot.connected && (
         <div className="tmux-notice">
-          Connection closed. Reconnect, then run tmux -CC attach to restore this
-          workspace.
+          {t("Connection closed. Reconnect, then run tmux -CC attach to restore this workspace.")}
         </div>
       )}
       <div className="tmux-content" ref={ref}>
-        {!window && <div className="tmux-loading">Loading tmux windows…</div>}
+        {!window && <div className="tmux-loading">{t("Loading tmux windows…")}</div>}
         {snapshot.windows.flatMap((item) =>
           tmuxLeaves(item.fullLayout).map((fullLeaf) => {
             const visibleLeaf = tmuxLeaves(item.layout).find(

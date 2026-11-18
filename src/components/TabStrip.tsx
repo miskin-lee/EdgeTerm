@@ -10,6 +10,7 @@ import {
 } from "react";
 
 import { duplicateSession, splitSession } from "../actions";
+import { t, tf } from "../i18n";
 import { tabTitle, useStore, type DropTarget, type Tab } from "../store";
 import { colorForSession } from "../types";
 import { ContextMenu, type MenuItem } from "./ContextMenu";
@@ -42,8 +43,11 @@ interface Props {
  */
 function activityLabel(tab: Tab): string | null {
   if (tab.commandActivity === "idle") return null;
-  const subject = tab.activityKind === "ai" ? "AI" : "command";
-  return `${subject} ${tab.commandActivity === "running" ? "running" : "finished"}`;
+  const subject = tab.activityKind === "ai" ? "AI" : t("command");
+  return tf("{subject} {state}", {
+    subject,
+    state: tab.commandActivity === "running" ? t("running") : t("finished"),
+  });
 }
 
 interface TabDrag {
@@ -261,47 +265,47 @@ export function TabStrip({ paneId, onSaveSession }: Props) {
     const tab = tabs[index];
     return [
       {
-        label: "Save Session…",
+        label: t("Save Session…"),
         icon: "save",
         disabled: !tab || tab.state === "connecting",
         action: () => onSaveSession(id),
       },
       {
-        label: "Duplicate Session",
+        label: t("Duplicate Session"),
         icon: "copy",
         action: () => void duplicateSession(id),
       },
       "separator",
       {
-        label: "Close",
+        label: t("Close"),
         shortcut: closeKey,
         action: () => requestCloseTabs([id]),
       },
       {
-        label: "Close Others",
+        label: t("Close Others"),
         disabled: ids.length < 2,
         action: () => requestCloseTabs(ids.filter((other) => other !== id)),
       },
       {
-        label: "Close to the Left",
+        label: t("Close to the Left"),
         disabled: index <= 0,
         action: () => requestCloseTabs(ids.slice(0, index)),
       },
       {
-        label: "Close to the Right",
+        label: t("Close to the Right"),
         disabled: index >= ids.length - 1,
         action: () => requestCloseTabs(ids.slice(index + 1)),
       },
-      { label: "Close All", action: () => requestCloseTabs(ids) },
+      { label: t("Close All"), action: () => requestCloseTabs(ids) },
       "separator",
       {
-        label: "Split Right",
+        label: t("Split Right"),
         icon: "split-horizontal",
         shortcut: splitRightKey,
         action: () => void splitSession(id, "right"),
       },
       {
-        label: "Split Down",
+        label: t("Split Down"),
         icon: "split-vertical",
         shortcut: splitDownKey,
         action: () => void splitSession(id, "down"),
@@ -559,7 +563,7 @@ export function TabStrip({ paneId, onSaveSession }: Props) {
               tab.commandActivity === "running"
                 ? activityLabel(tab)
                 : tab.commandActivity === "complete"
-                  ? `${activityLabel(tab)} — select to view`
+                  ? tf("{activity} — select to view", { activity: activityLabel(tab) ?? "" })
                   : (tab.message ?? tab.state)
             }`}
           >
@@ -577,8 +581,8 @@ export function TabStrip({ paneId, onSaveSession }: Props) {
                 event.stopPropagation();
                 requestCloseTabs([tab.info.id]);
               }}
-              title="Close session"
-              aria-label="Close session"
+              title={t("Close session")}
+              aria-label={t("Close session")}
             >
               <Icon name="close" />
             </button>
@@ -601,8 +605,8 @@ export function TabStrip({ paneId, onSaveSession }: Props) {
             disabled={!overflow.left}
             onMouseDown={(event) => event.preventDefault()}
             onClick={() => scrollByTab("left")}
-            title="Scroll Left"
-            aria-label="Scroll Left"
+            title={t("Scroll Left")}
+            aria-label={t("Scroll Left")}
           >
             <Icon name="chevron-left" />
           </button>
@@ -611,8 +615,8 @@ export function TabStrip({ paneId, onSaveSession }: Props) {
             disabled={!overflow.right}
             onMouseDown={(event) => event.preventDefault()}
             onClick={() => scrollByTab("right")}
-            title="Scroll Right"
-            aria-label="Scroll Right"
+            title={t("Scroll Right")}
+            aria-label={t("Scroll Right")}
           >
             <Icon name="chevron-right" />
           </button>
@@ -626,7 +630,7 @@ export function TabStrip({ paneId, onSaveSession }: Props) {
               const rect = event.currentTarget.getBoundingClientRect();
               setListMenu({ x: rect.right, y: rect.bottom + 2 });
             }}
-            title="All sessions"
+            title={t("All sessions")}
             aria-haspopup="menu"
             aria-expanded={listMenu !== null}
           >

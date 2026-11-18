@@ -1,5 +1,6 @@
 import { useEffect, useRef } from "react";
 
+import { t, tf } from "../i18n";
 import { tabTitle, type Tab } from "../store";
 
 interface Props {
@@ -47,14 +48,20 @@ export function CloseSessionDialog({ tabs, onConfirm, onCancel }: Props) {
   const connecting = tabs.some((tab) => tab.state === "connecting");
   const connected = tabs.some((tab) => tab.state === "connected");
   const hint = connecting && connected
-    ? "Connected sessions will be disconnected and their terminal output discarded; connection attempts will be cancelled."
+    ? t(
+        "Connected sessions will be disconnected and their terminal output discarded; connection attempts will be cancelled.",
+      )
     : connecting
       ? tabs.length === 1
-        ? "The connection attempt will be cancelled."
-        : "The connection attempts will be cancelled."
+        ? t("The connection attempt will be cancelled.")
+        : t("The connection attempts will be cancelled.")
       : tabs.length === 1
-        ? "The session will be disconnected and its terminal output discarded."
-        : "The sessions will be disconnected and their terminal output discarded.";
+        ? t(
+            "The session will be disconnected and its terminal output discarded.",
+          )
+        : t(
+            "The sessions will be disconnected and their terminal output discarded.",
+          );
   // A long list is summarised rather than scrolled: the names are a
   // reminder, the decision is the count.
   const listed = tabs.slice(0, LISTED_TABS);
@@ -68,13 +75,15 @@ export function CloseSessionDialog({ tabs, onConfirm, onCancel }: Props) {
         onMouseDown={(event) => event.stopPropagation()}
       >
         <div className="dialog-header" id="close-session-title">
-          {single ? "Close Session" : `Close ${tabs.length} Sessions`}
+          {single
+            ? t("Close Session")
+            : tf("Close {n} Sessions", { n: tabs.length })}
         </div>
         <div className="dialog-body confirm-dialog-body">
           {single ? (
             <>
               <span>
-                Close <strong>{single.info.name}</strong>?
+                {t("Close")} <strong>{single.info.name}</strong>?
               </span>
               <span className="confirm-dialog-target">
                 {single.info.protocol} · {single.info.address}
@@ -83,7 +92,8 @@ export function CloseSessionDialog({ tabs, onConfirm, onCancel }: Props) {
           ) : (
             <>
               <span>
-                Close <strong>{tabs.length} sessions</strong>?
+                {t("Close")}{" "}
+                <strong>{tf("{n} sessions", { n: tabs.length })}</strong>?
               </span>
               {listed.map((tab) => (
                 <span className="confirm-dialog-target" key={tab.info.id}>
@@ -92,7 +102,7 @@ export function CloseSessionDialog({ tabs, onConfirm, onCancel }: Props) {
               ))}
               {tabs.length > listed.length && (
                 <span className="confirm-dialog-target">
-                  … and {tabs.length - listed.length} more
+                  {tf("… and {n} more", { n: tabs.length - listed.length })}
                 </span>
               )}
             </>
@@ -101,10 +111,10 @@ export function CloseSessionDialog({ tabs, onConfirm, onCancel }: Props) {
         </div>
         <div className="dialog-footer confirm-dialog-footer">
           <span className="confirm-dialog-keys">
-            <kbd>Enter</kbd> close · <kbd>Esc</kbd> cancel
+            <kbd>Enter</kbd> {t("close")} · <kbd>Esc</kbd> {t("cancel")}
           </span>
           <button type="button" className="btn" onClick={onCancel}>
-            Cancel
+            {t("Cancel")}
           </button>
           <button
             ref={confirmRef}
@@ -112,7 +122,7 @@ export function CloseSessionDialog({ tabs, onConfirm, onCancel }: Props) {
             className="btn is-danger"
             onClick={onConfirm}
           >
-            Close
+            {t("Close")}
           </button>
         </div>
       </div>

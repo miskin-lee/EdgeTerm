@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import * as api from "../../api";
+import { t, tf } from "../../i18n";
 import {
   clampRepeat,
   loadRepeatSettings,
@@ -479,10 +480,10 @@ export function SenderPanel({ compact, canCompact, onExpandedChange }: SenderPan
   };
 
   const emptyMessage = commandsLoading
-    ? "Loading saved commands…"
+    ? t("Loading saved commands…")
     : savedCommands.length === 0
-      ? "Save a command to add it here."
-      : "No saved commands apply to this session; they are listed under the sessions, groups or kinds they were saved to.";
+      ? t("Save a command to add it here.")
+      : t("No saved commands apply to this session; they are listed under the sessions, groups or kinds they were saved to.");
 
   return (
     <>
@@ -490,11 +491,11 @@ export function SenderPanel({ compact, canCompact, onExpandedChange }: SenderPan
         <div className="panel-header sender-quickbar">
           <div className="panel-title is-sender sender-quick-title">
             <Icon name="send" />
-            Sender
+            {t("Sender")}
           </div>
           <div
             className="sender-quick-tags"
-            aria-label="Saved commands"
+            aria-label={t("Saved commands")}
             onWheel={(event) => {
               if (event.currentTarget.scrollWidth > event.currentTarget.clientWidth) {
                 event.currentTarget.scrollLeft += event.deltaY;
@@ -520,7 +521,7 @@ export function SenderPanel({ compact, canCompact, onExpandedChange }: SenderPan
                   type="button"
                   className="sender-command-load"
                   data-own-tooltip
-                  aria-label={`Send ${command.name}: ${command.text}`}
+                  aria-label={tf("Send {name}: {text}", { name: command.name, text: command.text })}
                   // Not `disabled`: a disabled button swallows the right
                   // click, and the menu is the tag's only way to its options.
                   aria-disabled={running}
@@ -556,52 +557,52 @@ export function SenderPanel({ compact, canCompact, onExpandedChange }: SenderPan
               });
             }}
           >
-            More <span className="sender-quick-count">{visibleCommands.length}</span>
+            {t("More")} <span className="sender-quick-count">{visibleCommands.length}</span>
             <Icon name="chevron-down" />
           </button>
           {running && (
             <button
               type="button"
               className="sender-quick-button is-stop"
-              title="Stop after the current line"
+              title={t("Stop after the current line")}
               onClick={stopSending}
             >
               <Icon name="debug-stop" />
-              Stop sending
+              {t("Stop sending")}
             </button>
           )}
           {schedule && (
             <button
               type="button"
               className="sender-quick-button is-running"
-              title={`Repeating ${firstLine(schedule.spec.text)} · click to stop`}
+              title={tf("Repeating {command} · click to stop", { command: firstLine(schedule.spec.text) })}
               onClick={stopSchedule}
             >
               <Icon name="watch" />
-              Stop repeat
+              {t("Stop repeat")}
             </button>
           )}
           <label className="sender-quick-target select-wrap">
             <select
               className="select"
               value={target}
-              aria-label="Sender targets"
+              aria-label={t("Sender targets")}
               onChange={(event) => setTarget(event.target.value as Target)}
             >
-              <option value="current">Current Session</option>
-              <option value="all">All Sessions ({tabs.length})</option>
+              <option value="current">{t("Current Session")}</option>
+              <option value="all">{tf("All Sessions ({count})", { count: tabs.length })}</option>
             </select>
             <Icon name="chevron-down" className="select-chevron" />
           </label>
           <button type="button" className="sender-quick-button is-primary" onClick={openComposer}>
             <Icon name="add" />
-            {editing ? "Continue editing" : "New"}
+            {editing ? t("Continue editing") : t("New")}
           </button>
           <button
             type="button"
             className="sender-quick-button is-icon"
-            title="Expand Sender"
-            aria-label="Expand Sender"
+            title={t("Expand Sender")}
+            aria-label={t("Expand Sender")}
             onClick={openComposer}
           >
             <Icon name="arrow-up" />
@@ -612,11 +613,11 @@ export function SenderPanel({ compact, canCompact, onExpandedChange }: SenderPan
       <div className="panel-header sender-header">
         <div className="panel-title is-sender">
           <Icon name="send" />
-          Sender
+          {t("Sender")}
         </div>
         <div className="sender-options">
           <label className="sender-field">
-            <span>Ending</span>
+            <span>{t("Ending")}</span>
             <span className="select-wrap">
               <select
                 className="select"
@@ -634,15 +635,15 @@ export function SenderPanel({ compact, canCompact, onExpandedChange }: SenderPan
           </label>
 
           <label className="sender-field">
-            <span>Targets</span>
+            <span>{t("Targets")}</span>
             <span className="select-wrap">
               <select
                 className="select"
                 value={target}
                 onChange={(event) => setTarget(event.target.value as Target)}
               >
-                <option value="current">Current Session</option>
-                <option value="all">All Sessions ({tabs.length})</option>
+                <option value="current">{t("Current Session")}</option>
+                <option value="all">{tf("All Sessions ({count})", { count: tabs.length })}</option>
               </select>
               <Icon name="chevron-down" className="select-chevron" />
             </span>
@@ -652,8 +653,8 @@ export function SenderPanel({ compact, canCompact, onExpandedChange }: SenderPan
           <button
             type="button"
             className="sender-collapse"
-            title="Show saved commands in one row"
-            aria-label="Collapse Sender"
+            title={t("Show saved commands in one row")}
+            aria-label={t("Collapse Sender")}
             onClick={() => {
               closeSavePicker();
               onExpandedChange(false);
@@ -674,7 +675,7 @@ export function SenderPanel({ compact, canCompact, onExpandedChange }: SenderPan
             autoCorrect="off"
             spellCheck={false}
             value={text}
-            placeholder={`Type a command (${endingLabel(ending)}); Shift+Enter adds a line`}
+            placeholder={tf("Type a command ({ending}); Shift+Enter adds a line", { ending: endingLabel(ending) })}
             onChange={(event) => {
               if (!editing) setSelectedCommandId(null);
               setText(event.target.value);
@@ -697,8 +698,8 @@ export function SenderPanel({ compact, canCompact, onExpandedChange }: SenderPan
               type="button"
               className="sender-clear"
               onClick={() => setText("")}
-              title="Clear"
-              aria-label="Clear command"
+              title={t("Clear")}
+              aria-label={t("Clear command")}
             >
               <Icon name="close" />
             </button>
@@ -709,8 +710,8 @@ export function SenderPanel({ compact, canCompact, onExpandedChange }: SenderPan
             type="button"
             className="sender-send is-stop"
             onClick={stopSending}
-            title="Stop after the current line"
-            aria-label="Stop sending"
+            title={t("Stop after the current line")}
+            aria-label={t("Stop sending")}
           >
             <Icon name="debug-stop" />
           </button>
@@ -719,8 +720,8 @@ export function SenderPanel({ compact, canCompact, onExpandedChange }: SenderPan
             type="button"
             className="sender-send"
             onClick={() => void sendCommand(text, ending)}
-            title="Run command (Enter)"
-            aria-label="Run command"
+            title={t("Run command (Enter)")}
+            aria-label={t("Run command")}
           >
             <Icon name="run-compact" />
           </button>
@@ -735,9 +736,9 @@ export function SenderPanel({ compact, canCompact, onExpandedChange }: SenderPan
             .join(" ")}
           onClick={() => setRepeatOpen((open) => !open)}
           title={
-            schedule ? "A command is repeating on a timer" : "Repeat on a timer"
+            schedule ? t("A command is repeating on a timer") : t("Repeat on a timer")
           }
-          aria-label="Repeat on a timer"
+          aria-label={t("Repeat on a timer")}
           aria-pressed={repeatOpen || schedule !== null}
         >
           <Icon name="watch" />
@@ -751,8 +752,8 @@ export function SenderPanel({ compact, canCompact, onExpandedChange }: SenderPan
           spellCheck={false}
           maxLength={80}
           value={tagName}
-          placeholder="Tag name (optional)"
-          aria-label="Saved command tag name"
+          placeholder={t("Tag name (optional)")}
+          aria-label={t("Saved command tag name")}
           onChange={(event) =>
             setTagName(event.target.value.replace(/[\r\n]+/g, ""))
           }
@@ -773,12 +774,12 @@ export function SenderPanel({ compact, canCompact, onExpandedChange }: SenderPan
               type="button"
               ref={saveButtonRef}
               disabled={libraryBusy || text.length === 0}
-              title={`Update "${editing.command.name}" — asks where to list it`}
+              title={tf('Update "{name}" — asks where to list it', { name: editing.command.name })}
               aria-haspopup="menu"
               aria-expanded={savePicker !== null}
               onClick={openSavePicker}
             >
-              Update
+              {t("Update")}
             </button>
             <button
               className="sender-save-btn is-secondary"
@@ -786,7 +787,7 @@ export function SenderPanel({ compact, canCompact, onExpandedChange }: SenderPan
               disabled={libraryBusy}
               onClick={cancelEdit}
             >
-              Cancel
+              {t("Cancel")}
             </button>
           </>
         ) : (
@@ -800,12 +801,12 @@ export function SenderPanel({ compact, canCompact, onExpandedChange }: SenderPan
               text.length === 0 ||
               savedCommands.length >= MAX_SAVED_COMMANDS
             }
-            title="Save the command — asks where to list it"
+            title={t("Save the command — asks where to list it")}
             aria-haspopup="menu"
             aria-expanded={savePicker !== null}
             onClick={openSavePicker}
           >
-            Save
+            {t("Save")}
           </button>
         )}
       </div>
@@ -814,43 +815,46 @@ export function SenderPanel({ compact, canCompact, onExpandedChange }: SenderPan
         <div
           className={`sender-repeat${schedule ? " is-running" : ""}`}
           role="group"
-          aria-label="Repeat"
+          aria-label={t("Repeat")}
         >
           <Icon name="watch" />
           {schedule ? (
             <>
               <span className="sender-repeat-text">
-                Repeating <code>{firstLine(schedule.spec.text)}</code> every{" "}
+                {t("Repeating")} <code>{firstLine(schedule.spec.text)}</code> {t("every")}{" "}
                 {describeEvery(schedule.spec.every)}
                 {" · "}
                 {schedule.spec.target === "all"
-                  ? "all sessions"
-                  : "one session"}
-                {" · "}sent {schedule.sent}
-                {schedule.spec.times > 0 ? ` of ${schedule.spec.times}` : ""}
+                  ? t("all sessions")
+                  : t("one session")}
+                {" · "}{tf("sent {count}", { count: schedule.sent })}
+                {schedule.spec.times > 0
+                  ? <>{" "}{tf("of {times}", { times: schedule.spec.times })}</>
+                  : ""}
+                {" · "}
                 {schedule.nextAt !== null
-                  ? ` · next in ${Math.max(0, Math.ceil((schedule.nextAt - now) / 1000))} s`
-                  : " · sending…"}
+                  ? tf("next in {seconds} s", { seconds: Math.max(0, Math.ceil((schedule.nextAt - now) / 1000)) })
+                  : t("sending…")}
               </span>
               <button
                 type="button"
                 className="sender-save-btn"
                 onClick={stopSchedule}
               >
-                Stop
+                {t("Stop")}
               </button>
             </>
           ) : (
             <>
               <label className="sender-field">
-                <span>Every</span>
+                <span>{t("Every")}</span>
                 <input
                   className="sender-repeat-number"
                   type="number"
                   min={REPEAT_LIMITS.minEvery}
                   max={REPEAT_LIMITS.maxEvery}
                   value={repeat.every}
-                  aria-label="Seconds between sends"
+                  aria-label={t("Seconds between sends")}
                   onChange={(event) =>
                     setRepeat({ ...repeat, every: Number(event.target.value) })
                   }
@@ -858,23 +862,22 @@ export function SenderPanel({ compact, canCompact, onExpandedChange }: SenderPan
                 <span>s</span>
               </label>
               <label className="sender-field">
-                <span>Times</span>
+                <span>{t("Times")}</span>
                 <input
                   className="sender-repeat-number"
                   type="number"
                   min={0}
                   max={REPEAT_LIMITS.maxTimes}
                   value={repeat.times}
-                  aria-label="Number of sends, 0 for until stopped"
+                  aria-label={t("Number of sends, 0 for until stopped")}
                   onChange={(event) =>
                     setRepeat({ ...repeat, times: Number(event.target.value) })
                   }
                 />
-                <span>0 = until stopped</span>
+                <span>{t("0 = until stopped")}</span>
               </label>
               <span className="sender-repeat-hint">
-                Sends the command to the chosen targets on a timer, e.g. to
-                keep a session alive.
+                {t("Sends the command to the chosen targets on a timer, e.g. to keep a session alive.")}
               </span>
               <button
                 type="button"
@@ -882,7 +885,7 @@ export function SenderPanel({ compact, canCompact, onExpandedChange }: SenderPan
                 disabled={text.length === 0}
                 onClick={() => beginRepeat(text, ending)}
               >
-                Start
+                {t("Start")}
               </button>
             </>
           )}
@@ -896,7 +899,7 @@ export function SenderPanel({ compact, canCompact, onExpandedChange }: SenderPan
           ? editing.command.scope
           : scopeForLevel(chain, saveLevel);
         const items: MenuItem[] = [
-          { heading: editing ? "Update and list under" : "Save and list under" },
+          { heading: editing ? t("Update and list under") : t("Save and list under") },
           ...chain.map((scope) => ({
             label: labelOf(scope),
             checked: sameScope(scope, preselected),
@@ -918,14 +921,14 @@ export function SenderPanel({ compact, canCompact, onExpandedChange }: SenderPan
       <div className="sender-library">
         {pageCount > 1 && (
           <div className="sender-library-head">
-            <span>{visibleCommands.length} saved commands</span>
+            <span>{tf("{count} saved commands", { count: visibleCommands.length })}</span>
             <div className="sender-pagination">
               <button
                 type="button"
                 disabled={currentPage === 1}
                 onClick={() => setPage(currentPage - 1)}
-                title="Previous page"
-                aria-label="Previous page"
+                title={t("Previous page")}
+                aria-label={t("Previous page")}
               >
                 <Icon name="chevron-left" />
               </button>
@@ -936,8 +939,8 @@ export function SenderPanel({ compact, canCompact, onExpandedChange }: SenderPan
                 type="button"
                 disabled={currentPage === pageCount}
                 onClick={() => setPage(currentPage + 1)}
-                title="Next page"
-                aria-label="Next page"
+                title={t("Next page")}
+                aria-label={t("Next page")}
               >
                 <Icon name="chevron-right" />
               </button>
@@ -1012,7 +1015,7 @@ export function SenderPanel({ compact, canCompact, onExpandedChange }: SenderPan
           ref={moreMenuRef}
           className="sender-more-menu"
           role="dialog"
-          aria-label="Find saved command"
+          aria-label={t("Find saved command")}
           style={{ left: moreAnchor.left, bottom: moreAnchor.bottom }}
         >
           <div className="sender-more-search">
@@ -1021,8 +1024,8 @@ export function SenderPanel({ compact, canCompact, onExpandedChange }: SenderPan
               autoFocus
               type="search"
               value={moreQuery}
-              placeholder="Find a saved command"
-              aria-label="Find a saved command"
+              placeholder={t("Find a saved command")}
+              aria-label={t("Find a saved command")}
               onChange={(event) => setMoreQuery(event.target.value)}
             />
           </div>
@@ -1046,10 +1049,10 @@ export function SenderPanel({ compact, canCompact, onExpandedChange }: SenderPan
                 <span className="sender-more-scope">{labelOf(command.scope)}</span>
               </button>
             ))}
-            {moreMatches.length === 0 && <span className="sender-more-empty">No matching commands</span>}
+            {moreMatches.length === 0 && <span className="sender-more-empty">{t("No matching commands")}</span>}
           </div>
           {moreMatches.length > 100 && (
-            <div className="sender-more-foot">Showing 100 of {moreMatches.length}; type to narrow</div>
+            <div className="sender-more-foot">{tf("Showing 100 of {count}; type to narrow", { count: moreMatches.length })}</div>
           )}
         </div>
       )}
@@ -1061,22 +1064,22 @@ export function SenderPanel({ compact, canCompact, onExpandedChange }: SenderPan
         if (!command) return null;
         const items: MenuItem[] = [
           {
-            label: "Edit",
+            label: t("Edit"),
             icon: "edit",
             disabled: libraryBusy,
             action: () => beginEdit(command),
           },
           {
-            label: "Send Repeatedly",
+            label: t("Send Repeatedly"),
             icon: "watch",
             action: () => beginRepeat(command.text, command.ending),
           },
           {
-            label: "Color",
+            label: t("Color"),
             icon: "symbol-color",
             children: [
               {
-                label: "None",
+                label: t("None"),
                 checked: senderColor(command.color) === null,
                 mark: "radio" as const,
                 swatch: null,
@@ -1094,7 +1097,7 @@ export function SenderPanel({ compact, canCompact, onExpandedChange }: SenderPan
             ],
           },
           {
-            label: "Line ending",
+            label: t("Line ending"),
             icon: "newline",
             children: LINE_ENDINGS.map(([value, label]) => ({
               label,
@@ -1105,7 +1108,7 @@ export function SenderPanel({ compact, canCompact, onExpandedChange }: SenderPan
             })),
           },
           {
-            label: "Scope",
+            label: t("Scope"),
             icon: "target",
             children: chain.map((scope) => ({
               label: labelOf(scope),
@@ -1117,7 +1120,7 @@ export function SenderPanel({ compact, canCompact, onExpandedChange }: SenderPan
           },
           "separator",
           {
-            label: "Delete",
+            label: t("Delete"),
             icon: "trash",
             danger: true,
             disabled: libraryBusy,
