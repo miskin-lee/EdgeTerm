@@ -10,6 +10,7 @@ import {
   type Window as TauriWindow,
 } from "@tauri-apps/api/window";
 import { openUrl } from "@tauri-apps/plugin-opener";
+import { relaunch } from "@tauri-apps/plugin-process";
 
 import appIcon from "../../src-tauri/icons/32x32.png";
 import {
@@ -36,6 +37,7 @@ import {
   PANEL_LABELS,
   PANEL_NAMES,
 } from "../panelDock";
+import { getLanguage, LANGUAGES, setLanguage, t, tf } from "../i18n";
 import { IS_MAC } from "../platform";
 import { chordLabel, type ShortcutCommand } from "../shortcuts";
 import { tabTitle, useActiveTab, useStore } from "../store";
@@ -175,15 +177,19 @@ function WindowControls({ maximized }: { maximized: boolean }) {
   const toggleMaximize = () => windowControl("toggle-maximize");
   const controls: WindowControl[] = [
     {
-      label: "Minimize",
+      label: t("Minimize"),
       icon: MINIMIZE_ICON,
       action: () => windowControl("minimize"),
     },
     maximized
-      ? { label: "Restore Down", icon: RESTORE_ICON, action: toggleMaximize }
-      : { label: "Maximize", icon: MAXIMIZE_ICON, action: toggleMaximize },
+      ? {
+          label: t("Restore Down"),
+          icon: RESTORE_ICON,
+          action: toggleMaximize,
+        }
+      : { label: t("Maximize"), icon: MAXIMIZE_ICON, action: toggleMaximize },
     {
-      label: "Close",
+      label: t("Close"),
       icon: CLOSE_ICON,
       action: (win) => win.close(),
       className: " is-close",
@@ -321,21 +327,21 @@ export function MenuBar(props: Props) {
 
   // One gutter mode and one theme are in force at a time: radios, not boxes.
   const gutterEntry = (label: string, mode: GutterMode): Entry => ({
-    label,
+    label: t(label),
     checked: gutterMode === mode,
     mark: "radio",
     action: () => setGutterMode(mode),
   });
 
   const themeEntry = (mode: ThemeMode): Entry => ({
-    label: THEME_LABELS[mode],
+    label: t(THEME_LABELS[mode]),
     checked: theme === mode,
     mark: "radio",
     action: () => setTheme(mode),
   });
 
   const rightClickEntry = (label: string, action: RightClickAction): Entry => ({
-    label,
+    label: t(label),
     checked: rightClickAction === action,
     mark: "radio",
     action: () => setRightClickAction(action),
@@ -346,50 +352,84 @@ export function MenuBar(props: Props) {
     ...PANEL_NAMES.flatMap((panel, index): (Entry | "separator")[] => [
       ...(index > 0 ? ["separator" as const] : []),
       ...DOCK_NAMES.map((dock): Entry => ({
-        label: `${PANEL_LABELS[panel]} on ${DOCK_LABELS[dock]}`,
+        label: tf("{panel} on {dock}", {
+          panel: t(PANEL_LABELS[panel]),
+          dock: t(DOCK_LABELS[dock]),
+        }),
         checked: dockOf(panelDocks, panel) === dock,
         mark: "radio",
         action: () => movePanel(panel, dock),
       })),
     ]),
     "separator",
-    { label: "Reset Panel Layout", action: resetPanelLayout },
+    { label: t("Reset Panel Layout"), action: resetPanelLayout },
   ];
 
   const programClipboardEntry = (mode: ProgramClipboardMode): Entry => ({
-    label: PROGRAM_CLIPBOARD_LABELS[mode],
+    label: t(PROGRAM_CLIPBOARD_LABELS[mode]),
     checked: programClipboard === mode,
     mark: "radio",
     action: () => setProgramClipboard(mode),
   });
 
+  // Switching the interface language needs the whole UI tree to render in the
+  // new language; a relaunch is the simplest reliable way and matches what
+  // other desktop clients do. Open sessions end with the process, so confirm.
+  const changeLanguage = (id: string) => {
+    if (id === getLanguage()) return;
+    void (async () => {
+      const confirmed = await ask(
+        t(
+          "Switch the interface language? EdgeTerm will restart and any open sessions will disconnect.",
+        ),
+        {
+          title: t("Language"),
+          kind: "info",
+          okLabel: t("Restart"),
+          cancelLabel: t("Cancel"),
+        },
+      );
+      if (!confirmed) return;
+      setLanguage(id === "zh-CN" ? "zh-CN" : "en");
+      await relaunch();
+    })();
+  };
+
+  const languageEntries = (): Entry[] =>
+    LANGUAGES.map((language) => ({
+      label: language.name,
+      checked: getLanguage() === language.id,
+      mark: "radio",
+      action: () => changeLanguage(language.id),
+    }));
+
   const menus: Menu[] = [
     {
-      title: "Session",
+      title: t("Session"),
       entries: [
         {
-          label: "New Session…",
+          label: t("New Session…"),
           shortcut: accel("newSession"),
           action: props.onNewSession,
         },
         "separator",
         {
-          label: "Previous Session",
+          label: t("Previous Session"),
           shortcut: accel("prevTab"),
           action: () => activateAdjacentTab(-1),
         },
         {
-          label: "Next Session",
+          label: t("Next Session"),
           shortcut: accel("nextTab"),
           action: () => activateAdjacentTab(1),
         },
         {
-          label: "Previous Pane",
+          label: t("Previous Pane"),
           shortcut: accel("prevPane"),
           action: () => activateAdjacentPane(-1),
         },
         {
-          label: "Next Pane",
+          label: t("Next Pane"),
           shortcut: accel("nextPane"),
           action: () => activateAdjacentPane(1),
         },
@@ -399,41 +439,41 @@ export function MenuBar(props: Props) {
           // whichever side of the switch applies to the active session now.
           label:
             activeState === "closed" || activeState === "error"
-              ? "Reconnect Session"
-              : "Disconnect Session",
+              ? t("Reconnect Session")
+              : t("Disconnect Session"),
           action: withActive(toggleSessionConnection),
         },
         {
-          label: "Close Session",
+          label: t("Close Session"),
           shortcut: accel("closeSession"),
           action: withActive(requestCloseTab),
         },
         {
           // ZMODEM starts itself when `rz` / `sz` runs in the terminal;
           // XMODEM has no such handshake and is started from here.
-          label: "File Transfer",
+          label: t("File Transfer"),
           children: [
             {
-              label: "Send via XMODEM…",
+              label: t("Send via XMODEM…"),
               action: withTerminal((terminal) => terminal.sendXmodem(128)),
             },
             {
-              label: "Send via XMODEM-1K…",
+              label: t("Send via XMODEM-1K…"),
               action: withTerminal((terminal) => terminal.sendXmodem(1024)),
             },
             {
-              label: "Receive via XMODEM…",
+              label: t("Receive via XMODEM…"),
               action: withTerminal((terminal) => terminal.receiveXmodem()),
             },
             {
-              label: "Cancel Transfer",
+              label: t("Cancel Transfer"),
               action: withTerminal((terminal) => terminal.cancelTransfer()),
             },
           ],
         },
         "separator",
         {
-          label: "Timestamp & Line",
+          label: t("Timestamp & Line"),
           children: [
             gutterEntry("Timestamp + Line Number", "both"),
             gutterEntry("Line Number Only", "line"),
@@ -442,29 +482,29 @@ export function MenuBar(props: Props) {
           ],
         },
         "separator",
-        { label: "Export Data…", action: () => void exportAppData() },
-        { label: "Import Data…", action: () => void importAppData() },
+        { label: t("Export Data…"), action: () => void exportAppData() },
+        { label: t("Import Data…"), action: () => void importAppData() },
         {
-          label: "Import OpenSSH Config…",
+          label: t("Import OpenSSH Config…"),
           action: () => void importSshConfig(),
         },
       ],
     },
     {
-      title: "Edit",
+      title: t("Edit"),
       entries: [
         {
-          label: "Copy",
+          label: t("Copy"),
           shortcut: accel("copy"),
           action: withActive((id) => getController(id)?.copySelection()),
         },
         {
-          label: "Paste",
+          label: t("Paste"),
           shortcut: accel("paste"),
           action: withActive((id) => getController(id)?.pasteFromClipboard()),
         },
         {
-          label: "Select All",
+          label: t("Select All"),
           shortcut: accel("selectAll"),
           action: withActive((id) => getController(id)?.selectAll()),
         },
@@ -472,21 +512,21 @@ export function MenuBar(props: Props) {
         {
           // The X11 / PuTTY habit: a selection is on the clipboard the
           // moment the mouse button comes up.
-          label: "Copy on Select",
+          label: t("Copy on Select"),
           checked: copyOnSelect,
           action: () => setCopyOnSelect(!copyOnSelect),
         },
         {
           // Every line of a paste after the first runs as its own command,
           // so a paste that holds several is confirmed first (issue #63).
-          label: "Warn Before Multi-line Paste",
+          label: t("Warn Before Multi-line Paste"),
           checked: pasteWarning,
           action: () => setPasteWarning(!pasteWarning),
         },
         {
           // OSC 52: tmux, vim and TUI agents copy through the terminal
           // (issue #65). Reading the clipboard back is never allowed.
-          label: "Programs Can Set Clipboard",
+          label: t("Programs Can Set Clipboard"),
           children: [
             programClipboardEntry("ask"),
             programClipboardEntry("allow"),
@@ -500,7 +540,7 @@ export function MenuBar(props: Props) {
           : [
               "separator" as const,
               {
-                label: "Right Click",
+                label: t("Right Click"),
                 children: [
                   rightClickEntry("Show Menu", "menu"),
                   // With Copy on Select the selection is copied already,
@@ -514,27 +554,29 @@ export function MenuBar(props: Props) {
             ]),
         "separator",
         {
-          label: "Clear Buffer",
+          label: t("Clear Buffer"),
           shortcut: accel("clear"),
           action: withActive((id) => getController(id)?.clear()),
         },
         "separator",
         {
-          label: "Command Suggestions",
+          label: t("Command Suggestions"),
           checked: suggestionsEnabled,
           action: () => setSuggestionsEnabled(!suggestionsEnabled),
         },
         {
-          label: "Clear Command History…",
+          label: t("Clear Command History…"),
           action: () => {
             void (async () => {
               const confirmed = await ask(
-                "Delete the recorded command history used for inline suggestions?",
+                t(
+                  "Delete the recorded command history used for inline suggestions?",
+                ),
                 {
-                  title: "Clear Command History",
+                  title: t("Clear Command History"),
                   kind: "warning",
-                  okLabel: "Clear",
-                  cancelLabel: "Cancel",
+                  okLabel: t("Clear"),
+                  cancelLabel: t("Cancel"),
                 },
               );
               if (!confirmed) return;
@@ -547,98 +589,104 @@ export function MenuBar(props: Props) {
       ],
     },
     {
-      title: "Search",
+      title: t("Search"),
       entries: [
         {
-          label: "Find…",
+          label: t("Find…"),
           shortcut: accel("find"),
           action: props.onFind,
         },
         {
-          label: "Find Next",
+          label: t("Find Next"),
           shortcut: accel("findNext"),
           action: props.onFindNext,
         },
       ],
     },
     {
-      title: "View",
+      title: t("View"),
       entries: [
         {
-          label: "Session",
+          label: t("Session"),
           shortcut: accel("panelSessions"),
           checked: panels.sessions,
           action: () => togglePanel("sessions"),
         },
         {
-          label: "Filer",
+          label: t("Filer"),
           shortcut: accel("panelFiler"),
           checked: panels.filer,
           action: () => togglePanel("filer"),
         },
         {
-          label: "Sender",
+          label: t("Sender"),
           shortcut: accel("panelSender"),
           checked: panels.sender,
           action: () => togglePanel("sender"),
         },
-        { label: "Panel Layout", children: panelLayoutEntries() },
+        { label: t("Panel Layout"), children: panelLayoutEntries() },
         "separator",
         {
           // A split opens the active session's profile again beside it; see
           // splitSession.
-          label: "Split Right",
+          label: t("Split Right"),
           shortcut: accel("splitRight"),
           action: withActive((id) => void splitSession(id, "right")),
         },
         {
-          label: "Split Down",
+          label: t("Split Down"),
           shortcut: accel("splitDown"),
           action: withActive((id) => void splitSession(id, "down")),
         },
         "separator",
         {
-          label: "Reveal Working Directory in Filer",
+          label: t("Reveal Working Directory in Filer"),
           shortcut: accel("revealCwd"),
           action: withActive((id) => void revealCwdInFiler(id)),
         },
         "separator",
         {
-          label: "Theme",
+          label: t("Theme"),
           children: (Object.keys(THEME_LABELS) as ThemeMode[]).map(themeEntry),
         },
-        "separator",
-        { label: "Display Settings…", action: props.onFontSettings },
         {
-          label: "Keyboard Shortcuts…",
+          label: t("Language"),
+          children: languageEntries(),
+        },
+        "separator",
+        { label: t("Display Settings…"), action: props.onFontSettings },
+        {
+          label: t("Keyboard Shortcuts…"),
           action: props.onKeyboardShortcuts,
         },
       ],
     },
     {
-      title: "Help",
+      title: t("Help"),
       entries: [
         {
-          label: "Tutorial",
+          label: t("Tutorial"),
           action: () => {
             void openUrl(TUTORIAL_URL).catch((error) => {
               console.error("Failed to open tutorial:", error);
             });
           },
         },
-        { label: "Check for Updates…", action: props.onCheckForUpdates },
+        { label: t("Check for Updates…"), action: props.onCheckForUpdates },
         "separator",
         {
-          label: "Restore Default Settings…",
+          label: t("Restore Default Settings…"),
           action: () => {
             void (async () => {
               const confirmed = await ask(
-                "Restore panel visibility and layout, timestamp and line display, theme, font sizes, scrollback, command suggestions, keyboard shortcuts, and mouse copy / paste to their defaults?",
+                t(
+                  "Restore panel visibility and layout, timestamp and line display, theme, font sizes, scrollback, command suggestions, keyboard shortcuts, and mouse copy / paste to their defaults?",
+                ),
                 {
-                  title: "Restore Default Settings",
+                  title: t("Restore Default Settings"),
                   kind: "warning",
-                  okLabel: "Restore",
-                  cancelLabel: "Cancel",
+                  okLabel: t("Restore"),
+                  cancelLabel: t("Cancel"),
                 },
               );
               if (!confirmed) return;
@@ -647,7 +695,7 @@ export function MenuBar(props: Props) {
           },
         },
         "separator",
-        { label: "About EdgeTerm", action: props.onAbout },
+        { label: t("About EdgeTerm"), action: props.onAbout },
       ],
     },
   ];
@@ -739,8 +787,8 @@ export function MenuBar(props: Props) {
             className="panel-action"
             disabled={!activeId}
             onClick={withActive((id) => void splitSession(id, "right"))}
-            title={`Split Right${accel("splitRight") ? ` (${accel("splitRight")})` : ""}`}
-            aria-label="Split Right"
+            title={`${t("Split Right")}${accel("splitRight") ? ` (${accel("splitRight")})` : ""}`}
+            aria-label={t("Split Right")}
           >
             <Icon name="split-horizontal" />
           </button>
@@ -748,8 +796,8 @@ export function MenuBar(props: Props) {
             className="panel-action"
             disabled={!activeId}
             onClick={withActive((id) => void splitSession(id, "down"))}
-            title={`Split Down${accel("splitDown") ? ` (${accel("splitDown")})` : ""}`}
-            aria-label="Split Down"
+            title={`${t("Split Down")}${accel("splitDown") ? ` (${accel("splitDown")})` : ""}`}
+            aria-label={t("Split Down")}
           >
             <Icon name="split-vertical" />
           </button>

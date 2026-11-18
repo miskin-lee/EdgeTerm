@@ -1,3 +1,4 @@
+import { t, tf } from "../i18n";
 import type { UpdaterState } from "../updater";
 
 interface Props {
@@ -32,10 +33,10 @@ export function UpdateDialog({
       ? Math.min(100, (state.downloaded / state.total) * 100)
       : undefined;
 
-  let title = "Software Update";
-  if (state.phase === "available") title = "Update Available";
-  if (state.phase === "up-to-date") title = "EdgeTerm Is Up to Date";
-  if (state.phase === "error") title = "Update Failed";
+  let title = t("Software Update");
+  if (state.phase === "available") title = t("Update Available");
+  if (state.phase === "up-to-date") title = t("EdgeTerm Is Up to Date");
+  if (state.phase === "error") title = t("Update Failed");
 
   return (
     <div
@@ -51,13 +52,15 @@ export function UpdateDialog({
           {state.phase === "checking" && (
             <>
               <div className="update-spinner" aria-hidden="true" />
-              <span>Checking GitHub Releases for the latest version…</span>
+              <span>
+                {t("Checking GitHub Releases for the latest version…")}
+              </span>
             </>
           )}
 
           {state.phase === "up-to-date" && (
             <span>
-              You already have the latest version
+              {t("You already have the latest version")}
               {appVersion ? ` (${appVersion})` : ""}.
             </span>
           )}
@@ -65,37 +68,57 @@ export function UpdateDialog({
           {state.phase === "available" && (
             <>
               <div className="update-version-row">
-                <span>Installed: {state.currentVersion}</span>
+                <span>
+                  {tf("Installed: {version}", {
+                    version: state.currentVersion,
+                  })}
+                </span>
                 <span aria-hidden="true">→</span>
-                <strong>Latest: {state.version}</strong>
+                <strong>
+                  {tf("Latest: {version}", { version: state.version })}
+                </strong>
               </div>
               {state.body && (
-                <div className="update-notes" aria-label="Release notes">
+                <div className="update-notes" aria-label={t("Release notes")}>
                   {state.body}
                 </div>
               )}
               <span className="update-hint">
                 {portable
-                  ? "This is a portable copy, so the update is not installed " +
-                    "in place. The download page opens in your browser; " +
-                    "replace this copy with the new portable archive."
-                  : "EdgeTerm will download the signed update, install it, " +
-                    "and restart. Active terminal connections will be closed."}
+                  ? t(
+                      "This is a portable copy, so the update is not installed " +
+                        "in place. The download page opens in your browser; " +
+                        "replace this copy with the new portable archive.",
+                    )
+                  : t(
+                      "EdgeTerm will download the signed update, install it, " +
+                        "and restart. Active terminal connections will be closed.",
+                    )}
               </span>
             </>
           )}
 
           {state.phase === "downloading" && (
             <>
-              <strong>Downloading EdgeTerm {state.version}…</strong>
+              <strong>
+                {tf("Downloading EdgeTerm {version}…", {
+                  version: state.version,
+                })}
+              </strong>
               <progress
                 className="update-progress"
                 value={progress}
                 max={100}
               />
               <span className="update-hint">
-                {formatBytes(state.downloaded)}
-                {state.total ? ` of ${formatBytes(state.total)}` : " downloaded"}
+                {state.total
+                  ? tf("{downloaded} of {total}", {
+                      downloaded: formatBytes(state.downloaded),
+                      total: formatBytes(state.total),
+                    })
+                  : tf("{downloaded} downloaded", {
+                      downloaded: formatBytes(state.downloaded),
+                    })}
               </span>
             </>
           )}
@@ -104,7 +127,9 @@ export function UpdateDialog({
             <>
               <div className="update-spinner" aria-hidden="true" />
               <span>
-                Installing EdgeTerm {state.version} and restarting…
+                {tf("Installing EdgeTerm {version} and restarting…", {
+                  version: state.version,
+                })}
               </span>
             </>
           )}
@@ -118,22 +143,22 @@ export function UpdateDialog({
           <div className="dialog-footer">
             {state.phase === "error" && (
               <button className="btn" onClick={onCheckAgain}>
-                Try Again
+                {t("Try Again")}
               </button>
             )}
             {state.phase === "available" && (
               <button className="btn" onClick={onDismiss}>
-                Later
+                {t("Later")}
               </button>
             )}
             {state.phase !== "available" && (
               <button className="btn" onClick={onDismiss}>
-                Close
+                {t("Close")}
               </button>
             )}
             {state.phase === "available" && (
               <button className="btn is-primary" onClick={onInstall}>
-                {portable ? "Open Download Page" : "Download and Install"}
+                {portable ? t("Open Download Page") : t("Download and Install")}
               </button>
             )}
           </div>

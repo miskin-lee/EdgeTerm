@@ -8,6 +8,7 @@ import {
 } from "react";
 import { flushSync } from "react-dom";
 
+import { t } from "../i18n";
 import { IS_MAC } from "../platform";
 import {
   chordLabel,
@@ -120,7 +121,7 @@ const selectedText = (sessionId: string | null) => {
 
 /** "3/12", "1000+" past the highlight limit, or "No results". */
 const formatResults = ({ resultIndex, resultCount }: SearchResults) => {
-  if (resultCount === 0) return "No results";
+  if (resultCount === 0) return t("No results");
   const total =
     resultCount >= SEARCH_HIGHLIGHT_LIMIT
       ? `${SEARCH_HIGHLIGHT_LIMIT}+`
@@ -213,7 +214,7 @@ export const SearchOverlay = forwardRef<SearchOverlayHandle, Props>(
       const on = controller.setSearchScope(!was);
       inSelectionRef.current = on;
       setInSelection(on);
-      setNotice(on || was ? null : "No selection");
+      setNotice(on || was ? null : t("No selection"));
       runSearch(true, true);
     };
 
@@ -328,8 +329,8 @@ export const SearchOverlay = forwardRef<SearchOverlayHandle, Props>(
           // the query (or the terminal).
           onMouseDown={(event) => event.preventDefault()}
           onClick={() => toggle(id)}
-          title={`${label} (${chordLabel(chord)})`}
-          aria-label={label}
+          title={`${t(label)} (${chordLabel(chord)})`}
+          aria-label={t(label)}
           aria-pressed={on}
         >
           <Icon name={icon} />
@@ -340,7 +341,7 @@ export const SearchOverlay = forwardRef<SearchOverlayHandle, Props>(
     const status =
       notice ??
       (error
-        ? "Invalid regex"
+        ? t("Invalid regex")
         : query && results
           ? formatResults(results)
           : "");
@@ -356,7 +357,7 @@ export const SearchOverlay = forwardRef<SearchOverlayHandle, Props>(
           <input
             ref={inputRef}
             value={query}
-            placeholder="Find in buffer"
+            placeholder={t("Find in buffer")}
             autoCapitalize="none"
             autoCorrect="off"
             spellCheck={false}
@@ -385,16 +386,16 @@ export const SearchOverlay = forwardRef<SearchOverlayHandle, Props>(
         <button
           className="panel-action"
           onClick={() => runSearch(false)}
-          title={`Previous Match (${SHIFT_ENTER_LABEL})`}
-          aria-label="Previous match"
+          title={`${t("Previous Match")} (${SHIFT_ENTER_LABEL})`}
+          aria-label={t("Previous match")}
         >
           <Icon name="arrow-up" />
         </button>
         <button
           className="panel-action"
           onClick={() => runSearch(true)}
-          title={`Next Match (${ENTER_LABEL})`}
-          aria-label="Next match"
+          title={`${t("Next Match")} (${ENTER_LABEL})`}
+          aria-label={t("Next match")}
         >
           <Icon name="arrow-down" />
         </button>
@@ -402,8 +403,8 @@ export const SearchOverlay = forwardRef<SearchOverlayHandle, Props>(
         <button
           className="panel-action"
           onClick={close}
-          title="Close (Esc)"
-          aria-label="Close search"
+          title={t("Close (Esc)")}
+          aria-label={t("Close search")}
         >
           <Icon name="close" />
         </button>

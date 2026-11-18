@@ -1,6 +1,7 @@
 import { useMemo, useRef, type CSSProperties, type ReactNode } from "react";
 
 import appIcon from "../../src-tauri/icons/128x128@2x.png";
+import { t } from "../i18n";
 import { layoutRects, type Rect, type SplitterRect } from "../layout";
 import { chordLabel } from "../shortcuts";
 import { useStore } from "../store";
@@ -120,15 +121,15 @@ export function Workspace({ onNewSession, onSaveSession, children }: Props) {
                   <p className="term-empty-hint">
                     {newSessionKey ? (
                       <>
-                        Press <kbd>{newSessionKey}</kbd> for a new session, or
-                        pick one from the Session panel.
+                        {t("Press")} <kbd>{newSessionKey}</kbd>{" "}
+                        {t("for a new session, or pick one from the Session panel.")}
                       </>
                     ) : (
-                      "Open a new session, or pick one from the Session panel."
+                      t("Open a new session, or pick one from the Session panel.")
                     )}
                   </p>
                   <button className="btn is-primary" onClick={onNewSession}>
-                    New Session
+                    {t("New Session")}
                   </button>
                 </div>
               )}

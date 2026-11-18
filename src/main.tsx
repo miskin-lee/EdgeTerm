@@ -3,6 +3,7 @@ import ReactDOM from "react-dom/client";
 
 import App from "./App";
 import { applyFonts } from "./fonts";
+import { initLanguage } from "./i18n";
 import { installOverflowTooltip } from "./overflowTooltip";
 import { useStore } from "./store";
 import "./styles.css";
@@ -16,6 +17,7 @@ applyFonts(
   useStore.getState().bufferFontFamily,
   useStore.getState().panelFontFamily,
 );
+initLanguage();
 
 // The WebView's native context menu exposes a Reload action. Reloading only
 // resets the React page while the Rust session manager (and serial handles)

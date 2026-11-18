@@ -10,6 +10,7 @@ import {
 } from "react";
 import { create } from "zustand";
 
+import { t, tf } from "../i18n";
 import {
   DOCK_LABELS,
   DOCK_NAMES,
@@ -366,7 +367,7 @@ export function DockArea({ dock, panels, size, render }: DockAreaProps) {
     const current = dockOf(panelDocks, panel);
     return [
       ...DOCK_NAMES.map((name) => ({
-        label: `Dock ${DOCK_LABELS[name]}`,
+        label: tf("Dock {position}", { position: t(DOCK_LABELS[name]) }),
         checked: current === name,
         mark: "radio" as const,
         action: () => {
@@ -375,7 +376,7 @@ export function DockArea({ dock, panels, size, render }: DockAreaProps) {
       })),
       "separator",
       {
-        label: `Hide ${PANEL_LABELS[panel]}`,
+        label: tf("Hide {panel}", { panel: t(PANEL_LABELS[panel]) }),
         action: () => togglePanel(panel),
       },
     ];

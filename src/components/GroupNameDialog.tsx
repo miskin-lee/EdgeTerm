@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 
+import { t, tf } from "../i18n";
+
 interface Props {
   title: string;
   /** Where the group lives, e.g. "SSH Sessions / prod". */
@@ -46,7 +48,7 @@ export function GroupNameDialog({
   const submit = async () => {
     const trimmed = name.trim();
     if (!trimmed) {
-      setError("Enter a group name.");
+      setError(t("Enter a group name."));
       inputRef.current?.focus();
       return;
     }
@@ -78,27 +80,29 @@ export function GroupNameDialog({
         </div>
         <div className="dialog-body confirm-dialog-body">
           <label className="session-field is-wide">
-            <span className="session-field-label">Name</span>
+            <span className="session-field-label">{t("Name")}</span>
             <input
               ref={inputRef}
               autoCapitalize="none"
               autoCorrect="off"
               spellCheck={false}
               value={name}
-              placeholder="Group name"
+              placeholder={t("Group name")}
               onChange={(event) => setName(event.target.value)}
             />
           </label>
-          <span className="confirm-dialog-hint">In {location}</span>
+          <span className="confirm-dialog-hint">
+            {tf("In {location}", { location })}
+          </span>
           {error && <div className="dialog-error">{error}</div>}
         </div>
         <div className="dialog-footer confirm-dialog-footer">
           <span className="confirm-dialog-keys">
             <kbd>Enter</kbd> {submitLabel.toLowerCase()} · <kbd>Esc</kbd>{" "}
-            cancel
+            {t("Cancel").toLowerCase()}
           </span>
           <button type="button" className="btn" onClick={onCancel}>
-            Cancel
+            {t("Cancel")}
           </button>
           <button type="submit" className="btn is-primary" disabled={busy}>
             {submitLabel}

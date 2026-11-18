@@ -11,6 +11,7 @@ import {
 
 import { ensureController, revealCwdInFiler } from "../actions";
 import { fontStack } from "../fonts";
+import { t } from "../i18n";
 import { IS_MAC } from "../platform";
 import { chordLabel, type ShortcutCommand } from "../shortcuts";
 import { useStore, type Tab } from "../store";
@@ -207,34 +208,34 @@ export function TerminalHost({
 
   const menuItems: MenuItem[] = [
     {
-      label: "Copy",
+      label: t("Copy"),
       icon: "copy",
       shortcut: copyKey,
       disabled: !menu?.canCopy,
       action: withTerminal((controller) => controller.copySelection()),
     },
     {
-      label: "Paste",
+      label: t("Paste"),
       icon: "clippy",
       shortcut: pasteKey,
       action: withTerminal((controller) => controller.pasteFromClipboard()),
     },
     {
-      label: "Select All",
+      label: t("Select All"),
       icon: "list-selection",
       shortcut: selectAllKey,
       action: withTerminal((controller) => controller.selectAll()),
     },
     "separator",
     {
-      label: "Clear Buffer",
+      label: t("Clear Buffer"),
       icon: "clear-all",
       shortcut: clearKey,
       action: withTerminal((controller) => controller.clear()),
     },
     "separator",
     {
-      label: "Reveal Working Directory in Filer",
+      label: t("Reveal Working Directory in Filer"),
       icon: "folder-opened",
       shortcut: revealCwdKey,
       action: withTerminal(() => void revealCwdInFiler(tab.info.id)),

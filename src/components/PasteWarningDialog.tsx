@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 
+import { t, tf } from "../i18n";
 import { pasteLineCount, pasteLines } from "../terminalPaste";
 
 interface Props {
@@ -66,21 +67,30 @@ export function PasteWarningDialog({ text, onConfirm, onCancel }: Props) {
         onMouseDown={(event) => event.stopPropagation()}
       >
         <div className="dialog-header" id="paste-warning-title">
-          Paste {lines > 1 ? `${lines} Lines` : "Long Text"}
+          {lines > 1
+            ? tf("Paste {n} Lines", { n: lines })
+            : t("Paste Long Text")}
         </div>
         <div className="dialog-body confirm-dialog-body">
           <span>
             {lines > 1 ? (
               <>
-                The clipboard holds <strong>{lines} lines</strong> (
-                {text.length.toLocaleString()} characters). Every line after
-                the first runs as its own command.
+                {t("The clipboard holds")}{" "}
+                <strong>{tf("{n} lines", { n: lines })}</strong>{" "}
+                {tf(
+                  "({n} characters). Every line after the first runs as its own command.",
+                  { n: text.length.toLocaleString() },
+                )}
               </>
             ) : (
               <>
-                The clipboard holds{" "}
-                <strong>{text.length.toLocaleString()} characters</strong> on
-                one line.
+                {t("The clipboard holds")}{" "}
+                <strong>
+                  {tf("{n} characters", {
+                    n: text.length.toLocaleString(),
+                  })}
+                </strong>{" "}
+                {t("on one line.")}
               </>
             )}
           </span>
@@ -95,7 +105,9 @@ export function PasteWarningDialog({ text, onConfirm, onCancel }: Props) {
             ))}
             {preview.length > shown.length && (
               <span className="paste-warning-more">
-                … and {preview.length - shown.length} more lines
+                {tf("… and {n} more lines", {
+                  n: preview.length - shown.length,
+                })}
               </span>
             )}
           </pre>
@@ -105,15 +117,15 @@ export function PasteWarningDialog({ text, onConfirm, onCancel }: Props) {
               checked={remember}
               onChange={(event) => setRemember(event.target.checked)}
             />
-            <span>Don’t warn me again</span>
+            <span>{t("Don’t warn me again")}</span>
           </label>
         </div>
         <div className="dialog-footer confirm-dialog-footer">
           <span className="confirm-dialog-keys">
-            <kbd>Enter</kbd> paste · <kbd>Esc</kbd> cancel
+            <kbd>Enter</kbd> {t("paste")} · <kbd>Esc</kbd> {t("cancel")}
           </span>
           <button type="button" className="btn" onClick={onCancel}>
-            Cancel
+            {t("Cancel")}
           </button>
           <button
             ref={confirmRef}
@@ -121,7 +133,7 @@ export function PasteWarningDialog({ text, onConfirm, onCancel }: Props) {
             className="btn is-primary"
             onClick={() => onConfirm(remember)}
           >
-            Paste
+            {t("Paste")}
           </button>
         </div>
       </div>
